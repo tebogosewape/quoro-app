@@ -434,10 +434,141 @@ export default function OnboardingWizard() {
 
     return (
         <div className="container-fluid py-3">
+            {/* Gradient Header */}
+            <div
+                className="card border-0 shadow-sm mb-4"
+                style={{
+                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                    borderRadius: '16px',
+                }}
+            >
+                <div className="card-body p-4 text-white">
+                    <div className="d-flex align-items-center mb-3">
+                        <button
+                            className="btn btn-light btn-sm me-3"
+                            onClick={() => navigate('/clients')}
+                            style={{ borderRadius: '8px' }}
+                        >
+                            <svg
+                                width="16"
+                                height="16"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                style={{ marginRight: '4px' }}
+                            >
+                                <path d="M19 12H5M12 19l-7-7 7-7" />
+                            </svg>
+                            Back
+                        </button>
+                        <svg
+                            width="32"
+                            height="32"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            className="me-3"
+                        >
+                            <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                            <circle cx="8.5" cy="7" r="4" />
+                            <polyline points="17 11 19 13 23 9" />
+                        </svg>
+                        <div className="flex-grow-1">
+                            <h4 className="mb-0" style={{ fontWeight: 700 }}>
+                                New Client Onboarding
+                            </h4>
+                            <div className="opacity-90" style={{ fontSize: '0.95rem' }}>
+                                Complete all steps to register a new client
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Progress Stats */}
+                    <div className="row g-3 mt-2">
+                        <div className="col-md-4 col-6">
+                            <div
+                                className="text-center p-3"
+                                style={{
+                                    background: 'rgba(255, 255, 255, 0.15)',
+                                    borderRadius: '12px',
+                                    backdropFilter: 'blur(10px)',
+                                }}
+                            >
+                                <div className="opacity-90" style={{ fontSize: '0.85rem' }}>
+                                    Current Step
+                                </div>
+                                <div style={{ fontSize: '1.1rem', fontWeight: 600 }}>
+                                    {index + 1} of {STEPS.length}
+                                </div>
+                            </div>
+                        </div>
+                        <div className="col-md-4 col-6">
+                            <div
+                                className="text-center p-3"
+                                style={{
+                                    background: 'rgba(255, 255, 255, 0.15)',
+                                    borderRadius: '12px',
+                                    backdropFilter: 'blur(10px)',
+                                }}
+                            >
+                                <div className="opacity-90" style={{ fontSize: '0.85rem' }}>
+                                    Progress
+                                </div>
+                                <div style={{ fontSize: '1.1rem', fontWeight: 600 }}>
+                                    {Math.round(((index + 1) / STEPS.length) * 100)}%
+                                </div>
+                            </div>
+                        </div>
+                        <div className="col-md-4 col-6">
+                            <div
+                                className="text-center p-3"
+                                style={{
+                                    background: 'rgba(255, 255, 255, 0.15)',
+                                    borderRadius: '12px',
+                                    backdropFilter: 'blur(10px)',
+                                }}
+                            >
+                                <div className="opacity-90" style={{ fontSize: '0.85rem' }}>
+                                    Status
+                                </div>
+                                <div style={{ fontSize: '1.1rem', fontWeight: 600 }}>
+                                    {STEPS[index]?.label || 'N/A'}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             {/* Authentication Warning */}
             {!session && (
-                <div className="alert alert-warning mb-3" role="alert">
-                    <strong>⚠️ Not Logged In:</strong> You must be logged in to submit this form.
+                <div
+                    className="alert alert-warning mb-3"
+                    role="alert"
+                    style={{ borderRadius: '12px' }}
+                >
+                    <svg
+                        width="20"
+                        height="20"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        style={{ marginRight: '8px' }}
+                    >
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                        <line x1="12" y1="9" x2="12" y2="13" />
+                        <line x1="12" y1="17" x2="12.01" y2="17" />
+                    </svg>
+                    <strong>Not Logged In:</strong> You must be logged in to submit this form.
                     <Button
                         variant="link"
                         className="p-0 ms-2"
@@ -452,132 +583,136 @@ export default function OnboardingWizard() {
             <div className="row">
                 {/* vertical tabs */}
                 <div className="col-md-3">
-                    <div className="panel glass p-2 mb-3 cf-tabs-container">
-                        <div className="cf-tabs d-flex flex-column gap-2">
-                            {STEPS.map((s, i) => {
-                                const active = s.key === current;
-                                const done = i < index;
-                                return (
-                                    <button
-                                        key={s.key}
-                                        type="button"
-                                        className={`cf-tab ${active ? 'active' : ''} ${done ? 'done' : ''}`}
-                                        onClick={() => (done ? setCurrent(s.key) : null)}
-                                        aria-current={active}
-                                    >
-                                        <span className="cf-tab-icon">
-                                            <FontAwesomeIcon icon={s.icon} />
-                                        </span>
-                                        <span className="cf-tab-label">
-                                            {i + 1}. {s.label}
-                                        </span>
-                                    </button>
-                                );
-                            })}
+                    <div className="card border-0 shadow-sm mb-3" style={{ borderRadius: '12px' }}>
+                        <div className="card-body p-2">
+                            <div className="cf-tabs d-flex flex-column gap-2">
+                                {STEPS.map((s, i) => {
+                                    const active = s.key === current;
+                                    const done = i < index;
+                                    return (
+                                        <button
+                                            key={s.key}
+                                            type="button"
+                                            className={`cf-tab ${active ? 'active' : ''} ${done ? 'done' : ''}`}
+                                            onClick={() => (done ? setCurrent(s.key) : null)}
+                                            aria-current={active}
+                                        >
+                                            <span className="cf-tab-icon">
+                                                <FontAwesomeIcon icon={s.icon} />
+                                            </span>
+                                            <span className="cf-tab-label">
+                                                {i + 1}. {s.label}
+                                            </span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
                         </div>
                     </div>
                 </div>
 
                 {/* step body */}
                 <div className="col-md-9">
-                    <div className="panel glass p-3">
-                        {current === 'personal' && (
-                            <StepPersonal
-                                value={state.personal}
-                                onChange={(p) =>
-                                    setState((prev) => ({
-                                        ...prev,
-                                        personal: { ...prev.personal, ...p },
-                                    }))
-                                }
-                                canContinue={canNext('personal')}
-                                onBack={goBack}
-                                onNext={goNext}
-                            />
-                        )}
-                        {current === 'products' && (
-                            <StepProducts
-                                products={state.products}
-                                onToggle={(id, sel) => {
-                                    console.log(`Main onToggle - Product ${id} set to ${sel}`);
-                                    setState((prev) => {
-                                        const updated = {
+                    <div className="card border-0 shadow-sm" style={{ borderRadius: '12px' }}>
+                        <div className="card-body p-3">
+                            {current === 'personal' && (
+                                <StepPersonal
+                                    value={state.personal}
+                                    onChange={(p) =>
+                                        setState((prev) => ({
                                             ...prev,
-                                            products: prev.products.map((p) =>
-                                                p.id === id ? { ...p, selected: sel } : p
-                                            ),
-                                        };
-                                        console.log(
-                                            'Main onToggle - Updated state:',
-                                            updated.products
-                                        );
-                                        return updated;
-                                    });
-                                }}
-                                canContinue={canNext('products')}
-                                onBack={goBack}
-                                onNext={goNext}
-                                busy={busy}
-                                loading={loadingProducts}
-                                error={productError}
-                            />
-                        )}
-                        {current === 'product-info' && (
-                            <StepProductInfo
-                                products={state.products}
-                                value={state.productInfo || {}}
-                                onChange={(pi) =>
-                                    setState((prev) => ({
-                                        ...prev,
-                                        productInfo: { ...prev.productInfo, ...pi },
-                                    }))
-                                }
-                                canContinue={canNext('product-info')}
-                                onBack={goBack}
-                                onNext={goNext}
-                                busy={busy}
-                            />
-                        )}
-                        {current === 'banking' && (
-                            <StepBanking
-                                value={state.banking || {}}
-                                onChange={(b) =>
-                                    setState((prev) => ({
-                                        ...prev,
-                                        banking: { ...prev.banking, ...b },
-                                    }))
-                                }
-                                canContinue={canNext('banking')}
-                                onBack={goBack}
-                                onNext={goNext}
-                                busy={busy}
-                            />
-                        )}
-                        {current === 'payment' && (
-                            <StepPayment
-                                products={state.products}
-                                value={state.payment || {}}
-                                onChange={(p) =>
-                                    setState((prev) => ({
-                                        ...prev,
-                                        payment: { ...prev.payment, ...p },
-                                    }))
-                                }
-                                canContinue={canNext('payment')}
-                                onBack={goBack}
-                                onNext={submitAll}
-                                busy={busy}
-                            />
-                        )}
-                        {current === 'confirm' && (
-                            <StepConfirm
-                                data={state}
-                                onBack={() => setCurrent('payment')}
-                                onFinish={handleFinish}
-                                busy={busy}
-                                error={submissionError}
-                            />
-                        )}
+                                            personal: { ...prev.personal, ...p },
+                                        }))
+                                    }
+                                    canContinue={canNext('personal')}
+                                    onBack={goBack}
+                                    onNext={goNext}
+                                />
+                            )}
+                            {current === 'products' && (
+                                <StepProducts
+                                    products={state.products}
+                                    onToggle={(id, sel) => {
+                                        console.log(`Main onToggle - Product ${id} set to ${sel}`);
+                                        setState((prev) => {
+                                            const updated = {
+                                                ...prev,
+                                                products: prev.products.map((p) =>
+                                                    p.id === id ? { ...p, selected: sel } : p
+                                                ),
+                                            };
+                                            console.log(
+                                                'Main onToggle - Updated state:',
+                                                updated.products
+                                            );
+                                            return updated;
+                                        });
+                                    }}
+                                    canContinue={canNext('products')}
+                                    onBack={goBack}
+                                    onNext={goNext}
+                                    busy={busy}
+                                    loading={loadingProducts}
+                                    error={productError}
+                                />
+                            )}
+                            {current === 'product-info' && (
+                                <StepProductInfo
+                                    products={state.products}
+                                    value={state.productInfo || {}}
+                                    onChange={(pi) =>
+                                        setState((prev) => ({
+                                            ...prev,
+                                            productInfo: { ...prev.productInfo, ...pi },
+                                        }))
+                                    }
+                                    canContinue={canNext('product-info')}
+                                    onBack={goBack}
+                                    onNext={goNext}
+                                    busy={busy}
+                                />
+                            )}
+                            {current === 'banking' && (
+                                <StepBanking
+                                    value={state.banking || {}}
+                                    onChange={(b) =>
+                                        setState((prev) => ({
+                                            ...prev,
+                                            banking: { ...prev.banking, ...b },
+                                        }))
+                                    }
+                                    canContinue={canNext('banking')}
+                                    onBack={goBack}
+                                    onNext={goNext}
+                                    busy={busy}
+                                />
+                            )}
+                            {current === 'payment' && (
+                                <StepPayment
+                                    products={state.products}
+                                    value={state.payment || {}}
+                                    onChange={(p) =>
+                                        setState((prev) => ({
+                                            ...prev,
+                                            payment: { ...prev.payment, ...p },
+                                        }))
+                                    }
+                                    canContinue={canNext('payment')}
+                                    onBack={goBack}
+                                    onNext={submitAll}
+                                    busy={busy}
+                                />
+                            )}
+                            {current === 'confirm' && (
+                                <StepConfirm
+                                    data={state}
+                                    onBack={() => setCurrent('payment')}
+                                    onFinish={handleFinish}
+                                    busy={busy}
+                                    error={submissionError}
+                                />
+                            )}
+                        </div>
                     </div>
                 </div>
             </div>
@@ -723,14 +858,25 @@ function StepPersonal({
             </Row>
 
             <div className="d-flex justify-content-between mt-4">
-                <Button variant="light" onClick={onBack} type="button">
+                <Button
+                    variant="outline-secondary"
+                    onClick={onBack}
+                    type="button"
+                    style={{ borderRadius: '8px' }}
+                >
                     Back
                 </Button>
                 <Button
-                    className="btn btn-primary"
                     disabled={!canContinue}
                     onClick={onNext}
                     type="button"
+                    style={{
+                        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                        border: 'none',
+                        color: 'white',
+                        borderRadius: '8px',
+                        fontWeight: 500,
+                    }}
                 >
                     Next
                 </Button>
@@ -860,14 +1006,25 @@ function StepProducts({
             </Row>
 
             <div className="d-flex justify-content-between mt-4">
-                <Button variant="light" onClick={onBack} type="button">
+                <Button
+                    variant="outline-secondary"
+                    onClick={onBack}
+                    type="button"
+                    style={{ borderRadius: '8px' }}
+                >
                     Back
                 </Button>
                 <Button
-                    className="btn btn-primary"
                     disabled={!canContinue || busy}
                     onClick={onNext}
                     type="button"
+                    style={{
+                        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                        border: 'none',
+                        color: 'white',
+                        borderRadius: '8px',
+                        fontWeight: 500,
+                    }}
                 >
                     {busy ? 'Saving…' : 'Confirm'}
                 </Button>
@@ -902,7 +1059,7 @@ function StepProductInfo({
 
             {hasCIR && (
                 <div className="mb-4">
-                    <div className="panel glass p-3">
+                    <div className="card border-0 shadow-sm p-3" style={{ borderRadius: '12px' }}>
                         <div className="fw-bold mb-3">Credit Interpretation Report (Experian)</div>
                         <Form.Label>
                             Name 3 accounts that you are currently paying?
@@ -927,7 +1084,7 @@ function StepProductInfo({
             )}
 
             {!hasCIR && (
-                <div className="panel glass p-3">
+                <div className="card border-0 shadow-sm p-3" style={{ borderRadius: '12px' }}>
                     <div className="text-muted">
                         No product-specific information required for the selected product(s).
                     </div>
@@ -935,14 +1092,25 @@ function StepProductInfo({
             )}
 
             <div className="d-flex justify-content-between mt-4">
-                <Button variant="light" onClick={onBack} type="button">
+                <Button
+                    variant="outline-secondary"
+                    onClick={onBack}
+                    type="button"
+                    style={{ borderRadius: '8px' }}
+                >
                     Back
                 </Button>
                 <Button
-                    className="btn btn-primary"
                     disabled={!canContinue || busy}
                     onClick={onNext}
                     type="button"
+                    style={{
+                        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                        border: 'none',
+                        color: 'white',
+                        borderRadius: '8px',
+                        fontWeight: 500,
+                    }}
                 >
                     Next
                 </Button>
@@ -1000,7 +1168,11 @@ function StepPayment({
             {/* Payment Options per Product */}
             <div className="mb-4">
                 {selectedProducts.map((product) => (
-                    <div key={product.id} className="panel glass p-3 mb-3">
+                    <div
+                        key={product.id}
+                        className="card border-0 shadow-sm p-3 mb-3"
+                        style={{ borderRadius: '12px' }}
+                    >
                         <div className="fw-bold mb-3">{product.name}</div>
                         <Form.Label>
                             Payment option <span className="text-danger">*</span>
@@ -1030,7 +1202,7 @@ function StepPayment({
             </div>
 
             {/* First Payment Month */}
-            <div className="panel glass p-3 mb-4">
+            <div className="card border-0 shadow-sm p-3 mb-4" style={{ borderRadius: '12px' }}>
                 <Form.Label>
                     First payment month <span className="text-danger">*</span>
                 </Form.Label>
@@ -1052,7 +1224,7 @@ function StepPayment({
             </div>
 
             {/* Quote Summary */}
-            <div className="panel glass p-3 mb-4">
+            <div className="card border-0 shadow-sm p-3 mb-4" style={{ borderRadius: '12px' }}>
                 <div className="fw-bold mb-3">Quote Summary</div>
                 <div className="table-responsive">
                     <table className="table table-sm mb-0">
@@ -1106,7 +1278,7 @@ function StepPayment({
             </div>
 
             {/* Agreements */}
-            <div className="panel glass p-3 mb-4">
+            <div className="card border-0 shadow-sm p-3 mb-4" style={{ borderRadius: '12px' }}>
                 <div className="fw-bold mb-3">Agreements</div>
                 <Form.Group className="mb-3">
                     <Form.Check
@@ -1140,14 +1312,25 @@ function StepPayment({
             </div>
 
             <div className="d-flex justify-content-between mt-4">
-                <Button variant="light" onClick={onBack} type="button">
+                <Button
+                    variant="outline-secondary"
+                    onClick={onBack}
+                    type="button"
+                    style={{ borderRadius: '8px' }}
+                >
                     Back
                 </Button>
                 <Button
-                    className="btn btn-primary"
                     disabled={!canContinue || busy}
                     onClick={onNext}
                     type="button"
+                    style={{
+                        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                        border: 'none',
+                        color: 'white',
+                        borderRadius: '8px',
+                        fontWeight: 500,
+                    }}
                 >
                     Next
                 </Button>
@@ -1279,14 +1462,25 @@ function StepBanking({
             </Row>
 
             <div className="d-flex justify-content-between mt-4">
-                <Button variant="light" onClick={onBack} type="button">
+                <Button
+                    variant="outline-secondary"
+                    onClick={onBack}
+                    type="button"
+                    style={{ borderRadius: '8px' }}
+                >
                     Back
                 </Button>
                 <Button
-                    className="btn btn-primary"
                     disabled={!canContinue || busy}
                     onClick={onNext}
                     type="button"
+                    style={{
+                        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                        border: 'none',
+                        color: 'white',
+                        borderRadius: '8px',
+                        fontWeight: 500,
+                    }}
                 >
                     {busy ? 'Saving…' : 'Next'}
                 </Button>
@@ -1321,7 +1515,22 @@ function StepConfirm({
             <h5 className="mb-3">6: Confirm</h5>
 
             {error && (
-                <div className="alert alert-danger mb-3">
+                <div className="alert alert-danger mb-3" style={{ borderRadius: '12px' }}>
+                    <svg
+                        width="20"
+                        height="20"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        style={{ marginRight: '8px' }}
+                    >
+                        <circle cx="12" cy="12" r="10" />
+                        <line x1="12" y1="8" x2="12" y2="12" />
+                        <line x1="12" y1="16" x2="12.01" y2="16" />
+                    </svg>
                     <strong>Submission Error:</strong> {error}
                     <div className="mt-2">
                         <small>Please try again or contact support if the problem persists.</small>
@@ -1331,7 +1540,7 @@ function StepConfirm({
 
             <Row className="g-3">
                 <Col lg={6}>
-                    <div className="panel glass p-3">
+                    <div className="card border-0 shadow-sm p-3" style={{ borderRadius: '12px' }}>
                         <div className="fw-bold mb-2">Personal</div>
                         <div>
                             <b>Name:</b> {data.personal.firstNames} {data.personal.surname}
@@ -1360,7 +1569,7 @@ function StepConfirm({
                     </div>
                 </Col>
                 <Col lg={6}>
-                    <div className="panel glass p-3">
+                    <div className="card border-0 shadow-sm p-3" style={{ borderRadius: '12px' }}>
                         <div className="fw-bold mb-2">Products</div>
                         <ul className="m-0 ps-3">
                             {chosen.map((p) => (
@@ -1375,7 +1584,10 @@ function StepConfirm({
             {chosen.some((p) => p.id === 'cir') && (
                 <Row className="g-3 mt-2">
                     <Col lg={6}>
-                        <div className="panel glass p-3">
+                        <div
+                            className="card border-0 shadow-sm p-3"
+                            style={{ borderRadius: '12px' }}
+                        >
                             <div className="fw-bold mb-2">
                                 Credit Interpretation Report (Experian)
                             </div>
@@ -1394,7 +1606,7 @@ function StepConfirm({
 
             <Row className="g-3 mt-2">
                 <Col lg={6}>
-                    <div className="panel glass p-3">
+                    <div className="card border-0 shadow-sm p-3" style={{ borderRadius: '12px' }}>
                         <div className="fw-bold mb-2">Banking Details</div>
                         <div>
                             <b>Bank:</b> {data.banking?.bankName || '-'}
@@ -1420,7 +1632,7 @@ function StepConfirm({
 
             <Row className="g-3 mt-2">
                 <Col lg={6}>
-                    <div className="panel glass p-3">
+                    <div className="card border-0 shadow-sm p-3" style={{ borderRadius: '12px' }}>
                         <div className="fw-bold mb-2">Payment Details</div>
                         <div>
                             <b>Payment Method:</b>
@@ -1452,14 +1664,27 @@ function StepConfirm({
             </Row>
 
             <div className="d-flex justify-content-between mt-4">
-                <Button variant="light" onClick={onBack} disabled={busy} type="button">
+                <Button
+                    variant="outline-secondary"
+                    onClick={onBack}
+                    disabled={busy}
+                    type="button"
+                    style={{ borderRadius: '8px' }}
+                >
                     Back
                 </Button>
                 <Button
-                    className="btn btn-primary"
                     onClick={onFinish}
                     disabled={busy}
                     type="button"
+                    style={{
+                        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                        border: 'none',
+                        color: 'white',
+                        borderRadius: '8px',
+                        fontWeight: 500,
+                        minWidth: '120px',
+                    }}
                 >
                     {busy ? (
                         <>
@@ -1468,7 +1693,7 @@ function StepConfirm({
                                 role="status"
                                 aria-hidden="true"
                             ></span>
-                            Creating Client...
+                            Creating...
                         </>
                     ) : (
                         'Finish'
