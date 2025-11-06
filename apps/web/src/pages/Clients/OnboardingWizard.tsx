@@ -597,7 +597,15 @@ function StepPersonal({
                         <option value="">Choose…</option>
                         <option value="en">English</option>
                         <option value="af">Afrikaans</option>
-                        <option value="zu">Zulu</option>
+                        <option value="zu">Zulu (isiZulu)</option>
+                        <option value="xh">Xhosa (isiXhosa)</option>
+                        <option value="st">Sotho (Sesotho)</option>
+                        <option value="nso">Northern Sotho (Sepedi)</option>
+                        <option value="tn">Tswana (Setswana)</option>
+                        <option value="ts">Tsonga (Xitsonga)</option>
+                        <option value="ss">Swati (siSwati)</option>
+                        <option value="ve">Venda (Tshivenda)</option>
+                        <option value="nr">Ndebele (isiNdebele)</option>
                     </Form.Select>
                 </Col>
                 <Col md={6}>
