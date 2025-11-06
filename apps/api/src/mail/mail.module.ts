@@ -7,5 +7,6 @@ import { MailService } from './mail.service';
     imports: [ConfigModule.forRoot({ isGlobal: true })],
     controllers: [MailController],
     providers: [MailService],
+    exports: [MailService],
 })
 export class MailModule {}
