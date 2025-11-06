@@ -562,3 +562,46 @@ export const isValidSAPhoneNumber = (phone: string): boolean => {
 export const isValidSAIdNumber = (idNumber: string): boolean => {
     return /^\d{13}$/.test(idNumber);
 };
+
+/**
+ * Get communication history for a client
+ * @param clientId - Client ID
+ * @returns Array of communication logs
+ */
+export const getClientCommunications = async (clientId: string) => {
+    const response = await apiClient.get(`/clients/${clientId}/communications`, {
+        headers: getAuthHeaders(),
+    });
+    return response.data.data;
+};
+
+/**
+ * Send email to a client
+ * @param clientId - Client ID
+ * @param subject - Email subject
+ * @param message - Email message (will be converted to HTML)
+ * @returns Success status
+ */
+export const sendEmailToClient = async (clientId: string, subject: string, message: string) => {
+    const response = await apiClient.post(
+        `/clients/${clientId}/send-email`,
+        { subject, message },
+        { headers: getAuthHeaders() }
+    );
+    return response.data;
+};
+
+/**
+ * Send SMS to a client
+ * @param clientId - Client ID
+ * @param message - SMS message
+ * @returns Success status
+ */
+export const sendSmsToClient = async (clientId: string, message: string) => {
+    const response = await apiClient.post(
+        `/clients/${clientId}/send-sms`,
+        { message },
+        { headers: getAuthHeaders() }
+    );
+    return response.data;
+};

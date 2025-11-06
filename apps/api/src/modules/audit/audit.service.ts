@@ -121,4 +121,19 @@ export class AuditService {
             metadata,
         });
     }
+
+    /**
+     * Get communication logs for a specific client
+     */
+    async getClientCommunications(clientId: string): Promise<AuditLog[]> {
+        return this.auditRepository.find({
+            where: {
+                entityType: 'client_communication',
+                entityId: clientId,
+            },
+            order: {
+                createdAt: 'DESC',
+            },
+        });
+    }
 }

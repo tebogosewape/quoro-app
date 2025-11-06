@@ -1172,10 +1172,31 @@ function BadgeKV({ label, value }: { label: string; value: string }) {
 // Correspondence (WhatsApp-first)
 // -----------------------------------------------
 function CorrespondencePanel({ clientId }: { clientId: string }) {
+    const [commLogs, setCommLogs] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const loadCommunications = async () => {
+            try {
+                const { getClientCommunications } = await import('@/api/clients.api');
+                const logs = await getClientCommunications(clientId);
+                setCommLogs(logs);
+            } catch (error) {
+                console.error('Failed to load communications:', error);
+            } finally {
+                setLoading(false);
+            }
+        };
+        loadCommunications();
+    }, [clientId]);
+
     return (
         <Section title="Correspondence">
-            <Tab.Container defaultActiveKey="wa">
+            <Tab.Container defaultActiveKey="history">
                 <Nav variant="pills" className="mb-2">
+                    <Nav.Item>
+                        <Nav.Link eventKey="history">Communication History</Nav.Link>
+                    </Nav.Item>
                     <Nav.Item>
                         <Nav.Link eventKey="wa">WhatsApp</Nav.Link>
                     </Nav.Item>
@@ -1187,18 +1208,453 @@ function CorrespondencePanel({ clientId }: { clientId: string }) {
                     </Nav.Item>
                 </Nav>
                 <Tab.Content>
+                    <Tab.Pane eventKey="history">
+                        <CommunicationHistory logs={commLogs} loading={loading} />
+                    </Tab.Pane>
                     <Tab.Pane eventKey="wa">
                         <WhatsAppChat clientId={clientId} />
                     </Tab.Pane>
                     <Tab.Pane eventKey="email">
-                        <EmailLog clientId={clientId} />
+                        <EmailLogNew logs={commLogs} loading={loading} clientId={clientId} />
                     </Tab.Pane>
                     <Tab.Pane eventKey="sms">
-                        <i className="text-muted">Verification SMS logged.</i>
+                        <SmsLog logs={commLogs} loading={loading} clientId={clientId} />
                     </Tab.Pane>
                 </Tab.Content>
             </Tab.Container>
         </Section>
+    );
+}
+
+function CommunicationHistory({ logs, loading }: { logs: any[]; loading: boolean }) {
+    if (loading) {
+        return <div className="text-muted">Loading communication history...</div>;
+    }
+
+    if (logs.length === 0) {
+        return <div className="text-muted">No communications sent yet.</div>;
+    }
+
+    return (
+        <div className="panel glass p-3">
+            <div className="timeline">
+                {logs.map((log, idx) => (
+                    <div key={log.id} className="mb-4">
+                        <div className="d-flex align-items-start">
+                            <div className="me-3">
+                                <div
+                                    className="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center"
+                                    style={{ width: 40, height: 40 }}
+                                >
+                                    <i className="bi bi-envelope-check-fill"></i>
+                                </div>
+                            </div>
+                            <div className="flex-grow-1">
+                                <div className="d-flex justify-content-between align-items-start mb-2">
+                                    <h6 className="mb-0">Welcome Communications Sent</h6>
+                                    <small className="text-muted">
+                                        {new Date(log.createdAt).toLocaleString()}
+                                    </small>
+                                </div>
+                                <div className="mb-2">
+                                    <strong>Client:</strong> {log.clientName}
+                                    <br />
+                                    <strong>Email:</strong> {log.clientEmail}
+                                    <br />
+                                    <strong>Phone:</strong> {log.clientPhone}
+                                </div>
+                                <div className="row g-2">
+                                    <div className="col-md-4">
+                                        <div
+                                            className={`alert alert-sm py-1 px-2 mb-0 ${log.communications?.email?.sent ? 'alert-success' : 'alert-danger'}`}
+                                        >
+                                            <i
+                                                className={`bi ${log.communications?.email?.sent ? 'bi-check-circle-fill' : 'bi-x-circle-fill'} me-1`}
+                                            ></i>
+                                            <strong>Email:</strong>{' '}
+                                            {log.communications?.email?.sent ? 'Sent' : 'Failed'}
+                                            {log.communications?.email?.error && (
+                                                <div className="small">
+                                                    {log.communications.email.error}
+                                                </div>
+                                            )}
+                                            {log.communications?.email?.subject && (
+                                                <div className="small text-muted mt-1">
+                                                    {log.communications.email.subject}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div className="col-md-4">
+                                        <div
+                                            className={`alert alert-sm py-1 px-2 mb-0 ${log.communications?.sms?.sent ? 'alert-success' : 'alert-danger'}`}
+                                        >
+                                            <i
+                                                className={`bi ${log.communications?.sms?.sent ? 'bi-check-circle-fill' : 'bi-x-circle-fill'} me-1`}
+                                            ></i>
+                                            <strong>SMS:</strong>{' '}
+                                            {log.communications?.sms?.sent ? 'Sent' : 'Failed'}
+                                            {log.communications?.sms?.error && (
+                                                <div className="small">
+                                                    {log.communications.sms.error}
+                                                </div>
+                                            )}
+                                            {log.communications?.sms?.message && (
+                                                <div
+                                                    className="small text-muted mt-1"
+                                                    style={{
+                                                        maxHeight: '40px',
+                                                        overflow: 'hidden',
+                                                        textOverflow: 'ellipsis',
+                                                    }}
+                                                >
+                                                    {log.communications.sms.message.substring(
+                                                        0,
+                                                        50
+                                                    )}
+                                                    {log.communications.sms.message.length > 50
+                                                        ? '...'
+                                                        : ''}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div className="col-md-4">
+                                        <div
+                                            className={`alert alert-sm py-1 px-2 mb-0 ${log.communications?.whatsapp?.sent ? 'alert-success' : 'alert-danger'}`}
+                                        >
+                                            <i
+                                                className={`bi ${log.communications?.whatsapp?.sent ? 'bi-check-circle-fill' : 'bi-x-circle-fill'} me-1`}
+                                            ></i>
+                                            <strong>WhatsApp:</strong>{' '}
+                                            {log.communications?.whatsapp?.sent ? 'Sent' : 'Failed'}
+                                            {log.communications?.whatsapp?.error && (
+                                                <div className="small">
+                                                    {log.communications.whatsapp.error}
+                                                </div>
+                                            )}
+                                            {log.communications?.whatsapp?.message && (
+                                                <div
+                                                    className="small text-muted mt-1"
+                                                    style={{
+                                                        maxHeight: '40px',
+                                                        overflow: 'hidden',
+                                                        textOverflow: 'ellipsis',
+                                                    }}
+                                                >
+                                                    {log.communications.whatsapp.message.substring(
+                                                        0,
+                                                        50
+                                                    )}
+                                                    {log.communications.whatsapp.message.length > 50
+                                                        ? '...'
+                                                        : ''}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {idx < logs.length - 1 && <hr className="mt-3" />}
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
+
+function SmsLog({ logs, loading, clientId }: { logs: any[]; loading: boolean; clientId: string }) {
+    const [sending, setSending] = useState(false);
+    const [showForm, setShowForm] = useState(false);
+    const [message, setMessage] = useState('');
+
+    if (loading) {
+        return <div className="text-muted">Loading SMS history...</div>;
+    }
+
+    const smsLogs = logs.filter((log) => log.communications?.sms?.sent);
+    const latestLog = logs[0]; // Get the most recent log for client info
+
+    const handleSendSms = async () => {
+        if (!message.trim() || !clientId) return;
+
+        setSending(true);
+        try {
+            // Import and use the API function
+            const { sendSmsToClient } = await import('@/api/clients.api');
+            await sendSmsToClient(clientId, message.trim());
+
+            alert('SMS sent successfully!');
+            setMessage('');
+            setShowForm(false);
+            // Refresh the page to show new SMS
+            window.location.reload();
+        } catch (error: any) {
+            console.error('Error sending SMS:', error);
+            alert(`Failed to send SMS: ${error.message || 'Unknown error'}`);
+        } finally {
+            setSending(false);
+        }
+    };
+
+    return (
+        <div className="panel glass p-3">
+            <div className="d-flex justify-content-between align-items-center mb-3">
+                <h6 className="mb-0">SMS History</h6>
+                {latestLog && (
+                    <button
+                        className="btn btn-sm btn-primary"
+                        onClick={() => setShowForm(!showForm)}
+                    >
+                        <i className="bi bi-chat-left-text me-1"></i>
+                        Send SMS
+                    </button>
+                )}
+            </div>
+
+            {showForm && latestLog && (
+                <div className="card mb-3">
+                    <div className="card-body">
+                        <h6>Send SMS to {latestLog.clientName}</h6>
+                        <p className="text-muted small mb-2">Phone: {latestLog.clientPhone}</p>
+                        <textarea
+                            className="form-control mb-2"
+                            rows={3}
+                            placeholder="Type your message here..."
+                            value={message}
+                            onChange={(e) => setMessage(e.target.value)}
+                            maxLength={160}
+                        />
+                        <div className="d-flex justify-content-between align-items-center">
+                            <small className="text-muted">{message.length}/160 characters</small>
+                            <div>
+                                <button
+                                    className="btn btn-sm btn-secondary me-2"
+                                    onClick={() => {
+                                        setShowForm(false);
+                                        setMessage('');
+                                    }}
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    className="btn btn-sm btn-primary"
+                                    onClick={handleSendSms}
+                                    disabled={!message.trim() || sending}
+                                >
+                                    {sending ? 'Sending...' : 'Send'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {smsLogs.length === 0 ? (
+                <div className="text-muted">No SMS messages sent yet.</div>
+            ) : (
+                smsLogs.map((log, idx) => (
+                    <div key={log.id} className="mb-3">
+                        <div className="d-flex align-items-start">
+                            <div className="me-3">
+                                <div
+                                    className="rounded-circle bg-success text-white d-flex align-items-center justify-content-center"
+                                    style={{ width: 40, height: 40 }}
+                                >
+                                    <i className="bi bi-chat-left-text-fill"></i>
+                                </div>
+                            </div>
+                            <div className="flex-grow-1">
+                                <div className="d-flex justify-content-between align-items-start mb-2">
+                                    <div>
+                                        <strong>{log.clientName}</strong>
+                                        <div className="text-muted small">{log.clientPhone}</div>
+                                    </div>
+                                    <small className="text-muted">
+                                        {new Date(log.createdAt).toLocaleString()}
+                                    </small>
+                                </div>
+                                <div className="alert alert-success mb-0">
+                                    <div className="d-flex align-items-center mb-2">
+                                        <i className="bi bi-check-circle-fill me-2"></i>
+                                        <strong>SMS Sent Successfully</strong>
+                                    </div>
+                                    {log.communications?.sms?.message && (
+                                        <div className="p-2 bg-white rounded border">
+                                            {log.communications.sms.message}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                        {idx < smsLogs.length - 1 && <hr className="mt-3" />}
+                    </div>
+                ))
+            )}
+        </div>
+    );
+}
+
+function EmailLogNew({
+    logs,
+    loading,
+    clientId,
+}: {
+    logs: any[];
+    loading: boolean;
+    clientId: string;
+}) {
+    const [sending, setSending] = useState(false);
+    const [showForm, setShowForm] = useState(false);
+    const [subject, setSubject] = useState('');
+    const [message, setMessage] = useState('');
+
+    if (loading) {
+        return <div className="text-muted">Loading email history...</div>;
+    }
+
+    const emailLogs = logs.filter((log) => log.communications?.email?.sent);
+    const latestLog = logs[0]; // Get the most recent log for client info
+
+    const handleSendEmail = async () => {
+        if (!subject.trim() || !message.trim() || !clientId) return;
+
+        setSending(true);
+        try {
+            // Import and use the API function
+            const { sendEmailToClient } = await import('@/api/clients.api');
+            await sendEmailToClient(clientId, subject.trim(), message.trim());
+
+            alert('Email sent successfully!');
+            setSubject('');
+            setMessage('');
+            setShowForm(false);
+            // Refresh the page to show new email
+            window.location.reload();
+        } catch (error: any) {
+            console.error('Error sending email:', error);
+            alert(`Failed to send email: ${error.message || 'Unknown error'}`);
+        } finally {
+            setSending(false);
+        }
+    };
+
+    return (
+        <div className="panel glass p-3">
+            <div className="d-flex justify-content-between align-items-center mb-3">
+                <h6 className="mb-0">Email History</h6>
+                {latestLog && (
+                    <button
+                        className="btn btn-sm btn-primary"
+                        onClick={() => setShowForm(!showForm)}
+                    >
+                        <i className="bi bi-envelope me-1"></i>
+                        Send Email
+                    </button>
+                )}
+            </div>
+
+            {showForm && latestLog && (
+                <div className="card mb-3">
+                    <div className="card-body">
+                        <h6>Send Email to {latestLog.clientName}</h6>
+                        <p className="text-muted small mb-2">Email: {latestLog.clientEmail}</p>
+                        <input
+                            type="text"
+                            className="form-control mb-2"
+                            placeholder="Subject"
+                            value={subject}
+                            onChange={(e) => setSubject(e.target.value)}
+                        />
+                        <textarea
+                            className="form-control mb-2"
+                            rows={5}
+                            placeholder="Type your message here..."
+                            value={message}
+                            onChange={(e) => setMessage(e.target.value)}
+                        />
+                        <div className="d-flex justify-content-end">
+                            <button
+                                className="btn btn-sm btn-secondary me-2"
+                                onClick={() => {
+                                    setShowForm(false);
+                                    setSubject('');
+                                    setMessage('');
+                                }}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                className="btn btn-sm btn-primary"
+                                onClick={handleSendEmail}
+                                disabled={!subject.trim() || !message.trim() || sending}
+                            >
+                                {sending ? 'Sending...' : 'Send Email'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {emailLogs.length === 0 ? (
+                <div className="text-muted">No emails sent yet.</div>
+            ) : (
+                emailLogs.map((log, idx) => (
+                    <div key={log.id} className="mb-3">
+                        <div className="d-flex align-items-start">
+                            <div className="me-3">
+                                <div
+                                    className="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center"
+                                    style={{ width: 40, height: 40 }}
+                                >
+                                    <i className="bi bi-envelope-fill"></i>
+                                </div>
+                            </div>
+                            <div className="flex-grow-1">
+                                <div className="d-flex justify-content-between align-items-start mb-2">
+                                    <div>
+                                        <strong>To: {log.clientEmail}</strong>
+                                        <div className="text-muted small">{log.clientName}</div>
+                                    </div>
+                                    <small className="text-muted">
+                                        {new Date(log.createdAt).toLocaleString()}
+                                    </small>
+                                </div>
+                                {log.communications?.email?.subject && (
+                                    <div className="mb-2">
+                                        <strong>Subject:</strong> {log.communications.email.subject}
+                                    </div>
+                                )}
+                                <div className="alert alert-success mb-0">
+                                    <div className="d-flex align-items-center mb-2">
+                                        <i className="bi bi-check-circle-fill me-2"></i>
+                                        <strong>Email Sent Successfully</strong>
+                                    </div>
+                                    {log.communications?.email?.html && (
+                                        <details>
+                                            <summary
+                                                style={{ cursor: 'pointer' }}
+                                                className="text-primary"
+                                            >
+                                                View email content
+                                            </summary>
+                                            <div
+                                                className="mt-2 p-3 bg-white rounded border"
+                                                dangerouslySetInnerHTML={{
+                                                    __html: log.communications.email.html,
+                                                }}
+                                            />
+                                        </details>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                        {idx < emailLogs.length - 1 && <hr className="mt-3" />}
+                    </div>
+                ))
+            )}
+        </div>
     );
 }
 

@@ -132,6 +132,84 @@ export class ClientsController {
     }
 
     /**
+     * Get communication history for a client
+     */
+    @Get(':id/communications')
+    @Roles(
+        UserRole.ADMIN,
+        UserRole.MANAGER,
+        UserRole.TEAM_LEADER,
+        UserRole.AGENT,
+        UserRole.OPERATIONS_MANAGER,
+        UserRole.CHIEF_EXECUTIVE_OFFICER,
+        UserRole.VIEWER
+    )
+    @ApiOperation({ summary: 'Get communication history for a client' })
+    async getClientCommunications(@Param('id', ParseUUIDPipe) id: string) {
+        const communications = await this.clientsService.getClientCommunications(id);
+        return {
+            success: true,
+            data: communications,
+            meta: { timestamp: new Date().toISOString() },
+        };
+    }
+
+    /**
+     * Send email to a client
+     */
+    @Post(':id/send-email')
+    @Roles(
+        UserRole.ADMIN,
+        UserRole.MANAGER,
+        UserRole.TEAM_LEADER,
+        UserRole.AGENT,
+        UserRole.OPERATIONS_MANAGER
+    )
+    @ApiOperation({ summary: 'Send email to a client' })
+    async sendEmail(
+        @Param('id', ParseUUIDPipe) id: string,
+        @Body() emailData: { subject: string; message: string },
+        @CurrentUser() user: AuthenticatedUser
+    ) {
+        const result = await this.clientsService.sendEmailToClient(
+            id,
+            emailData.subject,
+            emailData.message,
+            user.id
+        );
+        return {
+            success: true,
+            data: result,
+            meta: { timestamp: new Date().toISOString() },
+        };
+    }
+
+    /**
+     * Send SMS to a client
+     */
+    @Post(':id/send-sms')
+    @Roles(
+        UserRole.ADMIN,
+        UserRole.MANAGER,
+        UserRole.TEAM_LEADER,
+        UserRole.AGENT,
+        UserRole.OPERATIONS_MANAGER
+    )
+    @ApiOperation({ summary: 'Send SMS to a client' })
+    async sendSms(
+        @Param('id', ParseUUIDPipe) id: string,
+        @Body() smsData: { message: string },
+        @CurrentUser() user: AuthenticatedUser
+    ) {
+        const result = await this.clientsService.sendSmsToClient(id, smsData.message, user.id);
+        return {
+            success: true,
+            data: result,
+            meta: { timestamp: new Date().toISOString() },
+        };
+    }
+
+    /**
      * Update a client
      */
     @Put(':id')

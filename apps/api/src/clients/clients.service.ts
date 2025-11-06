@@ -178,14 +178,18 @@ export class ClientsService {
                     email: {
                         sent: results.email.success,
                         error: results.email.error?.message,
+                        subject: emailSubject,
+                        html: emailHtml,
                     },
                     sms: {
                         sent: results.sms.success,
                         error: results.sms.error?.message,
+                        message: smsMessage,
                     },
                     whatsapp: {
                         sent: results.whatsapp.success,
                         error: results.whatsapp.error?.message,
+                        message: whatsappMessage,
                     },
                 },
             },
@@ -398,5 +402,135 @@ export class ClientsService {
             total,
             byStatus,
         };
+    }
+
+    /**
+     * Get communication history for a client from audit logs
+     */
+    async getClientCommunications(clientId: string) {
+        const auditLogs = await this.auditService.getClientCommunications(clientId);
+
+        return auditLogs.map((log) => ({
+            id: log.id,
+            createdAt: log.createdAt,
+            metadata: log.metadata,
+            // Extract communication details from metadata
+            communications: log.metadata?.communications as {
+                email?: { sent: boolean; error?: string; subject?: string; html?: string };
+                sms?: { sent: boolean; error?: string; message?: string };
+                whatsapp?: { sent: boolean; error?: string; message?: string };
+            },
+            clientName: log.metadata?.clientName as string,
+            clientEmail: log.metadata?.clientEmail as string,
+            clientPhone: log.metadata?.clientPhone as string,
+        }));
+    }
+
+    /**
+     * Send email to a specific client and log in audit trail
+     * Uses clientRepository to find the client by ID
+     */
+    async sendEmailToClient(clientId: string, subject: string, message: string, userId?: string) {
+        const client = await this.clientRepository.findOne({ where: { id: clientId } });
+        if (!client) {
+            throw new Error('Client not found');
+        }
+
+        const fullName = `${client.firstName} ${client.lastName}`.trim() || 'Valued Client';
+        let success = false;
+        let error: string | undefined;
+
+        try {
+            await this.mailService.sendMail({
+                to: [client.email],
+                subject,
+                html: message.replace(/\n/g, '<br>'),
+            });
+            success = true;
+            this.logger.log(`Email sent to ${client.email}`);
+        } catch (err) {
+            error = (err as Error).message;
+            this.logger.error(`Failed to send email to ${client.email}:`, err);
+        }
+
+        // Log in audit trail
+        await this.auditService.logEvent({
+            action: AuditAction.CREATE,
+            entityType: 'client_communication',
+            entityId: client.id,
+            actorId: userId,
+            metadata: {
+                clientId: client.id,
+                clientName: fullName,
+                clientEmail: client.email,
+                clientPhone: client.phoneNumber,
+                communications: {
+                    email: {
+                        sent: success,
+                        error,
+                        subject,
+                        html: message.replace(/\n/g, '<br>'),
+                    },
+                },
+            },
+        });
+
+        return { success, error };
+    }
+
+    /**
+     * Send SMS to a specific client and log in audit trail
+     */
+    async sendSmsToClient(clientId: string, message: string, userId?: string) {
+        const client = await this.clientRepository.findOne({ where: { id: clientId } });
+        if (!client) {
+            throw new Error('Client not found');
+        }
+
+        const fullName = `${client.firstName} ${client.lastName}`.trim() || 'Valued Client';
+        let success = false;
+        let error: string | undefined;
+
+        try {
+            const normalizedPhone = this.normalizePhone(client.phoneNumber);
+            if (normalizedPhone) {
+                await this.smsService.send(
+                    {
+                        message,
+                        recipientNumber: normalizedPhone,
+                    },
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    { id: userId || 'system', email: 'system', role: 'system' } as any
+                );
+                success = true;
+                this.logger.log(`SMS sent to ${normalizedPhone}`);
+            }
+        } catch (err) {
+            error = (err as Error).message;
+            this.logger.error(`Failed to send SMS to ${client.phoneNumber}:`, err);
+        }
+
+        // Log in audit trail
+        await this.auditService.logEvent({
+            action: AuditAction.CREATE,
+            entityType: 'client_communication',
+            entityId: client.id,
+            actorId: userId,
+            metadata: {
+                clientId: client.id,
+                clientName: fullName,
+                clientEmail: client.email,
+                clientPhone: client.phoneNumber,
+                communications: {
+                    sms: {
+                        sent: success,
+                        error,
+                        message,
+                    },
+                },
+            },
+        });
+
+        return { success, error };
     }
 }
