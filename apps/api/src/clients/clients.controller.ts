@@ -11,9 +11,12 @@ import {
     UseGuards,
     HttpCode,
     HttpStatus,
+    Res,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { ClientsService } from './clients.service';
+import { ExperianReportService } from './experian-report.service';
 import { CreateClientDto } from './dto/create-client.dto';
 import { UpdateClientDto } from './dto/update-client.dto';
 import { SearchClientsDto } from './dto/search-clients.dto';
@@ -25,7 +28,10 @@ import { UserRole } from '@/entities/user.entity';
 @ApiBearerAuth('JWT-auth')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class ClientsController {
-    constructor(private readonly clientsService: ClientsService) {}
+    constructor(
+        private readonly clientsService: ClientsService,
+        private readonly experianReportService: ExperianReportService
+    ) {}
 
     /**
      * Create a new client (onboarding endpoint)
@@ -237,5 +243,31 @@ export class ClientsController {
     @HttpCode(HttpStatus.NO_CONTENT)
     async remove(@Param('id', ParseUUIDPipe) id: string) {
         await this.clientsService.remove(id);
+    }
+
+    /**
+     * Generate mock Experian credit report PDF
+     */
+    @Get(':id/credit-report')
+    @Roles(
+        UserRole.ADMIN,
+        UserRole.MANAGER,
+        UserRole.TEAM_LEADER,
+        UserRole.AGENT,
+        UserRole.OPERATIONS_MANAGER,
+        UserRole.CHIEF_EXECUTIVE_OFFICER
+    )
+    @ApiOperation({ summary: 'Generate mock Experian credit report PDF' })
+    async getCreditReport(@Param('id', ParseUUIDPipe) id: string, @Res() res: Response) {
+        const client = await this.clientsService.findOne(id);
+        const pdfBuffer = await this.experianReportService.generateCreditReport(client);
+
+        res.set({
+            'Content-Type': 'application/pdf',
+            'Content-Disposition': `attachment; filename="experian-report-${client.idNumber}.pdf"`,
+            'Content-Length': pdfBuffer.length,
+        });
+
+        res.send(pdfBuffer);
     }
 }

@@ -605,3 +605,16 @@ export const sendSmsToClient = async (clientId: string, message: string) => {
     );
     return response.data;
 };
+
+/**
+ * Download Experian credit report PDF for a client
+ * @param clientId - Client ID
+ * @returns PDF blob
+ */
+export const downloadCreditReport = async (clientId: string): Promise<Blob> => {
+    const response = await apiClient.get(`/clients/${clientId}/credit-report`, {
+        headers: getAuthHeaders(),
+        responseType: 'blob',
+    });
+    return response.data;
+};

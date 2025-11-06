@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Button, Dropdown, Form, Nav, Tab } from 'react-bootstrap';
+import { Button, Dropdown, Form, Nav, Tab, Modal, Spinner } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
     faPhone,
@@ -16,6 +16,11 @@ import {
     faMagnifyingGlass,
     faPaperPlane,
     faLock,
+    faFileAlt,
+    faDownload,
+    faEye,
+    faFilePdf,
+    faTimes,
 } from '@fortawesome/free-solid-svg-icons';
 
 import { money } from '../../utils/currency';
@@ -492,9 +497,7 @@ export default function ClientDetails() {
 
                                     <Tab.Pane eventKey="reports">
                                         <Section title="Credit Reports">
-                                            <div className="panel glass p-2">
-                                                Experian/TransUnion summaries here…
-                                            </div>
+                                            <CreditReportViewer clientId={cid} />
                                         </Section>
                                     </Tab.Pane>
 
@@ -529,6 +532,8 @@ export default function ClientDetails() {
 // Header
 // -----------------------------------------------
 function HeaderBlock({ data, onEdit }: { data: ClientDetailPayload; onEdit: () => void }) {
+    const [downloadingReport, setDownloadingReport] = useState(false);
+
     const chips = useMemo(
         () => [
             { label: 'ID', value: data.nationalId, icon: faIdCard },
@@ -537,6 +542,29 @@ function HeaderBlock({ data, onEdit }: { data: ClientDetailPayload; onEdit: () =
         ],
         [data]
     );
+
+    const handleDownloadCreditReport = async () => {
+        setDownloadingReport(true);
+        try {
+            const { downloadCreditReport } = await import('@/api/clients.api');
+            const blob = await downloadCreditReport(data.id);
+
+            // Create download link
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `experian-report-${data.nationalId}.pdf`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(url);
+        } catch (error) {
+            console.error('Failed to download credit report:', error);
+            alert('Failed to download credit report. Please try again.');
+        } finally {
+            setDownloadingReport(false);
+        }
+    };
 
     return (
         <div className="panel glass p-3 mb-3">
@@ -584,6 +612,26 @@ function HeaderBlock({ data, onEdit }: { data: ClientDetailPayload; onEdit: () =
                             <FontAwesomeIcon icon={faEllipsisH} />
                         </Dropdown.Toggle>
                         <Dropdown.Menu>
+                            <Dropdown.Item
+                                onClick={handleDownloadCreditReport}
+                                disabled={downloadingReport}
+                            >
+                                {downloadingReport ? (
+                                    <>
+                                        <span
+                                            className="spinner-border spinner-border-sm me-2"
+                                            role="status"
+                                            aria-hidden="true"
+                                        ></span>
+                                        Generating...
+                                    </>
+                                ) : (
+                                    <>
+                                        <FontAwesomeIcon icon={faFileAlt} className="me-2" />
+                                        Credit Report PDF
+                                    </>
+                                )}
+                            </Dropdown.Item>
                             <Dropdown.Item>Export PDF</Dropdown.Item>
                             <Dropdown.Item>Send Profile Link</Dropdown.Item>
                             <Dropdown.Item className="text-danger">Archive Client</Dropdown.Item>
@@ -2199,6 +2247,255 @@ function LogList({
                 </li>
             ))}
         </ul>
+    );
+}
+
+// -----------------------------------------------
+// Credit Report Viewer
+// -----------------------------------------------
+function CreditReportViewer({ clientId }: { clientId: string }) {
+    const [showModal, setShowModal] = useState(false);
+    const [loading, setLoading] = useState(false);
+    const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+    const [error, setError] = useState<string | null>(null);
+
+    const handleViewReport = async () => {
+        setLoading(true);
+        setError(null);
+        setShowModal(true);
+
+        try {
+            const { downloadCreditReport } = await import('@/api/clients.api');
+            const blob = await downloadCreditReport(clientId);
+            const url = window.URL.createObjectURL(blob);
+            setPdfUrl(url);
+        } catch (err) {
+            console.error('Failed to load credit report:', err);
+            setError('Failed to load credit report. Please try again.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleDownloadReport = async () => {
+        try {
+            const { downloadCreditReport } = await import('@/api/clients.api');
+            const blob = await downloadCreditReport(clientId);
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `experian-credit-report-${clientId}.pdf`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(url);
+        } catch (err) {
+            console.error('Failed to download credit report:', err);
+            alert('Failed to download credit report. Please try again.');
+        }
+    };
+
+    const handleCloseModal = () => {
+        setShowModal(false);
+        if (pdfUrl) {
+            window.URL.revokeObjectURL(pdfUrl);
+            setPdfUrl(null);
+        }
+    };
+
+    return (
+        <>
+            <div className="panel glass p-4">
+                <div className="d-flex align-items-center justify-content-between mb-3">
+                    <div>
+                        <h5 className="mb-1">
+                            <FontAwesomeIcon icon={faFilePdf} className="text-danger me-2" />
+                            Experian Credit Report
+                        </h5>
+                        <p className="text-muted mb-0" style={{ fontSize: '0.9rem' }}>
+                            View comprehensive credit history and score analysis
+                        </p>
+                    </div>
+                    <div className="text-end">
+                        <div
+                            className="badge bg-success"
+                            style={{ fontSize: '0.85rem', padding: '0.5rem 1rem' }}
+                        >
+                            Available
+                        </div>
+                    </div>
+                </div>
+
+                <div className="row g-3 mb-4">
+                    <div className="col-md-4">
+                        <div className="text-center p-3 border rounded bg-light">
+                            <div className="text-muted small mb-1">Credit Score</div>
+                            <div className="h4 mb-0 text-primary">---</div>
+                        </div>
+                    </div>
+                    <div className="col-md-4">
+                        <div className="text-center p-3 border rounded bg-light">
+                            <div className="text-muted small mb-1">Total Accounts</div>
+                            <div className="h4 mb-0">---</div>
+                        </div>
+                    </div>
+                    <div className="col-md-4">
+                        <div className="text-center p-3 border rounded bg-light">
+                            <div className="text-muted small mb-1">Report Date</div>
+                            <div className="h4 mb-0" style={{ fontSize: '1rem' }}>
+                                {new Date().toLocaleDateString()}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="d-flex gap-2">
+                    <Button
+                        variant="primary"
+                        size="lg"
+                        className="flex-fill"
+                        onClick={handleViewReport}
+                    >
+                        <FontAwesomeIcon icon={faEye} className="me-2" />
+                        View Credit Report
+                    </Button>
+                    <Button variant="outline-primary" size="lg" onClick={handleDownloadReport}>
+                        <FontAwesomeIcon icon={faDownload} />
+                    </Button>
+                </div>
+
+                <div className="mt-3 pt-3 border-top">
+                    <div className="d-flex align-items-start gap-2">
+                        <FontAwesomeIcon
+                            icon={faTriangleExclamation}
+                            className="text-warning mt-1"
+                        />
+                        <small className="text-muted">
+                            This is a <strong>UAT credit report</strong> generated for demonstration
+                            purposes. It does not represent actual credit bureau data.
+                        </small>
+                    </div>
+                </div>
+            </div>
+
+            {/* PDF Preview Modal */}
+            <Modal
+                show={showModal}
+                onHide={handleCloseModal}
+                size="xl"
+                centered
+                backdrop="static"
+                className="credit-report-modal"
+            >
+                <Modal.Header className="border-0 pb-0">
+                    <div className="w-100">
+                        <div className="d-flex align-items-center justify-content-between">
+                            <div>
+                                <h5 className="mb-1">
+                                    <FontAwesomeIcon
+                                        icon={faFilePdf}
+                                        className="text-danger me-2"
+                                    />
+                                    Experian Credit Report
+                                </h5>
+                                <small className="text-muted">
+                                    Generated on {new Date().toLocaleDateString()}
+                                </small>
+                            </div>
+                            <div className="d-flex gap-2">
+                                <Button
+                                    variant="outline-primary"
+                                    size="sm"
+                                    onClick={handleDownloadReport}
+                                    disabled={loading}
+                                >
+                                    <FontAwesomeIcon icon={faDownload} className="me-1" />
+                                    Download PDF
+                                </Button>
+                                <Button
+                                    variant="outline-secondary"
+                                    size="sm"
+                                    onClick={handleCloseModal}
+                                >
+                                    <FontAwesomeIcon icon={faTimes} />
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
+                </Modal.Header>
+                <Modal.Body className="p-0" style={{ height: '80vh' }}>
+                    {loading && (
+                        <div
+                            className="d-flex align-items-center justify-content-center"
+                            style={{ height: '100%' }}
+                        >
+                            <div className="text-center">
+                                <Spinner animation="border" variant="primary" className="mb-3" />
+                                <p className="text-muted">Generating credit report...</p>
+                            </div>
+                        </div>
+                    )}
+                    {error && (
+                        <div
+                            className="d-flex align-items-center justify-content-center"
+                            style={{ height: '100%' }}
+                        >
+                            <div className="text-center text-danger">
+                                <FontAwesomeIcon
+                                    icon={faTriangleExclamation}
+                                    size="3x"
+                                    className="mb-3"
+                                />
+                                <p>{error}</p>
+                                <Button variant="primary" onClick={handleViewReport}>
+                                    Try Again
+                                </Button>
+                            </div>
+                        </div>
+                    )}
+                    {!loading && !error && pdfUrl && (
+                        <iframe
+                            src={pdfUrl}
+                            style={{
+                                width: '100%',
+                                height: '100%',
+                                border: 'none',
+                            }}
+                            title="Credit Report Preview"
+                        />
+                    )}
+                </Modal.Body>
+            </Modal>
+
+            <style>{`
+                .credit-report-modal .modal-content {
+                    border-radius: 12px;
+                    overflow: hidden;
+                }
+                .credit-report-modal .modal-header {
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    color: white;
+                    padding: 1.5rem;
+                }
+                .credit-report-modal .modal-header h5 {
+                    color: white;
+                    margin: 0;
+                }
+                .credit-report-modal .modal-header small {
+                    color: rgba(255, 255, 255, 0.8);
+                }
+                .credit-report-modal .modal-header .btn {
+                    background: rgba(255, 255, 255, 0.2);
+                    border-color: rgba(255, 255, 255, 0.3);
+                    color: white;
+                }
+                .credit-report-modal .modal-header .btn:hover {
+                    background: rgba(255, 255, 255, 0.3);
+                    border-color: rgba(255, 255, 255, 0.4);
+                    color: white;
+                }
+            `}</style>
+        </>
     );
 }
 

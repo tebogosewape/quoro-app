@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ClientsController } from './clients.controller';
 import { ClientsService } from './clients.service';
+import { ExperianReportService } from './experian-report.service';
 import { Client } from '@/entities/client.entity';
 import { MailModule } from '@/mail/mail.module';
 import { SmsModule } from '@/sms/sms.module';
@@ -17,7 +18,7 @@ import { AuditModule } from '@/modules/audit/audit.module';
         AuditModule,
     ],
     controllers: [ClientsController],
-    providers: [ClientsService],
+    providers: [ClientsService, ExperianReportService],
     exports: [ClientsService],
 })
 export class ClientsModule {}
