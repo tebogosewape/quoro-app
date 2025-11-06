@@ -29,21 +29,32 @@ export class ClientsController {
 
     /**
      * Create a new client (onboarding endpoint)
+     * Accessible to all authenticated users
      */
     @Post('onboard')
-    @Roles(
-        UserRole.ADMIN,
-        UserRole.MANAGER,
-        UserRole.TEAM_LEADER,
-        UserRole.AGENT,
-        UserRole.OPERATIONS_MANAGER
-    )
     @ApiOperation({ summary: 'Create a new client via onboarding wizard' })
     @HttpCode(HttpStatus.CREATED)
     async onboard(
         @Body() createClientDto: CreateClientDto,
         @CurrentUser() user: AuthenticatedUser
     ) {
+        console.log(
+            '[ClientsController] Received createClientDto:',
+            JSON.stringify(createClientDto, null, 2)
+        );
+        console.log(
+            '[ClientsController] selectedProducts type:',
+            typeof createClientDto.selectedProducts
+        );
+        console.log('[ClientsController] selectedProducts:', createClientDto.selectedProducts);
+        if (createClientDto.selectedProducts && createClientDto.selectedProducts.length > 0) {
+            console.log('[ClientsController] First product:', createClientDto.selectedProducts[0]);
+            console.log(
+                '[ClientsController] First product type:',
+                typeof createClientDto.selectedProducts[0]
+            );
+        }
+
         const client = await this.clientsService.create(createClientDto, user.id);
         return {
             success: true,

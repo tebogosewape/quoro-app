@@ -28,4 +28,5 @@ export type AuthSession = {
     refresh_token?: string;
     user: AuthUser;
     expires_in?: number;
+    issued_at?: number; // Timestamp when token was issued (in milliseconds)
 };

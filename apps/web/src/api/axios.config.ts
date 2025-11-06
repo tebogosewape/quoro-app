@@ -85,7 +85,43 @@ export const apiClient: AxiosInstance = axios.create({
     withCredentials: false,
 });
 
-apiClient.interceptors.request.use((config) => {
+// Token refresh state
+let isRefreshing = false;
+let refreshPromise: Promise<string> | null = null;
+
+/**
+ * Refresh the access token using the refresh token
+ */
+async function refreshAccessToken(): Promise<string> {
+    const { useAuthStore } = await import('@/stores/auth.store');
+    const session = useAuthStore.getState().session;
+
+    if (!session?.refresh_token) {
+        throw new Error('No refresh token available');
+    }
+
+    try {
+        const response = await axios.post(`${appConfig.apiUrl}/auth/refresh`, {
+            refresh_token: session.refresh_token,
+        });
+
+        const newSession = {
+            ...session,
+            access_token: response.data.access_token,
+            expires_in: response.data.expires_in,
+            issued_at: Date.now(), // Update issued timestamp
+        };
+
+        useAuthStore.getState().setSession(newSession);
+        return response.data.access_token;
+    } catch (error) {
+        // If refresh fails, clear session and throw
+        useAuthStore.getState().clearSession();
+        throw error;
+    }
+}
+
+apiClient.interceptors.request.use(async (config) => {
     const traceId = safeRandomId();
 
     // assign the trace header if headers exist
@@ -94,6 +130,78 @@ apiClient.interceptors.request.use((config) => {
     }
 
     setCurrentTraceId(traceId);
+
+    // Check if we need to refresh the token (if not a refresh or login request)
+    if (!config.url?.includes('/auth/refresh') && !config.url?.includes('/auth/login')) {
+        const { useAuthStore } = await import('@/stores/auth.store');
+        const session = useAuthStore.getState().session;
+
+        // If we have a session with token and expiry info
+        if (session?.access_token && session?.expires_in && session?.issued_at) {
+            const now = Date.now();
+            const issuedAt = session.issued_at;
+            const expiresIn = session.expires_in * 1000; // Convert to milliseconds
+            const expiresAt = issuedAt + expiresIn;
+            const timeUntilExpiry = expiresAt - now;
+
+            // Refresh if token expires in less than 5 minutes (300000 ms)
+            const REFRESH_THRESHOLD = 5 * 60 * 1000;
+
+            if (timeUntilExpiry < REFRESH_THRESHOLD && timeUntilExpiry > 0) {
+                // Token is about to expire, refresh it proactively
+                if (!isRefreshing) {
+                    isRefreshing = true;
+                    refreshPromise = refreshAccessToken();
+                }
+
+                try {
+                    const newToken = await refreshPromise;
+                    isRefreshing = false;
+                    refreshPromise = null;
+
+                    // Update the current request with new token
+                    if (config.headers) {
+                        config.headers.Authorization = `Bearer ${newToken}`;
+                    }
+                } catch (error) {
+                    isRefreshing = false;
+                    refreshPromise = null;
+                    // Let the request proceed with the old token, response interceptor will handle 401
+                }
+            } else if (timeUntilExpiry <= 0) {
+                // Token has already expired, refresh it
+                if (!isRefreshing) {
+                    isRefreshing = true;
+                    refreshPromise = refreshAccessToken();
+                }
+
+                try {
+                    const newToken = await refreshPromise;
+                    isRefreshing = false;
+                    refreshPromise = null;
+
+                    // Update the current request with new token
+                    if (config.headers) {
+                        config.headers.Authorization = `Bearer ${newToken}`;
+                    }
+                } catch (error) {
+                    isRefreshing = false;
+                    refreshPromise = null;
+                    // Let the response interceptor handle the redirect
+                }
+            }
+        } else if (isRefreshing && refreshPromise) {
+            // Another request triggered a refresh, wait for it
+            try {
+                const newToken = await refreshPromise;
+                if (config.headers) {
+                    config.headers.Authorization = `Bearer ${newToken}`;
+                }
+            } catch {
+                // Refresh failed, let the response interceptor handle it
+            }
+        }
+    }
 
     logger.debug('HTTP request', {
         url: config.url,
@@ -121,7 +229,7 @@ apiClient.interceptors.response.use(
 
         return response;
     },
-    (error: AxiosError) => {
+    async (error: AxiosError) => {
         const normalizedError = createApiError(error);
 
         logger.error('HTTP error', {
@@ -130,16 +238,55 @@ apiClient.interceptors.response.use(
             traceId: normalizedError.traceId,
         });
 
-        // Handle 401 Unauthorized - redirect to login
-        if (normalizedError.status === 401) {
-            // Import auth store dynamically to avoid circular dependency
-            import('@/stores/auth.store').then(({ useAuthStore }) => {
+        // Handle 401 Unauthorized - try to refresh token
+        const skipAuthRedirect = (error.config as any)?.skipAuthRedirect;
+        const originalRequest = error.config;
+
+        if (normalizedError.status === 401 && originalRequest && !skipAuthRedirect) {
+            // Don't retry refresh or login endpoints
+            if (
+                originalRequest.url?.includes('/auth/refresh') ||
+                originalRequest.url?.includes('/auth/login')
+            ) {
+                // Clear session and redirect to login
+                const { useAuthStore } = await import('@/stores/auth.store');
                 useAuthStore.getState().clearSession();
-                // Redirect to login page
-                if (typeof window !== 'undefined') {
+                if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
                     window.location.href = '/login';
                 }
-            });
+                return Promise.reject(normalizedError);
+            }
+
+            // Try to refresh the token
+            try {
+                // If already refreshing, wait for it
+                if (!isRefreshing) {
+                    isRefreshing = true;
+                    refreshPromise = refreshAccessToken();
+                }
+
+                const newToken = await refreshPromise;
+                isRefreshing = false;
+                refreshPromise = null;
+
+                // Retry the original request with the new token
+                if (originalRequest.headers) {
+                    originalRequest.headers.Authorization = `Bearer ${newToken}`;
+                }
+
+                return apiClient(originalRequest);
+            } catch (refreshError) {
+                // Refresh failed, clear session and redirect
+                isRefreshing = false;
+                refreshPromise = null;
+
+                const { useAuthStore } = await import('@/stores/auth.store');
+                useAuthStore.getState().clearSession();
+                if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
+                    window.location.href = '/login';
+                }
+                return Promise.reject(normalizedError);
+            }
         }
 
         return Promise.reject(normalizedError);

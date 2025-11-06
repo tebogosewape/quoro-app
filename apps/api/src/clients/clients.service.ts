@@ -115,8 +115,24 @@ export class ClientsService {
             .take(limit)
             .getMany();
 
+        // Transform selectedProducts to fix any legacy data format issues
+        const sanitizedData = data.map((client) => {
+            if (client.selectedProducts && Array.isArray(client.selectedProducts)) {
+                // Fix any nested arrays (legacy data format)
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                client.selectedProducts = client.selectedProducts.map((product: any) => {
+                    // If product is an array (bad data), extract the first element
+                    if (Array.isArray(product)) {
+                        return product[0] || { productId: '', paymentOptionId: '' };
+                    }
+                    return product;
+                });
+            }
+            return client;
+        });
+
         return {
-            data,
+            data: sanitizedData,
             meta: {
                 total,
                 page,
@@ -136,6 +152,18 @@ export class ClientsService {
 
         if (!client) {
             throw new NotFoundException(`Client with ID ${id} not found`);
+        }
+
+        // Fix any legacy data format issues
+        if (client.selectedProducts && Array.isArray(client.selectedProducts)) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            client.selectedProducts = client.selectedProducts.map((product: any) => {
+                // If product is an array (bad data), extract the first element
+                if (Array.isArray(product)) {
+                    return product[0] || { productId: '', paymentOptionId: '' };
+                }
+                return product;
+            });
         }
 
         return client;

@@ -378,7 +378,8 @@ export const createClient = async (clientData: CreateClientDto): Promise<Client>
 
     const response = await apiClient.post('/clients/onboard', validatedData, {
         headers: getAuthHeaders(),
-    });
+        skipAuthRedirect: true, // Don't auto-redirect on 401, let the component handle it
+    } as any);
 
     return clientSchema.parse(unwrapApiResponse(response.data));
 };

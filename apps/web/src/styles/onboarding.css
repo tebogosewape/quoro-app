@@ -38,6 +38,11 @@
 /* Vertical Tabs Navigation */
 /* ═════════════════════════════════════════════════════════════════ */
 
+/* Remove border from the navigation panel container */
+.cf-tabs-container {
+    border: none !important;
+}
+
 .cf-tabs {
     display: flex;
     flex-direction: column;
@@ -74,7 +79,8 @@
     padding: 1rem 1.125rem;
     width: 100%;
     text-align: left;
-    border: none;
+    border: none !important;
+    outline: none !important;
     border-radius: 12px;
     background: linear-gradient(135deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.01));
     color: rgba(231, 238, 242, 0.7);
@@ -84,6 +90,7 @@
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     position: relative;
     overflow: hidden;
+    box-shadow: none !important;
 }
 
 .cf-tab::before {
@@ -154,7 +161,6 @@
     background: linear-gradient(135deg, rgba(8, 180, 148, 0.2), rgba(8, 180, 148, 0.08));
     color: #fff;
     box-shadow:
-        0 0 0 1px rgba(8, 180, 148, 0.15),
         inset 0 1px 2px rgba(255, 255, 255, 0.1),
         0 8px 24px rgba(8, 180, 148, 0.12);
 }

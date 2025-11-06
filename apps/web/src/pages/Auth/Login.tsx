@@ -108,6 +108,7 @@ export default function Login() {
                     typeof data.expires_in === 'string'
                         ? parseInt(data.expires_in, 10)
                         : data.expires_in,
+                issued_at: Date.now(), // Store when token was issued
                 user: {
                     id: data.user.id,
                     email: data.user.email,

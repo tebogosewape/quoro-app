@@ -181,11 +181,28 @@ export class AuthService {
 
         const payload = this.buildJwtPayload(authed);
 
-        const accessTokenExpiresIn = this.configService.get<number>('JWT_ACCESS_EXPIRES_IN', 900); // 15 minutes
-        const refreshTokenExpiresIn = this.configService.get<number>(
+        // Get expiration times - convert to number if string
+        const accessTokenExpiresInRaw = this.configService.get<string | number>(
+            'JWT_ACCESS_EXPIRES_IN',
+            900
+        );
+        const accessTokenExpiresIn =
+            typeof accessTokenExpiresInRaw === 'string'
+                ? parseInt(accessTokenExpiresInRaw, 10)
+                : accessTokenExpiresInRaw;
+
+        const refreshTokenExpiresInRaw = this.configService.get<string | number>(
             'JWT_REFRESH_EXPIRES_IN',
             604800
-        ); // 7 days
+        );
+        const refreshTokenExpiresIn =
+            typeof refreshTokenExpiresInRaw === 'string'
+                ? parseInt(refreshTokenExpiresInRaw, 10)
+                : refreshTokenExpiresInRaw;
+
+        this.logger.debug(
+            `Login - JWT expires in: ${accessTokenExpiresIn} seconds (${accessTokenExpiresIn / 3600} hours)`
+        );
 
         const accessToken = this.jwtService.sign(payload, { expiresIn: accessTokenExpiresIn });
         const refreshToken = this.jwtService.sign(payload, { expiresIn: refreshTokenExpiresIn });
@@ -234,10 +251,20 @@ export class AuthService {
             const authed = await this.toAuthenticatedUser(user);
             const newPayload = this.buildJwtPayload(authed);
 
-            const accessTokenExpiresIn = this.configService.get<number>(
+            // Get expiration time - convert to number if string
+            const accessTokenExpiresInRaw = this.configService.get<string | number>(
                 'JWT_ACCESS_EXPIRES_IN',
                 900
             );
+            const accessTokenExpiresIn =
+                typeof accessTokenExpiresInRaw === 'string'
+                    ? parseInt(accessTokenExpiresInRaw, 10)
+                    : accessTokenExpiresInRaw;
+
+            this.logger.debug(
+                `Refresh - JWT expires in: ${accessTokenExpiresIn} seconds (${accessTokenExpiresIn / 3600} hours)`
+            );
+
             const newAccessToken = this.jwtService.sign(newPayload, {
                 expiresIn: accessTokenExpiresIn,
             });

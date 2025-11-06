@@ -274,8 +274,31 @@ export default function OnboardingWizard() {
         setSubmissionError(null);
 
         try {
+            console.log('[OnboardingWizard] handleFinish called');
+            console.log('[OnboardingWizard] Session:', session);
+            console.log('[OnboardingWizard] User:', session?.user);
+            console.log('[OnboardingWizard] User Role:', session?.user?.role);
+
+            // Log token expiry information
+            if (session?.issued_at && session?.expires_in) {
+                const now = Date.now();
+                const expiresAt = session.issued_at + session.expires_in * 1000;
+                const timeRemaining = expiresAt - now;
+                const minutesRemaining = Math.floor(timeRemaining / 60000);
+                console.log('[OnboardingWizard] Token expires in:', minutesRemaining, 'minutes');
+                console.log(
+                    '[OnboardingWizard] Token issued at:',
+                    new Date(session.issued_at).toLocaleString()
+                );
+                console.log(
+                    '[OnboardingWizard] Token expires at:',
+                    new Date(expiresAt).toLocaleString()
+                );
+            }
+
             // Check authentication first
             if (!session || !session.access_token) {
+                console.log('[OnboardingWizard] No session or access_token');
                 setSubmissionError(
                     'You must be logged in to create a client. Redirecting to login...'
                 );
@@ -292,6 +315,11 @@ export default function OnboardingWizard() {
             if (!p.surname || !p.firstNames || !p.idNumber || !p.phone || !p.email) {
                 throw new Error('Missing required personal information');
             }
+
+            console.log('[OnboardingWizard] Building client data...');
+            console.log('[OnboardingWizard] State.products:', state.products);
+            console.log('[OnboardingWizard] State.productInfo:', state.productInfo);
+            console.log('[OnboardingWizard] State.payment:', state.payment);
 
             // Build CreateClientDto from form state
             const clientData: CreateClientDto = {
@@ -338,13 +366,28 @@ export default function OnboardingWizard() {
                 gender: p.gender,
             };
 
+            console.log('[OnboardingWizard] Client data prepared:', clientData);
+            console.log(
+                '[OnboardingWizard] selectedProducts structure:',
+                JSON.stringify(clientData.selectedProducts, null, 2)
+            );
+            console.log('[OnboardingWizard] Calling createClient API...');
+
             // Call the API to create the client
             const createdClient = await createClient(clientData);
+
+            console.log('[OnboardingWizard] Client created successfully:', createdClient);
 
             // Navigate to the newly created client's detail page
             navigate(`/clients/${createdClient.id}`);
         } catch (err) {
-            console.error('Failed to create client:', err);
+            console.error('[OnboardingWizard] Error in handleFinish:', err);
+            console.error('[OnboardingWizard] Error details:', {
+                message: err instanceof Error ? err.message : 'Unknown error',
+                stack: err instanceof Error ? err.stack : undefined,
+                error: err,
+            });
+
             let errorMessage = 'Failed to create client';
 
             if (err instanceof Error) {
@@ -409,7 +452,7 @@ export default function OnboardingWizard() {
             <div className="row">
                 {/* vertical tabs */}
                 <div className="col-md-3">
-                    <div className="panel glass p-2 mb-3">
+                    <div className="panel glass p-2 mb-3 cf-tabs-container">
                         <div className="cf-tabs d-flex flex-column gap-2">
                             {STEPS.map((s, i) => {
                                 const active = s.key === current;
@@ -680,10 +723,15 @@ function StepPersonal({
             </Row>
 
             <div className="d-flex justify-content-between mt-4">
-                <Button variant="light" onClick={onBack}>
+                <Button variant="light" onClick={onBack} type="button">
                     Back
                 </Button>
-                <Button className="btn btn-primary" disabled={!canContinue} onClick={onNext}>
+                <Button
+                    className="btn btn-primary"
+                    disabled={!canContinue}
+                    onClick={onNext}
+                    type="button"
+                >
                     Next
                 </Button>
             </div>
@@ -812,13 +860,14 @@ function StepProducts({
             </Row>
 
             <div className="d-flex justify-content-between mt-4">
-                <Button variant="light" onClick={onBack}>
+                <Button variant="light" onClick={onBack} type="button">
                     Back
                 </Button>
                 <Button
                     className="btn btn-primary"
                     disabled={!canContinue || busy}
                     onClick={onNext}
+                    type="button"
                 >
                     {busy ? 'Saving…' : 'Confirm'}
                 </Button>
@@ -886,13 +935,14 @@ function StepProductInfo({
             )}
 
             <div className="d-flex justify-content-between mt-4">
-                <Button variant="light" onClick={onBack}>
+                <Button variant="light" onClick={onBack} type="button">
                     Back
                 </Button>
                 <Button
                     className="btn btn-primary"
                     disabled={!canContinue || busy}
                     onClick={onNext}
+                    type="button"
                 >
                     Next
                 </Button>
@@ -1090,13 +1140,14 @@ function StepPayment({
             </div>
 
             <div className="d-flex justify-content-between mt-4">
-                <Button variant="light" onClick={onBack}>
+                <Button variant="light" onClick={onBack} type="button">
                     Back
                 </Button>
                 <Button
                     className="btn btn-primary"
                     disabled={!canContinue || busy}
                     onClick={onNext}
+                    type="button"
                 >
                     Next
                 </Button>
@@ -1206,7 +1257,7 @@ function StepBanking({
                         value={value.accountNumber ?? ''}
                         onChange={(e) => onChange({ accountNumber: e.target.value })}
                         placeholder="Account number"
-                        type="password"
+                        type="text"
                     />
                     <Form.Text className="text-muted">Your account number is secure</Form.Text>
                 </Col>
@@ -1228,13 +1279,14 @@ function StepBanking({
             </Row>
 
             <div className="d-flex justify-content-between mt-4">
-                <Button variant="light" onClick={onBack}>
+                <Button variant="light" onClick={onBack} type="button">
                     Back
                 </Button>
                 <Button
                     className="btn btn-primary"
                     disabled={!canContinue || busy}
                     onClick={onNext}
+                    type="button"
                 >
                     {busy ? 'Saving…' : 'Next'}
                 </Button>
@@ -1400,10 +1452,15 @@ function StepConfirm({
             </Row>
 
             <div className="d-flex justify-content-between mt-4">
-                <Button variant="light" onClick={onBack} disabled={busy}>
+                <Button variant="light" onClick={onBack} disabled={busy} type="button">
                     Back
                 </Button>
-                <Button className="btn btn-primary" onClick={onFinish} disabled={busy}>
+                <Button
+                    className="btn btn-primary"
+                    onClick={onFinish}
+                    disabled={busy}
+                    type="button"
+                >
                     {busy ? (
                         <>
                             <span

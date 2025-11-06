@@ -1,3 +1,4 @@
+/* eslint-disable indent */
 import {
     IsString,
     IsEmail,
@@ -11,9 +12,26 @@ import {
     Max,
     Matches,
     IsObject,
+    ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ClientStatus, MaritalStatus, ClientType } from '@/entities/client.entity';
+
+/**
+ * DTO for selected product in client creation
+ */
+export class SelectedProductDto {
+    @IsString()
+    productId!: string;
+
+    @IsString()
+    paymentOptionId!: string;
+
+    @IsOptional()
+    @IsArray()
+    @IsString({ each: true })
+    cirAccounts?: string[];
+}
 
 export class CreateClientDto {
     // Personal Information
@@ -153,11 +171,9 @@ export class CreateClientDto {
     // Product Information
     @IsOptional()
     @IsArray()
-    selectedProducts?: Array<{
-        productId: string;
-        paymentOptionId: string;
-        cirAccounts?: string[];
-    }>;
+    @ValidateNested({ each: true })
+    @Type(() => SelectedProductDto)
+    selectedProducts?: SelectedProductDto[];
 
     // Payment Information
     @IsOptional()
