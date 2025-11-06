@@ -124,24 +124,30 @@ Three recent enquiries:
     - Success: `#2E7D32` (green)
     - Warning: `#F57C00` (orange)
     - Danger: `#C62828` (red)
+    - Backgrounds: Light grey (`#F5F5F5`, `#FAFAFA`) for alternating table rows
 
 - **Typography:**
-    - Font: Roboto
-    - Sizes: 8-18pt
-    - Headers: Bold, underlined
+    - Font: Helvetica (built-in PDF font)
+    - Base size: 9pt (body text)
+    - Headers: 13-20pt
+    - Table headers: 8pt
+    - Section headers: Blue, bold, underlined
 
 - **Layout:**
     - Page: A4
     - Margins: 40pt all sides
-    - Header: Logo + "CREDIT REPORT" title
-    - Footer: Generation date + page numbers
+    - Line height: 1.4 for improved readability
+    - Header: Logo + "CONSUMER CREDIT REPORT" title with "MOCK / DEMO VERSION" subtitle
+    - Footer: Generation date, disclaimer, page numbers, and report reference
+    - Watermark: "DEMO REPORT" diagonal text (80% opacity)
 
 ### Sections Styling
 
-- Section headers: Blue, bold, underlined
-- Tables: Light grey borders
-- Score bands: Color-coded indicators
-- Payment status: Green checkmarks, red X marks
+- **Section headers:** Experian blue (#003DA5), bold, underlined with 25pt top margin
+- **Tables:** Light grey borders (#E0E0E0), alternating row backgrounds for readability
+- **Credit score bands:** Color-coded horizontal bars with indicator arrow showing current score position
+- **Payment status:** Green checkmarks (✓) for on-time, red X marks for late/missed
+- **Account cards:** Separated with whitespace, detailed information tables with proper alignment
 
 ## Dependencies
 

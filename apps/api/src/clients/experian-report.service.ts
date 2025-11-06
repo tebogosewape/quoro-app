@@ -67,33 +67,94 @@ export class ExperianReportService {
                 margin: [40, 20, 40, 0],
                 columns: [
                     {
-                        image: this.getExperianLogoBase64(),
-                        width: 120,
+                        stack: [
+                            {
+                                image: this.getExperianLogoBase64(),
+                                width: 120,
+                                margin: [0, 0, 0, 5],
+                            },
+                            {
+                                text: 'Credit Report',
+                                color: '#666666',
+                                fontSize: 8,
+                                margin: [2, 0, 0, 0],
+                            },
+                        ],
                     },
                     {
-                        width: '*',
-                        text: 'CREDIT REPORT',
-                        alignment: 'right',
-                        fontSize: 18,
-                        bold: true,
-                        color: '#003DA5',
-                        margin: [0, 10, 0, 0],
+                        stack: [
+                            {
+                                text: 'CONSUMER CREDIT REPORT',
+                                alignment: 'right',
+                                fontSize: 20,
+                                bold: true,
+                                color: '#003DA5',
+                                margin: [0, 5, 0, 3],
+                            },
+                            {
+                                text: 'MOCK / DEMO VERSION',
+                                alignment: 'right',
+                                fontSize: 9,
+                                color: '#666666',
+                                margin: [0, 0, 0, 0],
+                            },
+                        ],
                     },
                 ],
             },
+            watermark: {
+                text: 'DEMO REPORT',
+                color: '#E8E8E8',
+                opacity: 0.3,
+                bold: true,
+                italics: false,
+                fontSize: 80,
+            },
             footer: (currentPage: number, pageCount: number) => ({
-                margin: [40, 10],
+                margin: [40, 20],
                 columns: [
                     {
-                        text: `Report generated on ${reportDate}`,
-                        fontSize: 8,
-                        color: '#666',
+                        width: '*',
+                        stack: [
+                            {
+                                text: [
+                                    {
+                                        text: 'Report generated on: ',
+                                        color: '#666666',
+                                        fontSize: 8,
+                                    },
+                                    { text: reportDate, bold: true, fontSize: 8 },
+                                ],
+                            },
+                            {
+                                text: 'This is a mock credit report for demonstration purposes only',
+                                color: '#666666',
+                                fontSize: 7,
+                                italics: true,
+                                margin: [0, 2, 0, 0],
+                            },
+                        ],
                     },
                     {
-                        text: `Page ${currentPage} of ${pageCount}`,
-                        alignment: 'right',
-                        fontSize: 8,
-                        color: '#666',
+                        width: 'auto',
+                        stack: [
+                            {
+                                text: [
+                                    { text: 'Page ', color: '#666666', fontSize: 8 },
+                                    { text: currentPage.toString(), bold: true, fontSize: 8 },
+                                    { text: ' of ', color: '#666666', fontSize: 8 },
+                                    { text: pageCount.toString(), bold: true, fontSize: 8 },
+                                ],
+                                alignment: 'right',
+                            },
+                            {
+                                text: `Ref: EXP-${client.id.substring(0, 8).toUpperCase()}`,
+                                color: '#666666',
+                                fontSize: 7,
+                                alignment: 'right',
+                                margin: [0, 2, 0, 0],
+                            },
+                        ],
                     },
                 ],
             }),
@@ -336,15 +397,39 @@ export class ExperianReportService {
             ],
             styles: {
                 sectionHeader: {
-                    fontSize: 14,
+                    fontSize: 13,
                     bold: true,
                     color: '#003DA5',
                     decoration: 'underline',
+                    decorationStyle: 'solid',
+                    decorationColor: '#003DA5',
+                    margin: [0, 25, 0, 10],
+                },
+                sectionSubheader: {
+                    fontSize: 11,
+                    bold: true,
+                    margin: [0, 5, 0, 8],
+                },
+                tableHeader: {
+                    fontSize: 8,
+                    bold: true,
+                    color: '#666666',
+                },
+                tableCell: {
+                    fontSize: 9,
+                    lineHeight: 1.2,
+                },
+                disclaimer: {
+                    fontSize: 8,
+                    color: '#666666',
+                    italics: true,
                 },
             },
             defaultStyle: {
-                fontSize: 10,
                 font: 'Helvetica',
+                fontSize: 9,
+                lineHeight: 1.4,
+                color: '#333333',
             },
         };
     }
@@ -393,27 +478,37 @@ export class ExperianReportService {
         return bands.map((band) => ({
             columns: [
                 {
-                    width: 15,
+                    width: 20,
                     canvas: [
                         {
                             type: 'rect',
                             x: 0,
                             y: 0,
-                            w: 10,
-                            h: 10,
+                            w: 15,
+                            h: 15,
                             color: score >= band.min ? band.color : '#E0E0E0',
+                            r: 2,
                         },
                     ],
                 },
                 {
                     width: '*',
-                    text: [
-                        { text: band.range, fontSize: 8, bold: score >= band.min },
-                        { text: ` ${band.label}`, fontSize: 8, color: '#666' },
+                    stack: [
+                        {
+                            text: band.range,
+                            fontSize: 9,
+                            bold: score >= band.min,
+                            color: score >= band.min ? band.color : '#666666',
+                        },
+                        {
+                            text: band.label,
+                            fontSize: 8,
+                            color: '#666666',
+                        },
                     ],
                 },
             ],
-            margin: [0, 2],
+            margin: [0, 3],
         }));
     }
 
@@ -551,21 +646,59 @@ export class ExperianReportService {
 
         const accounts = ['Standard Bank CC', 'Absa Personal Loan', 'Woolworths Card'];
 
-        const rows = [header.map((h) => ({ text: h, bold: true, fontSize: 8 }))];
+        // Create header row with custom styling
+        const rows = [
+            header.map((h, i) => ({
+                text: h,
+                style: 'tableHeader',
+                fillColor: '#F5F5F5',
+                alignment: i === 0 ? 'left' : 'center',
+                margin: [i === 0 ? 3 : 0, 3],
+            })),
+        ];
 
-        accounts.forEach((account) => {
-            const row: any[] = [{ text: account, fontSize: 8 }];
+        // Add rows with alternating background for better readability
+        accounts.forEach((account, index) => {
+            const row: any[] = [
+                {
+                    text: account,
+                    style: 'tableCell',
+                    fillColor: index % 2 === 0 ? '#FFFFFF' : '#FAFAFA',
+                    margin: [3, 2],
+                },
+            ];
+
+            // Generate payment status cells
             for (let i = 0; i < 12; i++) {
                 const status = Math.random() > 0.1 ? '✓' : 'X';
                 row.push({
                     text: status,
-                    fontSize: 8,
+                    style: 'tableCell',
                     alignment: 'center',
+                    fillColor: index % 2 === 0 ? '#FFFFFF' : '#FAFAFA',
                     color: status === '✓' ? '#2E7D32' : '#d32f2f',
+                    margin: [0, 2],
+                    bold: status === 'X',
                 });
             }
             rows.push(row);
         });
+
+        // Add legend/key below table
+        rows.push([
+            {
+                text: [
+                    { text: '✓ ', color: '#2E7D32' },
+                    { text: 'Payment received on time   ', color: '#666666', fontSize: 8 },
+                    { text: 'X ', color: '#d32f2f', bold: true },
+                    { text: 'Payment missed or late', color: '#666666', fontSize: 8 },
+                ],
+                colSpan: 13,
+                alignment: 'right',
+                margin: [0, 5, 0, 0],
+            },
+            ...Array(12).fill({}),
+        ]);
 
         return rows;
     }
