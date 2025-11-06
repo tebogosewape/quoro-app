@@ -1,0 +1,9 @@
+.nav-tabs .nav-link {
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text);
+}
+.nav-tabs .nav-link.active {
+    border-color: rgba(8, 180, 148, 0.55);
+    font-weight: 700;
+}

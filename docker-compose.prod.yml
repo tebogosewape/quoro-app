@@ -1,0 +1,118 @@
+version: '3.9'
+
+services:
+    api:
+        build:
+            context: ./apps/api
+            dockerfile: Dockerfile.prod
+        env_file:
+            - ./apps/api/.env.production
+        ports:
+            - '2200:2200'
+        volumes:
+            - api_logs:/app/logs
+        depends_on:
+            - mysql
+            - redis
+        networks:
+            - quora-network
+        restart: unless-stopped
+
+    worker:
+        build:
+            context: ./apps/api
+            dockerfile: Dockerfile.prod
+        command: node dist/worker
+        env_file:
+            - ./apps/api/.env.production
+        depends_on:
+            - redis
+            - mysql
+        networks:
+            - quora-network
+        restart: unless-stopped
+
+    web:
+        build:
+            context: ./apps/web
+            dockerfile: Dockerfile.prod
+        ports:
+            - '2100:80'
+        depends_on:
+            - api
+        networks:
+            - quora-network
+        restart: unless-stopped
+
+    mysql:
+        image: mysql:8.0
+        env_file:
+            - ./apps/api/.env.production
+        volumes:
+            - mysql_data:/var/lib/mysql
+            - ./apps/api/database/init:/docker-entrypoint-initdb.d
+        ports:
+            - '3306:3306'
+        networks:
+            - quora-network
+        restart: unless-stopped
+
+    redis:
+        image: redis:7-alpine
+        command: ['redis-server', '--appendonly', 'yes']
+        networks:
+            - quora-network
+        restart: unless-stopped
+
+    loki:
+        image: grafana/loki:2.9.4
+        command: -config.file=/etc/loki/local-config.yaml
+        ports:
+            - '3100:3100'
+        volumes:
+            - loki_data:/loki
+        networks:
+            - quora-network
+        restart: unless-stopped
+
+    promtail:
+        image: grafana/promtail:2.9.4
+        command: -config.file=/etc/promtail/config.yml
+        volumes:
+            - ./monitoring/promtail-config.yml:/etc/promtail/config.yml:ro
+            - /var/log:/var/log:ro
+            - /var/lib/docker/containers:/var/lib/docker/containers:ro
+            - /var/run/docker.sock:/var/run/docker.sock:ro
+        depends_on:
+            - loki
+        networks:
+            - quora-network
+        restart: unless-stopped
+
+    grafana:
+        image: grafana/grafana:10.4.3
+        environment:
+            GF_SECURITY_ADMIN_USER: admin
+            GF_SECURITY_ADMIN_PASSWORD: change-me
+        ports:
+            - '3005:3005'
+        volumes:
+            - grafana_data:/var/lib/grafana
+            - ./monitoring/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+            - ./monitoring/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+            - ./monitoring/grafana/dashboards:/etc/grafana/dashboards:ro
+        depends_on:
+            - loki
+        networks:
+            - quora-network
+        restart: unless-stopped
+
+volumes:
+    mysql_data:
+    api_logs:
+    grafana_data:
+    loki_data:
+
+networks:
+    quora-network:
+        driver: bridge

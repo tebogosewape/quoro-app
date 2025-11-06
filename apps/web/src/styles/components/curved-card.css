@@ -1,0 +1,56 @@
+.curved-card {
+    border-radius: 22px;
+    border: none;
+    box-shadow: 0 22px 44px rgba(12, 34, 48, 0.12);
+    background: #ffffff;
+    color: #0c2230;
+}
+
+.curved-card__header {
+    border-radius: 22px 22px 0 0;
+    background: linear-gradient(135deg, #0c4068, #08b494);
+    color: #ffffff;
+    padding: 1.75rem 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.curved-card__title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    margin: 0;
+}
+
+.curved-card__subtitle {
+    font-size: 0.95rem;
+    margin-top: 0.45rem;
+    color: rgba(255, 255, 255, 0.82);
+}
+
+.curved-card__actions {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+}
+
+.curved-card__actions > * {
+    margin: 0;
+}
+
+.curved-card__body {
+    padding: 2rem 2.25rem;
+    line-height: 1.65;
+    font-size: 0.975rem;
+}
+
+.curved-card__body > *:first-child {
+    margin-top: 0;
+}
+
+.curved-card__body > *:last-child {
+    margin-bottom: 0;
+}

@@ -1,0 +1,138 @@
+services:
+    api:
+        build:
+            context: .
+            dockerfile: apps/api/Dockerfile
+        command: npm run start:dev -- --host 0.0.0.0
+        env_file:
+            - ./apps/api/.env.development
+        ports:
+            - '2200:2200'
+        environment:
+            - CHOKIDAR_USEPOLLING=true
+            - CHOKIDAR_INTERVAL=300
+        volumes:
+            - ./apps/api:/app/apps/api
+            - api_data:/app/apps/api/data
+            - api_node_modules:/app/apps/api/node_modules
+        depends_on:
+            # - mailhog
+            # - experian-mock
+            - redis
+        networks:
+            - northern-rains-dev-network
+        tty: true
+
+    worker:
+        build:
+            context: .
+            dockerfile: apps/api/Dockerfile
+        command: npm run start:worker:dev -- --host 0.0.0.0
+        env_file:
+            - ./apps/api/.env.development
+        environment:
+            - CHOKIDAR_USEPOLLING=true
+            - CHOKIDAR_INTERVAL=300
+        volumes:
+            - ./apps/api:/app/apps/api
+            - /app/apps/api/node_modules
+            - api_data:/app/apps/api/data
+        depends_on:
+            - redis
+            # - mailhog
+        networks:
+            - northern-rains-dev-network
+        tty: true
+
+    web:
+        build:
+            context: ./apps/web
+            dockerfile: Dockerfile
+        command: npm run dev -- --host 0.0.0.0 --strictPort
+        env_file:
+            - ./apps/web/.env.development
+        ports:
+            - '2100:2100'
+        environment:
+            - CHOKIDAR_USEPOLLING=true
+            - CHOKIDAR_INTERVAL=300
+            - WATCHPACK_POLLING=true
+            - WATCHPACK_POLLING_INTERVAL=300
+        volumes:
+            - ./apps/web:/app
+            - /app/node_modules
+        depends_on:
+            - api
+        networks:
+            - northern-rains-dev-network
+        tty: true
+
+    redis:
+        image: redis:6-alpine
+        container_name: redis-dev
+        restart: unless-stopped
+        ports:
+            - '6379:6379'
+        networks:
+            - northern-rains-dev-network
+
+    # experian-mock:
+    #     image: node:18-alpine
+    #     working_dir: /app
+    #     command: sh -c "npm install -g json-server && json-server --watch db.json --port 8080 --host 0.0.0.0"
+    #     ports:
+    #         - '8081:8080'
+    #     volumes:
+    #         - ./mock-services/experian:/app
+    #     networks:
+    #         - northern-rains-dev-network
+
+    # loki:
+    #     image: grafana/loki:2.9.4
+    #     command: -config.file=/etc/loki/local-config.yaml
+    #     ports:
+    #         - '3100:3100'
+    #     volumes:
+    #         - loki_data:/loki
+    #     networks:
+    #         - northern-rains-dev-network
+
+    # promtail:
+    #     image: grafana/promtail:2.9.4
+    #     command: -config.file=/etc/promtail/config.yml
+    #     volumes:
+    #         - ./monitoring/promtail-config.yml:/etc/promtail/config.yml:ro
+    #         - /var/log:/var/log:ro
+    #         - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    #         - /var/run/docker.sock:/var/run/docker.sock:ro
+    #     depends_on:
+    #         - loki
+    #     networks:
+    #         - northern-rains-dev-network
+
+    # grafana:
+    #     image: grafana/grafana:10.4.3
+    #     environment:
+    #         - GF_SECURITY_ADMIN_USER=admin
+    #         - GF_SECURITY_ADMIN_PASSWORD=admin
+    #     ports:
+    #         - '3005:3005'
+    #     volumes:
+    #         - grafana_data:/var/lib/grafana
+    #         - ./monitoring/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+    #         - ./monitoring/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+    #         - ./monitoring/grafana/dashboards:/etc/grafana/dashboards:ro
+    #     depends_on:
+    #         - loki
+    #     networks:
+    #         - northern-rains-dev-network
+
+volumes:
+    api_data:
+    api_node_modules:
+    grafana_data:
+    loki_data:
+
+networks:
+    northern-rains-dev-network:
+        external: true

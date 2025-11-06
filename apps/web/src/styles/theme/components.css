@@ -1,0 +1,72 @@
+/* Shared component-level theming that leans on tokens defined in tokens.css */
+
+.btn-primary,
+.btn-primary:active,
+.btn-primary:focus,
+.btn-primary:disabled {
+    background: linear-gradient(
+        135deg,
+        var(--action-primary-start),
+        var(--action-primary-end)
+    ) !important;
+    border: none !important;
+    color: #ffffff !important;
+    font-weight: 600;
+    border-radius: var(--radius-lg) !important;
+    box-shadow: var(--action-primary-shadow);
+    transition:
+        background var(--transition-base),
+        box-shadow var(--transition-base),
+        transform var(--transition-fast);
+}
+
+.btn-primary:hover:not(:disabled) {
+    background: linear-gradient(
+        135deg,
+        var(--action-primary-hover-start),
+        var(--action-primary-hover-end)
+    ) !important;
+    box-shadow: var(--action-primary-shadow-hover);
+    transform: translateY(-1px);
+}
+
+.btn-primary:focus-visible {
+    box-shadow: var(--action-primary-shadow), var(--action-primary-ring) !important;
+    outline: none;
+}
+
+.btn-primary:disabled {
+    background: var(--action-primary-disabled) !important;
+    box-shadow: none;
+    cursor: not-allowed;
+}
+
+.link-brand {
+    color: var(--color-brand-navy);
+    font-weight: 500;
+    text-decoration: none;
+    transition: color var(--transition-fast);
+}
+
+.link-brand:hover,
+.link-brand:focus {
+    color: var(--color-brand-aqua);
+    text-decoration: underline;
+}
+
+.input-surface {
+    border: 1px solid var(--input-border-default);
+    border-radius: var(--radius-md);
+    background-color: rgba(255, 255, 255, 0.9);
+    color: var(--color-neutral-700);
+    transition:
+        border-color var(--transition-fast),
+        box-shadow var(--transition-fast),
+        background-color var(--transition-fast);
+}
+
+.input-surface:focus within,
+.input-surface:focus-visible {
+    border-color: var(--input-border-strong);
+    box-shadow: var(--focus-ring-strong);
+}

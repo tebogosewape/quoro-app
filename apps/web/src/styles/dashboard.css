@@ -1,0 +1,13 @@
+.dashboard-container {
+    padding: var(--space-4);
+}
+.dashboard-container .card,
+.dashboard-container .panel {
+    /* If you use Bootstrap cards */
+    background: var(--glass);
+    backdrop-filter: blur(var(--blur));
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-1);
+    color: var(--text);
+}

@@ -1,0 +1,14 @@
+apiVersion: 1
+
+database: 1
+providers:
+    - name: 'quora-dashboards'
+      orgId: 1
+      folder: 'Quora Monitoring'
+      type: file
+      disableDeletion: false
+      editable: true
+      updateIntervalSeconds: 60
+      allowUiUpdates: true
+      options:
+          path: /etc/grafana/dashboards

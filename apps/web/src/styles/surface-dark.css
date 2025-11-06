@@ -1,0 +1,53 @@
+:root {
+    /* dark-surface tokens */
+    --dark-text: #e7eef2;
+    --dark-glass: rgba(255, 255, 255, 0.08);
+    --dark-glass-strong: rgba(255, 255, 255, 0.14); /* <-- add alpha */
+    --dark-glass-border: rgba(255, 255, 255, 0.22);
+    --dark-shadow: 0 6px 22px rgba(0, 0, 0, 0.28);
+}
+
+/* Stronger selector so it wins over any older .sidebar/.navbar rules */
+.sidebar.surface-dark,
+.navbar-custom.surface-dark {
+    color: var(--dark-text) !important;
+    background: var(--dark-glass-strong) !important;
+    backdrop-filter: blur(var(--blur));
+    -webkit-backdrop-filter: blur(var(--blur));
+    border-color: var(--dark-glass-border) !important;
+    box-shadow: var(--dark-shadow);
+}
+
+.surface-dark .nav-link {
+    color: var(--dark-text) !important;
+}
+.surface-dark .nav-link:hover {
+    color: var(--brand-aqua) !important;
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.surface-dark .accordion-button {
+    background: transparent;
+    color: var(--dark-text);
+    border: none;
+    box-shadow: none;
+    border-bottom: 1px solid var(--dark-glass-border);
+}
+.surface-dark .accordion-button:not(.collapsed) {
+    background: rgba(255, 255, 255, 0.06);
+}
+.surface-dark .accordion-item {
+    background: transparent;
+    border: none;
+}
+
+/* Navbar icon ring visibility */
+.surface-dark .nav-bar-icon {
+    border-color: rgba(255, 255, 255, 0.75);
+}
+
+[data-theme='light'] .sidebar.surface-dark,
+[data-theme='light'] .navbar-custom.surface-dark {
+    background: var(--dark-glass-strong) !important;
+    color: var(--dark-text) !important;
+}

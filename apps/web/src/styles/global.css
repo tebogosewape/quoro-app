@@ -1,0 +1,155 @@
+/* Base */
+* {
+    box-sizing: border-box;
+}
+html,
+body,
+#root {
+    height: 100%;
+}
+body {
+    margin: 0;
+    font-family: var(--theme-font-family-sans);
+    font-size: var(--theme-font-scale-base);
+    color: var(--text);
+    background:
+        radial-gradient(1200px 800px at 10% 10%, rgba(8, 180, 148, 0.1), transparent 60%),
+        radial-gradient(900px 600px at 90% 30%, rgba(1, 85, 90, 0.18), transparent 60%),
+        linear-gradient(180deg, #0b151a, var(--bg) 40%, #0e2230);
+}
+
+/* Glass primitives */
+.glass {
+    background: var(--glass);
+    backdrop-filter: blur(var(--blur));
+    -webkit-backdrop-filter: blur(var(--blur));
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-1), var(--shadow-inset);
+}
+.glass-strong {
+    background: var(--glass-strong);
+}
+
+/* Inputs for glass */
+.input-group-text {
+    background: transparent;
+    color: var(--text);
+}
+.form-control,
+.form-select {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
+    color: var(--text);
+    border: 1px solid var(--glass-border);
+    border-radius: 12px !important;
+    backdrop-filter: blur(calc(var(--blur) - 2px));
+}
+.form-control::placeholder {
+    color: rgba(231, 238, 242, 0.6);
+}
+.form-control:focus,
+.form-select:focus {
+    outline: none;
+    box-shadow: var(--ring);
+    border-color: rgba(8, 180, 148, 0.5);
+}
+
+/* Primary button (on brand) */
+.btn-primary {
+    background:
+        linear-gradient(180deg, rgba(8, 180, 148, 0.25), rgba(8, 180, 148, 0.1)), var(--glass) !important;
+    color: var(--text) !important;
+    border: 1px solid rgba(8, 180, 148, 0.45) !important;
+    border-radius: var(--radius-xl) !important;
+    backdrop-filter: blur(calc(var(--blur) - 4px));
+    transition:
+        transform 0.12s ease,
+        box-shadow 0.12s ease,
+        background 0.12s ease;
+}
+.btn-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+}
+.btn-primary:focus {
+    box-shadow: var(--ring) !important;
+}
+.btn-primary:active {
+    transform: translateY(0);
+}
+
+/* Legacy helpers preserved */
+.text-primary {
+    color: var(--legacy-blue) !important;
+}
+.bg-primary {
+    background-color: var(--legacy-blue) !important;
+}
+.border-primary {
+    border-color: var(--legacy-blue) !important;
+}
+
+/* Spacing utilities you added */
+.mt-6 {
+    margin-top: 4rem !important;
+}
+.mt-7 {
+    margin-top: 5rem !important;
+}
+.mt-8 {
+    margin-top: 6rem !important;
+}
+.mb-6 {
+    margin-bottom: 4rem !important;
+}
+.p-6 {
+    padding: 4rem !important;
+}
+.p-7 {
+    padding: 5rem !important;
+}
+.p-8 {
+    padding: 6rem !important;
+}
+label,
+.form-label,
+input.form-control,
+select.form-select,
+textarea.form-control {
+    font-size: 14px !important;
+}
+.icon-spacing {
+    margin-right: 0.75rem;
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.8rem;
+    margin-top: 0.2rem;
+}
+
+.input-group-text {
+    background: transparent;
+    color: var(--text);
+    border: none;
+    box-shadow: none;
+}
+
+[data-theme='light'] body {
+    background:
+        radial-gradient(1200px 800px at 10% 10%, rgba(8, 180, 148, 0.08), transparent 60%),
+        radial-gradient(900px 600px at 90% 30%, rgba(1, 85, 90, 0.1), transparent 60%),
+        linear-gradient(180deg, #f8fdfc, var(--bg) 45%, #eef7f6);
+}
+
+[data-theme='light'] .panel,
+[data-theme='light'] .card {
+    background: var(--glass);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--shadow-1);
+    color: var(--text);
+}
+
+[data-theme='light'] .btn-primary {
+    border-color: rgba(8, 180, 148, 0.55) !important;
+    background:
+        linear-gradient(180deg, rgba(8, 180, 148, 0.3), rgba(8, 180, 148, 0.12)), var(--glass) !important;
+}

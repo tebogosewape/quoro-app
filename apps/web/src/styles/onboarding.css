@@ -1,0 +1,552 @@
+/* ═════════════════════════════════════════════════════════════════ */
+/* Onboarding Wizard Styling */
+/* ═════════════════════════════════════════════════════════════════ */
+
+/* Wizard Container */
+.onboarding-wizard {
+    min-height: 100vh;
+    background:
+        radial-gradient(1200px 800px at 10% 10%, rgba(8, 180, 148, 0.08), transparent 60%),
+        radial-gradient(900px 600px at 90% 30%, rgba(1, 85, 90, 0.12), transparent 60%),
+        linear-gradient(180deg, #0b151a 0%, var(--bg) 40%, #0e2230 100%);
+    position: relative;
+}
+
+.onboarding-wizard::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(8, 180, 148, 0.2), transparent);
+    pointer-events: none;
+}
+
+.wizard-sidebar {
+    position: sticky;
+    top: 1rem;
+    max-height: calc(100vh - 2rem);
+    z-index: 20;
+}
+
+.wizard-content {
+    min-height: 100vh;
+}
+
+/* ═════════════════════════════════════════════════════════════════ */
+/* Vertical Tabs Navigation */
+/* ═════════════════════════════════════════════════════════════════ */
+
+.cf-tabs {
+    display: flex;
+    flex-direction: column;
+    gap: 0.875rem;
+    overflow-y: auto;
+    padding: 0.5rem;
+    -webkit-overflow-scrolling: touch;
+    max-height: calc(100vh - 180px);
+}
+
+.cf-tabs::-webkit-scrollbar {
+    width: 6px;
+}
+
+.cf-tabs::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.cf-tabs::-webkit-scrollbar-thumb {
+    background: rgba(8, 180, 148, 0.3);
+    border-radius: 3px;
+}
+
+.cf-tabs::-webkit-scrollbar-thumb:hover {
+    background: rgba(8, 180, 148, 0.5);
+}
+
+/* Tab Button Base Styles */
+.cf-tab {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 1rem;
+    padding: 1rem 1.125rem;
+    width: 100%;
+    text-align: left;
+    border: 1.5px solid var(--glass-border);
+    border-radius: 12px;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
+    color: rgba(231, 238, 242, 0.7);
+    font-size: 0.95rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+}
+
+.cf-tab::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(8, 180, 148, 0.1), transparent);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.cf-tab:hover:not(.active) {
+    background: linear-gradient(135deg, rgba(8, 180, 148, 0.1), rgba(8, 180, 148, 0.02));
+    border-color: rgba(8, 180, 148, 0.3);
+    color: rgba(231, 238, 242, 0.85);
+    transform: translateX(4px);
+}
+
+/* Tab Icon */
+.cf-tab-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    border: 1.5px solid rgba(8, 180, 148, 0.2);
+    border-radius: 11px;
+    background: linear-gradient(135deg, rgba(8, 180, 148, 0.08), rgba(8, 180, 148, 0.02));
+    font-size: 18px;
+    flex-shrink: 0;
+    transition: all 0.3s ease;
+    color: rgba(8, 180, 148, 0.6);
+}
+
+.cf-tab:hover:not(.active) .cf-tab-icon {
+    background: linear-gradient(135deg, rgba(8, 180, 148, 0.12), rgba(8, 180, 148, 0.04));
+    border-color: rgba(8, 180, 148, 0.35);
+    color: rgba(8, 180, 148, 0.8);
+}
+
+/* Tab Label */
+.cf-tab-label {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    min-width: 0;
+}
+
+.cf-tab-label-number {
+    font-size: 0.75rem;
+    opacity: 0.5;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.cf-tab-label-text {
+    font-size: 0.95rem;
+    font-weight: 500;
+    white-space: normal;
+    color: inherit;
+}
+
+/* Active Tab */
+.cf-tab.active {
+    background: linear-gradient(135deg, rgba(8, 180, 148, 0.25), rgba(8, 180, 148, 0.1));
+    border-color: rgba(8, 180, 148, 0.6);
+    color: #fff;
+    box-shadow:
+        0 0 0 1px rgba(8, 180, 148, 0.2),
+        inset 0 1px 2px rgba(255, 255, 255, 0.1),
+        0 12px 32px rgba(8, 180, 148, 0.15);
+}
+
+.cf-tab.active .cf-tab-icon {
+    background: linear-gradient(135deg, rgba(8, 180, 148, 0.35), rgba(8, 180, 148, 0.15));
+    border-color: rgba(8, 180, 148, 0.7);
+    box-shadow: 0 0 16px rgba(8, 180, 148, 0.25);
+    color: #08b494;
+}
+
+.cf-tab.active::before {
+    opacity: 1;
+}
+
+/* Completed Tab */
+.cf-tab.done {
+    opacity: 0.75;
+    background: linear-gradient(135deg, rgba(8, 180, 148, 0.12), rgba(8, 180, 148, 0.04));
+    border-color: rgba(8, 180, 148, 0.25);
+    color: rgba(231, 238, 242, 0.6);
+}
+
+.cf-tab.done .cf-tab-icon {
+    background: linear-gradient(135deg, rgba(8, 180, 148, 0.1), rgba(8, 180, 148, 0.03));
+    border-color: rgba(8, 180, 148, 0.2);
+    color: rgba(8, 180, 148, 0.5);
+}
+
+.cf-tab.done:hover {
+    opacity: 0.9;
+    cursor: pointer;
+    background: linear-gradient(135deg, rgba(8, 180, 148, 0.15), rgba(8, 180, 148, 0.05));
+    border-color: rgba(8, 180, 148, 0.3);
+}
+
+/* Disabled Tab (incomplete) */
+.cf-tab:not(.active):not(.done) {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* ═════════════════════════════════════════════════════════════════ */
+/* Step Content Panels */
+/* ═════════════════════════════════════════════════════════════════ */
+
+.wizard-panel {
+    border-radius: 16px;
+    border: 1px solid var(--glass-border);
+    background:
+        radial-gradient(800px 600px at 100% 0%, rgba(8, 180, 148, 0.05), transparent 80%),
+        var(--glass);
+    backdrop-filter: blur(var(--blur));
+    -webkit-backdrop-filter: blur(var(--blur));
+    box-shadow:
+        0 8px 32px rgba(0, 0, 0, 0.1),
+        inset 0 1px 2px rgba(255, 255, 255, 0.1),
+        inset 0 -1px 2px rgba(8, 180, 148, 0.05);
+    padding: 2.5rem;
+    animation: slideUp 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.wizard-panel h5 {
+    font-size: 1.625rem;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 2rem;
+    display: flex;
+    align-items: center;
+    gap: 0.875rem;
+    letter-spacing: -0.5px;
+}
+
+.wizard-panel h5::before {
+    content: '';
+    display: inline-block;
+    width: 5px;
+    height: 28px;
+    background: linear-gradient(180deg, rgba(8, 180, 148, 0.9), rgba(8, 180, 148, 0.4));
+    border-radius: 3px;
+}
+
+/* ═════════════════════════════════════════════════════════════════ */
+/* Product Cards */
+/* ═════════════════════════════════════════════════════════════════ */
+
+.cf-prod.card {
+    border: 1.5px solid var(--glass-border);
+    border-radius: 14px;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
+    backdrop-filter: blur(var(--blur));
+    -webkit-backdrop-filter: blur(var(--blur));
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow:
+        0 4px 16px rgba(0, 0, 0, 0.1),
+        inset 0 1px 2px rgba(255, 255, 255, 0.08);
+    cursor: pointer;
+}
+
+.cf-prod.card:hover {
+    border-color: rgba(8, 180, 148, 0.5);
+    box-shadow:
+        0 12px 32px rgba(0, 0, 0, 0.15),
+        inset 0 1px 2px rgba(255, 255, 255, 0.1),
+        0 0 24px rgba(8, 180, 148, 0.15);
+    transform: translateY(-4px);
+    background: linear-gradient(135deg, rgba(8, 180, 148, 0.08), rgba(8, 180, 148, 0.02));
+}
+
+.cf-prod.card .card-body {
+    padding: 1.75rem;
+}
+
+/* ═════════════════════════════════════════════════════════════════ */
+/* Form Elements */
+/* ═════════════════════════════════════════════════════════════════ */
+
+.wizard-panel .form-label {
+    font-weight: 600;
+    color: rgba(231, 238, 242, 0.95);
+    margin-bottom: 0.75rem;
+    font-size: 0.975rem;
+    letter-spacing: 0.3px;
+}
+
+.wizard-panel .form-control,
+.wizard-panel .form-select {
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
+    border: 1.5px solid rgba(8, 180, 148, 0.15);
+    border-radius: 11px;
+    color: var(--text);
+    transition: all 0.25s ease;
+    padding: 0.875rem 1.125rem;
+    font-size: 0.95rem;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.wizard-panel .form-control::placeholder {
+    color: rgba(231, 238, 242, 0.4);
+}
+
+.wizard-panel .form-control:focus,
+.wizard-panel .form-select:focus {
+    background: linear-gradient(135deg, rgba(8, 180, 148, 0.08), rgba(8, 180, 148, 0.02));
+    border-color: rgba(8, 180, 148, 0.5);
+    box-shadow:
+        inset 0 1px 2px rgba(0, 0, 0, 0.05),
+        0 0 0 4px rgba(8, 180, 148, 0.12);
+    outline: none;
+}
+
+.wizard-panel .form-check {
+    margin-bottom: 1rem;
+}
+
+.wizard-panel .form-check-input {
+    width: 1.25rem;
+    height: 1.25rem;
+    border: 1.5px solid rgba(8, 180, 148, 0.25);
+    border-radius: 6px;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.01));
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.wizard-panel .form-check-input:hover {
+    border-color: rgba(8, 180, 148, 0.4);
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
+}
+
+.wizard-panel .form-check-input:checked {
+    background: linear-gradient(135deg, rgba(8, 180, 148, 0.6), rgba(8, 180, 148, 0.3));
+    border-color: rgba(8, 180, 148, 0.8);
+    box-shadow: 0 0 12px rgba(8, 180, 148, 0.25);
+}
+
+.wizard-panel .form-check-label {
+    color: rgba(231, 238, 242, 0.9);
+    font-weight: 500;
+    user-select: none;
+    cursor: pointer;
+    margin-bottom: 0;
+}
+
+/* ═════════════════════════════════════════════════════════════════ */
+/* Buttons */
+/* ═════════════════════════════════════════════════════════════════ */
+
+.wizard-panel .btn {
+    padding: 0.875rem 1.875rem;
+    font-weight: 600;
+    font-size: 0.975rem;
+    border-radius: 11px;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    border: 1px solid transparent;
+    letter-spacing: 0.3px;
+    position: relative;
+    overflow: hidden;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.wizard-panel .btn::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(45deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+    transform: translateX(-100%);
+    transition: transform 0.5s ease;
+}
+
+.wizard-panel .btn:hover::before {
+    transform: translateX(100%);
+}
+
+.wizard-panel .btn-primary {
+    background: linear-gradient(135deg, rgba(8, 180, 148, 0.4), rgba(8, 180, 148, 0.2));
+    border: 1.5px solid rgba(8, 180, 148, 0.6);
+    color: #fff;
+    box-shadow: 0 4px 16px rgba(8, 180, 148, 0.15);
+}
+
+.wizard-panel .btn-primary:hover:not(:disabled) {
+    background: linear-gradient(135deg, rgba(8, 180, 148, 0.5), rgba(8, 180, 148, 0.3));
+    border-color: rgba(8, 180, 148, 0.8);
+    box-shadow: 0 12px 32px rgba(8, 180, 148, 0.25);
+    transform: translateY(-2px);
+}
+
+.wizard-panel .btn-primary:active:not(:disabled) {
+    transform: translateY(0);
+    box-shadow: 0 4px 16px rgba(8, 180, 148, 0.15);
+}
+
+.wizard-panel .btn-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    box-shadow: none;
+}
+
+.wizard-panel .btn-light {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1.5px solid rgba(255, 255, 255, 0.2);
+    color: rgba(231, 238, 242, 0.95);
+}
+
+.wizard-panel .btn-light:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.15);
+    border-color: rgba(255, 255, 255, 0.3);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+    transform: translateY(-2px);
+}
+
+.wizard-panel .btn-light:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+/* ═════════════════════════════════════════════════════════════════ */
+/* Info Panels in Confirmation */
+/* ═════════════════════════════════════════════════════════════════ */
+
+.confirmation-panel {
+    border-radius: 12px;
+    border: 1px solid var(--glass-border);
+    background: linear-gradient(135deg, rgba(8, 180, 148, 0.05), rgba(255, 255, 255, 0.02));
+    backdrop-filter: blur(calc(var(--blur) - 2px));
+    -webkit-backdrop-filter: blur(calc(var(--blur) - 2px));
+    padding: 1.75rem;
+    transition: all 0.3s ease;
+    box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.05);
+}
+
+.confirmation-panel:hover {
+    border-color: rgba(8, 180, 148, 0.2);
+    box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.08);
+}
+
+.confirmation-panel .fw-bold {
+    color: #fff;
+    font-size: 1.05rem;
+    margin-bottom: 1.25rem;
+    padding-bottom: 0.875rem;
+    border-bottom: 2px solid rgba(8, 180, 148, 0.25);
+    font-weight: 700;
+    letter-spacing: 0.3px;
+}
+
+.confirmation-panel div {
+    margin-bottom: 0.875rem;
+    font-size: 0.95rem;
+    color: rgba(231, 238, 242, 0.9);
+    line-height: 1.6;
+}
+
+.confirmation-panel b {
+    color: rgba(8, 180, 148, 0.9);
+    font-weight: 600;
+}
+
+.confirmation-panel ul {
+    padding-left: 1.75rem;
+    margin-top: 0.75rem;
+}
+
+.confirmation-panel li {
+    margin-bottom: 0.625rem;
+    color: rgba(231, 238, 242, 0.85);
+}
+
+/* ═════════════════════════════════════════════════════════════════ */
+/* Responsive Design */
+/* ═════════════════════════════════════════════════════════════════ */
+
+@media (max-width: 991px) {
+    .wizard-sidebar {
+        position: static;
+        max-height: none;
+        margin-bottom: 1.5rem;
+    }
+
+    .cf-tabs {
+        gap: 0.5rem;
+        flex-direction: row;
+        overflow-x: auto;
+        overflow-y: hidden;
+    }
+
+    .cf-tab {
+        min-width: 140px;
+        padding: 0.75rem 0.875rem;
+        gap: 0.5rem;
+    }
+
+    .cf-tab-label-text {
+        font-size: 0.85rem;
+    }
+
+    .cf-tab .cf-tab-icon {
+        width: 36px;
+        height: 36px;
+        font-size: 16px;
+    }
+
+    .wizard-panel {
+        padding: 1.5rem;
+    }
+}
+
+@media (max-width: 576px) {
+    .wizard-panel {
+        padding: 1rem;
+    }
+
+    .wizard-panel h5 {
+        font-size: 1.25rem;
+        margin-bottom: 1rem;
+    }
+
+    .cf-tab {
+        min-width: 110px;
+        padding: 0.6rem 0.7rem;
+        font-size: 0.85rem;
+    }
+
+    .cf-tab-label {
+        gap: 0.125rem;
+    }
+
+    .cf-tab .cf-tab-icon {
+        width: 32px;
+        height: 32px;
+        font-size: 14px;
+    }
+
+    .cf-tab-label-number {
+        font-size: 0.65rem;
+    }
+
+    .cf-tab-label-text {
+        font-size: 0.8rem;
+    }
+}

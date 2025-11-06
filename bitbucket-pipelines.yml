@@ -1,0 +1,61 @@
+image: node:20-alpine
+
+pipelines:
+    branches:
+        # Feature and bugfix branches push to QA
+        feature/*:
+            - step:
+                  name: Build and Push QA Image
+                  services:
+                      - docker
+                  script:
+                      - cp .env.qa .env.production
+                      - export IMAGE_TAG=$(echo ${BITBUCKET_BRANCH} | tr '/' '_' | tr '-' '_')
+                      - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+                      - docker build -t $DOCKER_REPO:$IMAGE_TAG .
+                      - docker push $DOCKER_REPO:$IMAGE_TAG
+
+        bugfix/*:
+            - step:
+                  name: Build and Push QA Image
+                  services:
+                      - docker
+                  script:
+                      - cp .env.qa .env.production
+                      - export IMAGE_TAG=$(echo ${BITBUCKET_BRANCH} | tr '/' '_' | tr '-' '_')
+                      - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+                      - docker build -t $DOCKER_REPO:$IMAGE_TAG .
+                      - docker push $DOCKER_REPO:$IMAGE_TAG
+
+        # UAT branch
+        uat:
+            - step:
+                  name: Build and Push UAT Image
+                  services:
+                      - docker
+                  script:
+                      - cp .env.uat .env.production
+                      - export IMAGE_TAG=$(echo ${BITBUCKET_BRANCH} | tr '/' '_' | tr '-' '_')
+                      - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+                      - docker build -t $DOCKER_REPO:$IMAGE_TAG .
+                      - docker push $DOCKER_REPO:$IMAGE_TAG
+
+        # Production tagged releases
+        tags:
+            v*:
+                - step:
+                      name: Build and Push Production Image
+                      services:
+                          - docker
+                      script:
+                          - cp .env.production .env.production
+                          - export IMAGE_TAG=release-${BITBUCKET_TAG}
+                          - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+                          - docker build -t $DOCKER_REPO:latest -t $DOCKER_REPO:${IMAGE_TAG} .
+                          - docker push $DOCKER_REPO:latest
+                          - docker push $DOCKER_REPO:${IMAGE_TAG}
+
+definitions:
+    services:
+        docker:
+            memory: 1024

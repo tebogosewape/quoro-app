@@ -1,0 +1,170 @@
+{
+    "credit-reports": [
+        {
+            "id": "mock-report-001",
+            "idNumber": "8001010001081",
+            "requestId": "req-001",
+            "status": "completed",
+            "reportDate": "2024-01-08T10:00:00Z",
+            "creditScore": 650,
+            "creditRating": "Fair",
+            "paymentProfile": {
+                "currentAccounts": 5,
+                "overdueAccounts": 1,
+                "totalDebt": 125000.0,
+                "monthlyPayments": 8500.0
+            },
+            "accountHistory": [
+                {
+                    "creditor": "Standard Bank",
+                    "accountType": "Credit Card",
+                    "balance": 25000.0,
+                    "status": "Current",
+                    "paymentHistory": "Good"
+                },
+                {
+                    "creditor": "FNB",
+                    "accountType": "Personal Loan",
+                    "balance": 80000.0,
+                    "status": "30 Days Overdue",
+                    "paymentHistory": "Poor"
+                }
+            ],
+            "judgments": [],
+            "defaults": [
+                {
+                    "creditor": "Edgars",
+                    "amount": 3500.0,
+                    "dateReported": "2023-11-15T00:00:00Z",
+                    "status": "Active"
+                }
+            ],
+            "enquiries": [
+                {
+                    "creditor": "Capitec Bank",
+                    "date": "2024-01-05T00:00:00Z",
+                    "type": "Credit Application"
+                }
+            ]
+        },
+        {
+            "id": "mock-report-002",
+            "idNumber": "7502020002082",
+            "requestId": "req-002",
+            "status": "completed",
+            "reportDate": "2024-01-08T11:30:00Z",
+            "creditScore": 780,
+            "creditRating": "Excellent",
+            "paymentProfile": {
+                "currentAccounts": 8,
+                "overdueAccounts": 0,
+                "totalDebt": 450000.0,
+                "monthlyPayments": 18500.0
+            },
+            "accountHistory": [
+                {
+                    "creditor": "ABSA",
+                    "accountType": "Home Loan",
+                    "balance": 380000.0,
+                    "status": "Current",
+                    "paymentHistory": "Excellent"
+                },
+                {
+                    "creditor": "Wesbank",
+                    "accountType": "Vehicle Finance",
+                    "balance": 70000.0,
+                    "status": "Current",
+                    "paymentHistory": "Good"
+                }
+            ],
+            "judgments": [],
+            "defaults": [],
+            "enquiries": []
+        }
+    ],
+    "id-verification": [
+        {
+            "id": "verify-001",
+            "idNumber": "8001010001081",
+            "status": "verified",
+            "firstName": "John",
+            "lastName": "Doe",
+            "dateOfBirth": "1980-01-01",
+            "matchConfidence": 95,
+            "addresses": [
+                {
+                    "type": "Current",
+                    "line1": "123 Main Street",
+                    "suburb": "Sandton",
+                    "city": "Johannesburg",
+                    "province": "Gauteng",
+                    "postalCode": "2196"
+                }
+            ]
+        },
+        {
+            "id": "verify-002",
+            "idNumber": "7502020002082",
+            "status": "verified",
+            "firstName": "Jane",
+            "lastName": "Smith",
+            "dateOfBirth": "1975-02-02",
+            "matchConfidence": 98,
+            "addresses": [
+                {
+                    "type": "Current",
+                    "line1": "456 Oak Avenue",
+                    "suburb": "Sea Point",
+                    "city": "Cape Town",
+                    "province": "Western Cape",
+                    "postalCode": "8005"
+                }
+            ]
+        }
+    ],
+    "trace-reports": [
+        {
+            "id": "trace-001",
+            "idNumber": "8001010001081",
+            "status": "completed",
+            "currentAddress": {
+                "line1": "123 Main Street",
+                "suburb": "Sandton",
+                "city": "Johannesburg",
+                "province": "Gauteng",
+                "postalCode": "2196",
+                "confidence": "High"
+            },
+            "previousAddresses": [
+                {
+                    "line1": "789 Old Road",
+                    "suburb": "Rosebank",
+                    "city": "Johannesburg",
+                    "province": "Gauteng",
+                    "postalCode": "2196",
+                    "dateRange": "2018-2023"
+                }
+            ],
+            "employers": [
+                {
+                    "name": "ABC Corporation",
+                    "position": "Manager",
+                    "startDate": "2020-01-01",
+                    "status": "Current"
+                }
+            ],
+            "contactNumbers": [
+                {
+                    "number": "0821234567",
+                    "type": "Mobile",
+                    "verified": true
+                },
+                {
+                    "number": "0115551234",
+                    "type": "Home",
+                    "verified": false
+                }
+            ]
+        }
+    ]
+}

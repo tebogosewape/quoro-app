@@ -1,0 +1,32 @@
+.top-card {
+    background-color: #ffffff;
+    border-radius: 10px;
+    box-shadow: 0 0 5px rgba(0, 0, 0, 0.05);
+    padding: 0.75rem 1.25rem;
+}
+
+.icon-circle {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 1rem;
+}
+
+.icon-circle.dark {
+    background-color: #0c4068;
+}
+
+.icon-circle.blue {
+    background-color: #00b8f4;
+}
+
+.divider-vertical {
+    height: 30px;
+    width: 1px;
+    background-color: #0c4068;
+    margin: 0 10px;
+}
