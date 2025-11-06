@@ -3,20 +3,13 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Button, Dropdown, Form, Nav, Tab, Modal, Spinner } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
-    faPhone,
-    faEnvelope,
-    faComments,
-    faUserEdit,
     faPlus,
     faEllipsisH,
     faCheckCircle,
     faClock,
     faTriangleExclamation,
-    faIdCard,
     faMagnifyingGlass,
     faPaperPlane,
-    faLock,
-    faFileAlt,
     faDownload,
     faEye,
     faFilePdf,
@@ -424,9 +417,24 @@ export default function ClientDetails() {
 
             {/* Onboarding banner */}
             {data.onboardingLocked && (
-                <div className="panel glass-strong p-2 mb-3 d-flex align-items-center gap-2">
-                    <FontAwesomeIcon icon={faLock} />
-                    <b>New onboarding is LOCKED</b>
+                <div
+                    className="alert alert-warning mb-3 d-flex align-items-center gap-2"
+                    style={{ borderRadius: '12px' }}
+                >
+                    <svg
+                        width="20"
+                        height="20"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                    >
+                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                    </svg>
+                    <strong>New onboarding is LOCKED</strong>
                     <span className="text-muted">— verification required before actions.</span>
                 </div>
             )}
@@ -437,29 +445,96 @@ export default function ClientDetails() {
             <div className="row g-3">
                 {/* LEFT */}
                 <div className="col-12 col-lg-8">
-                    <div className="panel glass p-0">
+                    <div className="card border-0 shadow-sm" style={{ borderRadius: '12px' }}>
                         <Tab.Container defaultActiveKey="products">
-                            <Nav variant="tabs" className="px-2 pt-2">
+                            <Nav
+                                variant="tabs"
+                                className="px-3 pt-3"
+                                style={{ borderBottom: '2px solid #f0f0f0' }}
+                            >
                                 <Nav.Item>
-                                    <Nav.Link eventKey="products">Products</Nav.Link>
+                                    <Nav.Link
+                                        eventKey="products"
+                                        style={{
+                                            borderRadius: '8px 8px 0 0',
+                                            fontWeight: 500,
+                                            border: 'none',
+                                        }}
+                                    >
+                                        Products
+                                    </Nav.Link>
                                 </Nav.Item>
                                 <Nav.Item>
-                                    <Nav.Link eventKey="client">Client</Nav.Link>
+                                    <Nav.Link
+                                        eventKey="client"
+                                        style={{
+                                            borderRadius: '8px 8px 0 0',
+                                            fontWeight: 500,
+                                            border: 'none',
+                                        }}
+                                    >
+                                        Client
+                                    </Nav.Link>
                                 </Nav.Item>
                                 <Nav.Item>
-                                    <Nav.Link eventKey="income">Income/Expense</Nav.Link>
+                                    <Nav.Link
+                                        eventKey="income"
+                                        style={{
+                                            borderRadius: '8px 8px 0 0',
+                                            fontWeight: 500,
+                                            border: 'none',
+                                        }}
+                                    >
+                                        Income/Expense
+                                    </Nav.Link>
                                 </Nav.Item>
                                 <Nav.Item>
-                                    <Nav.Link eventKey="creditors">Creditors</Nav.Link>
+                                    <Nav.Link
+                                        eventKey="creditors"
+                                        style={{
+                                            borderRadius: '8px 8px 0 0',
+                                            fontWeight: 500,
+                                            border: 'none',
+                                        }}
+                                    >
+                                        Creditors
+                                    </Nav.Link>
                                 </Nav.Item>
                                 <Nav.Item>
-                                    <Nav.Link eventKey="reports">Credit Reports</Nav.Link>
+                                    <Nav.Link
+                                        eventKey="reports"
+                                        style={{
+                                            borderRadius: '8px 8px 0 0',
+                                            fontWeight: 500,
+                                            border: 'none',
+                                        }}
+                                    >
+                                        Credit Reports
+                                    </Nav.Link>
                                 </Nav.Item>
                                 <Nav.Item>
-                                    <Nav.Link eventKey="corres">Correspondence</Nav.Link>
+                                    <Nav.Link
+                                        eventKey="corres"
+                                        style={{
+                                            borderRadius: '8px 8px 0 0',
+                                            fontWeight: 500,
+                                            border: 'none',
+                                        }}
+                                    >
+                                        Correspondence
+                                    </Nav.Link>
                                 </Nav.Item>
                                 <Nav.Item>
-                                    <Nav.Link eventKey="payments">Payments</Nav.Link>
+                                    <Nav.Link
+                                        eventKey="payments"
+                                        style={{
+                                            borderRadius: '8px 8px 0 0',
+                                            fontWeight: 500,
+                                            border: 'none',
+                                        }}
+                                    >
+                                        Payments
+                                    </Nav.Link>
                                 </Nav.Item>
                             </Nav>
 
@@ -533,15 +608,7 @@ export default function ClientDetails() {
 // -----------------------------------------------
 function HeaderBlock({ data, onEdit }: { data: ClientDetailPayload; onEdit: () => void }) {
     const [downloadingReport, setDownloadingReport] = useState(false);
-
-    const chips = useMemo(
-        () => [
-            { label: 'ID', value: data.nationalId, icon: faIdCard },
-            { label: 'Last update', value: data.lastUpdate, icon: faClock },
-            { label: 'Last phone', value: data.lastPhone, icon: faPhone },
-        ],
-        [data]
-    );
+    const navigate = useNavigate();
 
     const handleDownloadCreditReport = async () => {
         setDownloadingReport(true);
@@ -566,93 +633,363 @@ function HeaderBlock({ data, onEdit }: { data: ClientDetailPayload; onEdit: () =
         }
     };
 
+    // Calculate total from income/expense if available
+    const totalDebt = data.incomeExpense?.income.reduce((sum, row) => sum + row.amount, 0) || 0;
+
     return (
-        <div className="panel glass p-3 mb-3">
-            <div className="d-flex flex-wrap align-items-center gap-3">
-                <div className="flex-grow-1">
-                    <div style={{ fontWeight: 800, fontSize: 22 }}>{data.name}</div>
-                    <div className="text-muted">{data.meta}</div>
-                    <div className="d-flex flex-wrap gap-3 mt-2">
-                        <a
-                            className="text-brand d-inline-flex align-items-center gap-1"
-                            href={`tel:${data.phone}`}
+        <>
+            {/* Gradient Header */}
+            <div
+                className="card border-0 shadow-sm mb-4"
+                style={{
+                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                    borderRadius: '16px',
+                }}
+            >
+                <div className="card-body p-4 text-white">
+                    <div className="d-flex align-items-center mb-3">
+                        <button
+                            className="btn btn-light btn-sm me-3"
+                            onClick={() => navigate('/clients')}
+                            style={{ borderRadius: '8px' }}
                         >
-                            <FontAwesomeIcon icon={faPhone} /> {data.phone}
-                        </a>
-                        <a
-                            className="text-brand d-inline-flex align-items-center gap-1"
-                            href={`mailto:${data.email}`}
-                        >
-                            <FontAwesomeIcon icon={faEnvelope} /> {data.email}
-                        </a>
-                        <span
-                            className="btn btn-light"
-                            style={{ borderRadius: 999, border: '1px solid var(--glass-border)' }}
-                        >
-                            <FontAwesomeIcon icon={faComments} /> WhatsApp
-                        </span>
-                    </div>
-                </div>
-
-                <div className="d-flex align-items-center gap-2">
-                    <Button className="btn btn-primary" onClick={onEdit}>
-                        <FontAwesomeIcon icon={faUserEdit} /> Edit
-                    </Button>
-                    <Button
-                        className="btn btn-light"
-                        style={{ borderRadius: 999, border: '1px solid var(--glass-border)' }}
-                    >
-                        <FontAwesomeIcon icon={faPlus} /> New Product
-                    </Button>
-                    <Dropdown>
-                        <Dropdown.Toggle
-                            className="btn btn-light"
-                            style={{ borderRadius: 999, border: '1px solid var(--glass-border)' }}
-                        >
-                            <FontAwesomeIcon icon={faEllipsisH} />
-                        </Dropdown.Toggle>
-                        <Dropdown.Menu>
-                            <Dropdown.Item
-                                onClick={handleDownloadCreditReport}
-                                disabled={downloadingReport}
+                            <svg
+                                width="16"
+                                height="16"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                style={{ marginRight: '4px' }}
                             >
-                                {downloadingReport ? (
-                                    <>
-                                        <span
-                                            className="spinner-border spinner-border-sm me-2"
-                                            role="status"
-                                            aria-hidden="true"
-                                        ></span>
-                                        Generating...
-                                    </>
-                                ) : (
-                                    <>
-                                        <FontAwesomeIcon icon={faFileAlt} className="me-2" />
-                                        Credit Report PDF
-                                    </>
-                                )}
-                            </Dropdown.Item>
-                            <Dropdown.Item>Export PDF</Dropdown.Item>
-                            <Dropdown.Item>Send Profile Link</Dropdown.Item>
-                            <Dropdown.Item className="text-danger">Archive Client</Dropdown.Item>
-                        </Dropdown.Menu>
-                    </Dropdown>
+                                <path d="M19 12H5M12 19l-7-7 7-7" />
+                            </svg>
+                            Back
+                        </button>
+                        <svg
+                            width="32"
+                            height="32"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            className="me-3"
+                        >
+                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                            <circle cx="12" cy="7" r="4" />
+                        </svg>
+                        <div className="flex-grow-1">
+                            <h4 className="mb-0" style={{ fontWeight: 700 }}>
+                                {data.name}
+                            </h4>
+                            <div className="opacity-90" style={{ fontSize: '0.95rem' }}>
+                                {data.meta}
+                            </div>
+                        </div>
+                        <div className="d-flex gap-2">
+                            <button
+                                className="btn btn-light"
+                                onClick={onEdit}
+                                style={{ borderRadius: '8px', fontWeight: 500 }}
+                            >
+                                <svg
+                                    width="16"
+                                    height="16"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    style={{ marginRight: '4px' }}
+                                >
+                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                                </svg>
+                                Edit
+                            </button>
+                            <Dropdown>
+                                <Dropdown.Toggle
+                                    className="btn btn-light"
+                                    style={{ borderRadius: '8px' }}
+                                >
+                                    <svg
+                                        width="16"
+                                        height="16"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="2"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                    >
+                                        <circle cx="12" cy="12" r="1" />
+                                        <circle cx="12" cy="5" r="1" />
+                                        <circle cx="12" cy="19" r="1" />
+                                    </svg>
+                                </Dropdown.Toggle>
+                                <Dropdown.Menu>
+                                    <Dropdown.Item
+                                        onClick={handleDownloadCreditReport}
+                                        disabled={downloadingReport}
+                                    >
+                                        {downloadingReport ? (
+                                            <>
+                                                <span
+                                                    className="spinner-border spinner-border-sm me-2"
+                                                    role="status"
+                                                    aria-hidden="true"
+                                                ></span>
+                                                Generating...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <svg
+                                                    width="16"
+                                                    height="16"
+                                                    viewBox="0 0 24 24"
+                                                    fill="none"
+                                                    stroke="currentColor"
+                                                    strokeWidth="2"
+                                                    strokeLinecap="round"
+                                                    strokeLinejoin="round"
+                                                    className="me-2"
+                                                >
+                                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                                                    <polyline points="14 2 14 8 20 8" />
+                                                    <line x1="16" y1="13" x2="8" y2="13" />
+                                                    <line x1="16" y1="17" x2="8" y2="17" />
+                                                    <polyline points="10 9 9 9 8 9" />
+                                                </svg>
+                                                Credit Report PDF
+                                            </>
+                                        )}
+                                    </Dropdown.Item>
+                                    <Dropdown.Item>
+                                        <svg
+                                            width="16"
+                                            height="16"
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            strokeWidth="2"
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            className="me-2"
+                                        >
+                                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                            <polyline points="7 10 12 15 17 10" />
+                                            <line x1="12" y1="15" x2="12" y2="3" />
+                                        </svg>
+                                        Export PDF
+                                    </Dropdown.Item>
+                                    <Dropdown.Item>
+                                        <svg
+                                            width="16"
+                                            height="16"
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            strokeWidth="2"
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            className="me-2"
+                                        >
+                                            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+                                            <polyline points="22,6 12,13 2,6" />
+                                        </svg>
+                                        Send Profile Link
+                                    </Dropdown.Item>
+                                    <Dropdown.Divider />
+                                    <Dropdown.Item className="text-danger">
+                                        <svg
+                                            width="16"
+                                            height="16"
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            strokeWidth="2"
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            className="me-2"
+                                        >
+                                            <polyline points="3 6 5 6 21 6" />
+                                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                        </svg>
+                                        Archive Client
+                                    </Dropdown.Item>
+                                </Dropdown.Menu>
+                            </Dropdown>
+                        </div>
+                    </div>
+
+                    {/* Stats Row */}
+                    <div className="row g-3 mt-2">
+                        <div className="col-md-3 col-6">
+                            <div
+                                className="text-center p-3"
+                                style={{
+                                    background: 'rgba(255, 255, 255, 0.15)',
+                                    borderRadius: '12px',
+                                    backdropFilter: 'blur(10px)',
+                                }}
+                            >
+                                <div className="opacity-90" style={{ fontSize: '0.85rem' }}>
+                                    ID Number
+                                </div>
+                                <div style={{ fontSize: '1.1rem', fontWeight: 600 }}>
+                                    {data.nationalId || 'N/A'}
+                                </div>
+                            </div>
+                        </div>
+                        <div className="col-md-3 col-6">
+                            <div
+                                className="text-center p-3"
+                                style={{
+                                    background: 'rgba(255, 255, 255, 0.15)',
+                                    borderRadius: '12px',
+                                    backdropFilter: 'blur(10px)',
+                                }}
+                            >
+                                <div className="opacity-90" style={{ fontSize: '0.85rem' }}>
+                                    Total Income
+                                </div>
+                                <div style={{ fontSize: '1.1rem', fontWeight: 600 }}>
+                                    R{' '}
+                                    {totalDebt.toLocaleString('en-ZA', {
+                                        minimumFractionDigits: 2,
+                                        maximumFractionDigits: 2,
+                                    })}
+                                </div>
+                            </div>
+                        </div>
+                        <div className="col-md-3 col-6">
+                            <div
+                                className="text-center p-3"
+                                style={{
+                                    background: 'rgba(255, 255, 255, 0.15)',
+                                    borderRadius: '12px',
+                                    backdropFilter: 'blur(10px)',
+                                }}
+                            >
+                                <div className="opacity-90" style={{ fontSize: '0.85rem' }}>
+                                    Products
+                                </div>
+                                <div style={{ fontSize: '1.1rem', fontWeight: 600 }}>
+                                    {data.products.length}
+                                </div>
+                            </div>
+                        </div>
+                        <div className="col-md-3 col-6">
+                            <div
+                                className="text-center p-3"
+                                style={{
+                                    background: 'rgba(255, 255, 255, 0.15)',
+                                    borderRadius: '12px',
+                                    backdropFilter: 'blur(10px)',
+                                }}
+                            >
+                                <div className="opacity-90" style={{ fontSize: '0.85rem' }}>
+                                    Last Contact
+                                </div>
+                                <div style={{ fontSize: '1.1rem', fontWeight: 600 }}>
+                                    {data.lastPhone || 'Never'}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            <div className="d-flex flex-wrap gap-2 mt-3">
-                {chips.map((c) => (
-                    <div
-                        key={c.label}
-                        className="badge"
-                        style={{ borderColor: 'var(--glass-border)', background: 'transparent' }}
-                    >
-                        <FontAwesomeIcon icon={c.icon} /> <b className="ms-1">{c.label}:</b>{' '}
-                        {c.value}
+            {/* Contact Info Card */}
+            <div className="card border-0 shadow-sm mb-3" style={{ borderRadius: '12px' }}>
+                <div className="card-body p-3">
+                    <div className="d-flex flex-wrap gap-3 align-items-center">
+                        <a
+                            className="d-inline-flex align-items-center gap-2 text-decoration-none"
+                            href={`tel:${data.phone}`}
+                            style={{ color: '#667eea', fontWeight: 500 }}
+                        >
+                            <svg
+                                width="18"
+                                height="18"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                            >
+                                <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
+                            </svg>
+                            {data.phone}
+                        </a>
+                        <a
+                            className="d-inline-flex align-items-center gap-2 text-decoration-none"
+                            href={`mailto:${data.email}`}
+                            style={{ color: '#667eea', fontWeight: 500 }}
+                        >
+                            <svg
+                                width="18"
+                                height="18"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                            >
+                                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+                                <polyline points="22,6 12,13 2,6" />
+                            </svg>
+                            {data.email}
+                        </a>
+                        <button
+                            className="btn btn-sm btn-outline-success"
+                            style={{ borderRadius: '8px' }}
+                        >
+                            <svg
+                                width="16"
+                                height="16"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                style={{ marginRight: '4px' }}
+                            >
+                                <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+                            </svg>
+                            WhatsApp
+                        </button>
+                        {data.lastUpdate && (
+                            <span className="text-muted ms-auto" style={{ fontSize: '0.9rem' }}>
+                                <svg
+                                    width="16"
+                                    height="16"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    style={{ marginRight: '4px' }}
+                                >
+                                    <circle cx="12" cy="12" r="10" />
+                                    <polyline points="12 6 12 12 16 14" />
+                                </svg>
+                                Updated {data.lastUpdate}
+                            </span>
+                        )}
                     </div>
-                ))}
+                </div>
             </div>
-        </div>
+        </>
     );
 }
 
