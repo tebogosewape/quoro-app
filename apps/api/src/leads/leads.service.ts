@@ -1,9 +1,10 @@
 /* eslint-disable indent */
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Brackets } from 'typeorm';
 import { CreateLeadDto } from './dto/create-lead.dto';
+import { UpdateLeadDto } from './dto/update-lead.dto';
 import { QueryLeadsDto } from './dto/query-leads.dto';
 import dayjs from 'dayjs';
 import * as fs from 'node:fs';
@@ -208,5 +209,23 @@ export class LeadsService {
             limit,
             totalPages: Math.ceil(total / limit),
         };
+    }
+
+    async update(id: string, dto: UpdateLeadDto): Promise<Lead> {
+        const lead = await this.repo.findOne({ where: { id } });
+        if (!lead) {
+            throw new NotFoundException(`Lead with ID ${id} not found`);
+        }
+
+        Object.assign(lead, dto);
+        return this.repo.save(lead);
+    }
+
+    async findOne(id: string): Promise<Lead> {
+        const lead = await this.repo.findOne({ where: { id } });
+        if (!lead) {
+            throw new NotFoundException(`Lead with ID ${id} not found`);
+        }
+        return lead;
     }
 }

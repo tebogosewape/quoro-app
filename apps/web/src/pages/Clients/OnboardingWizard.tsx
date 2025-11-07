@@ -9,7 +9,7 @@ import {
     faCreditCard, // Payment
     faClipboardCheck, // Confirm
 } from '@fortawesome/free-solid-svg-icons';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { listProducts } from '@/api/products';
 import { createClient, type CreateClientDto } from '@/api/clients.api';
 import { useAuthStore } from '@/stores/auth.store';
@@ -92,14 +92,26 @@ const STEPS: { key: StepKey; label: string; icon: IconDefinition }[] = [
 
 export default function OnboardingWizard() {
     const navigate = useNavigate();
+    const location = useLocation();
     const session = useAuthStore((state) => state.session);
     const [current, setCurrent] = useState<StepKey>('personal');
     const [busy, setBusy] = useState(false);
     const [loadingProducts, setLoadingProducts] = useState(true);
     const [productError, setProductError] = useState<string | null>(null);
     const [submissionError, setSubmissionError] = useState<string | null>(null);
+
+    // Extract lead data from navigation state if present
+    const leadData = location.state?.leadData;
     const [state, setState] = useState<FormState>({
-        personal: {},
+        personal: leadData
+            ? {
+                  // Pre-fill from lead data if available
+                  firstNames: leadData.name?.split(' ')[0] || '',
+                  surname: leadData.name?.split(' ').slice(1).join(' ') || '',
+                  phone: leadData.cell || '',
+                  idNumber: leadData.idNumber || '',
+              }
+            : {},
         products: PRODUCTS_PLACEHOLDER,
     });
 

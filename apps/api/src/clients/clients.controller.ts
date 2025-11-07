@@ -36,6 +36,7 @@ export class ClientsController {
     /**
      * Create a new client (onboarding endpoint)
      * Accessible to all authenticated users
+     * If created by an agent, the client is automatically assigned to them
      */
     @Post('onboard')
     @ApiOperation({ summary: 'Create a new client via onboarding wizard' })
@@ -61,7 +62,7 @@ export class ClientsController {
             );
         }
 
-        const client = await this.clientsService.create(createClientDto, user.id);
+        const client = await this.clientsService.create(createClientDto, user.id, user.role);
         return {
             success: true,
             data: client,
@@ -71,6 +72,8 @@ export class ClientsController {
 
     /**
      * Get all clients with pagination and filtering
+     * Managers/Admins see all clients
+     * Agents only see clients assigned to them
      */
     @Get()
     @Roles(
@@ -79,11 +82,18 @@ export class ClientsController {
         UserRole.TEAM_LEADER,
         UserRole.OPERATIONS_MANAGER,
         UserRole.CHIEF_EXECUTIVE_OFFICER,
+        UserRole.AGENT,
         UserRole.VIEWER
     )
     @ApiOperation({ summary: 'Get all clients with pagination and filtering' })
-    async findAll(@Query() searchDto: SearchClientsDto) {
-        const result = await this.clientsService.findAll(searchDto);
+    async findAll(@Query() searchDto: SearchClientsDto, @CurrentUser() user: AuthenticatedUser) {
+        // If user is an agent, automatically filter to only their assigned clients
+        const effectiveSearchDto = { ...searchDto };
+        if (user.role === UserRole.AGENT) {
+            effectiveSearchDto.assignedAgentId = user.id;
+        }
+
+        const result = await this.clientsService.findAll(effectiveSearchDto);
         return {
             success: true,
             data: result.data,

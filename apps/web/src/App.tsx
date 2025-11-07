@@ -1,4 +1,6 @@
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 import AuthenticatedLayout from './components/layout/Auth/AuthenticatedLayout';
 import Login from './pages/Auth/Login';
 import Dashboard from './pages/Dashboard/Index';
@@ -15,10 +17,12 @@ import ProductsPage from './pages/Products/ProductsPage';
 import CommissionSettings from './pages/Settings/CommissionSettings';
 import LeadsOverview from './pages/Leads/LeadsOverview';
 import LeadsImport from './pages/Leads/LeadsImport';
+import LeadAllocation from './pages/Admin/LeadAllocation';
 
 const App = () => {
     return (
         <BrowserRouter>
+            <ToastContainer />
             <Routes>
                 <Route path="/" element={<Login />} />
                 <Route path="/login" element={<Login />} />
@@ -65,7 +69,7 @@ const App = () => {
                     <Route
                         path="/leads"
                         element={
-                            <PrivateRoute permission="view-clients">
+                            <PrivateRoute permission="manage-leads">
                                 <LeadsOverview />
                             </PrivateRoute>
                         }
@@ -74,8 +78,17 @@ const App = () => {
                     <Route
                         path="/leads/import"
                         element={
-                            <PrivateRoute permission={['create-clients', 'manage-clients']}>
+                            <PrivateRoute permission="manage-leads">
                                 <LeadsImport />
+                            </PrivateRoute>
+                        }
+                    />
+
+                    <Route
+                        path="/leads/allocation"
+                        element={
+                            <PrivateRoute permission="roles.manage">
+                                <LeadAllocation />
                             </PrivateRoute>
                         }
                     />

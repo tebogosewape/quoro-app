@@ -26,6 +26,7 @@ export type UiPermission =
     | 'manage-commissions'
     | 'manage-users'
     | 'upload-leads'
+    | 'manage-leads'
     | 'manage-payments'
     | 'view-reports'
     | 'view-audit-log';
@@ -49,6 +50,7 @@ const UI_TO_BACKEND_MAP: Record<UiPermission, BackendPermission[]> = {
     'manage-commissions': ['reports.commission.view'], // if you later add a write perm, include it here
     'manage-users': ['roles.manage'],
     'upload-leads': ['leads.upload'],
+    'manage-leads': ['leads.upload', 'roles.manage'], // Only managers and lead providers can manage leads
     'manage-payments': ['payments.cancel'],
     'view-reports': ['reports.sales.view', 'reports.commission.view'],
     'view-audit-log': ['roles.manage'], // adjust when you add an explicit audit perm

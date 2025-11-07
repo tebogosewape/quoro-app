@@ -29,6 +29,7 @@ import type {
     IncomeExpense,
     Correspondence,
 } from '../../api/mockClientApi';
+import { useAuthStore } from '@/stores/auth.store';
 
 // Narrow types for optional relations returned by the API when relations are loaded
 type Comm = {
@@ -194,6 +195,11 @@ async function mapClientToDetailPayload(client: Client): Promise<ClientDetailPay
         creditScore: client.creditScore,
         createdAt: client.createdAt,
         updatedAt: client.updatedAt,
+        bankName: client.bankName,
+        accountType: client.accountType,
+        accountHolder: client.accountHolder,
+        accountNumber: client.accountNumber,
+        branchCode: client.branchCode,
         products: await (async () => {
             // If backend has populated clientProducts relation, use that
             if (cClient.clientProducts && cClient.clientProducts.length > 0) {
@@ -275,6 +281,30 @@ export default function ClientDetails() {
     const [error, setError] = useState<string | null>(null);
 
     /**
+     * Fetch client data
+     */
+    const fetchClient = async () => {
+        setLoading(true);
+        setError(null);
+        try {
+            const client = await getClientById(cid);
+            const payload = await mapClientToDetailPayload(client);
+            setData(payload);
+            setLoading(false);
+        } catch (err) {
+            setError(getErrorMessage(err));
+            setLoading(false);
+        }
+    };
+
+    /**
+     * Refetch client data (for refreshing after updates)
+     */
+    const refetchClient = () => {
+        fetchClient();
+    };
+
+    /**
      * Convert API error to user-friendly message
      */
     const getErrorMessage = (err: unknown): string => {
@@ -299,30 +329,8 @@ export default function ClientDetails() {
     };
 
     useEffect(() => {
-        let isMounted = true;
-
-        const fetchClient = async () => {
-            setLoading(true);
-            setError(null);
-            try {
-                const client = await getClientById(cid);
-                if (isMounted) {
-                    const payload = await mapClientToDetailPayload(client);
-                    setData(payload);
-                    setLoading(false);
-                }
-            } catch (err) {
-                if (isMounted) {
-                    setError(getErrorMessage(err));
-                    setLoading(false);
-                }
-            }
-        };
-
         fetchClient();
-        return () => {
-            isMounted = false;
-        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [cid]);
 
     // Show loading state only if still loading and no error
@@ -336,22 +344,7 @@ export default function ClientDetails() {
                     <h4 className="alert-heading">Unable to Load Client</h4>
                     <p>{error}</p>
                     <hr />
-                    <button
-                        className="btn btn-outline-danger btn-sm"
-                        onClick={() => {
-                            setError(null);
-                            setLoading(true);
-                            getClientById(cid)
-                                .then(async (client) => {
-                                    const payload = await mapClientToDetailPayload(client);
-                                    setData(payload);
-                                    setError(null);
-                                })
-                                .catch((err) => {
-                                    setError(getErrorMessage(err));
-                                });
-                        }}
-                    >
+                    <button className="btn btn-outline-danger btn-sm" onClick={() => fetchClient()}>
                         Try Again
                     </button>
                     <button
@@ -541,7 +534,11 @@ export default function ClientDetails() {
                             <div className="p-3">
                                 <Tab.Content>
                                     <Tab.Pane eventKey="products">
-                                        <ProductsPanel products={data.products} />
+                                        <ProductsPanel
+                                            products={data.products}
+                                            clientId={cid}
+                                            onProductAdded={refetchClient}
+                                        />
                                     </Tab.Pane>
 
                                     <Tab.Pane eventKey="client">
@@ -996,12 +993,22 @@ function HeaderBlock({ data, onEdit }: { data: ClientDetailPayload; onEdit: () =
 // -----------------------------------------------
 // Products
 // -----------------------------------------------
-function ProductsPanel({ products }: { products: Product[] }) {
+function ProductsPanel({
+    products,
+    clientId,
+    onProductAdded,
+}: {
+    products: Product[];
+    clientId: string;
+    onProductAdded: () => void;
+}) {
     const [availableProducts, setAvailableProducts] = useState<BackendProduct[]>([]);
     const [selectedProductId, setSelectedProductId] = useState('');
     const [loading, setLoading] = useState(true);
     const [adding, setAdding] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
+    const [successMessage, setSuccessMessage] = useState('');
+    const [errorMessage, setErrorMessage] = useState('');
 
     useEffect(() => {
         const fetchProducts = async () => {
@@ -1025,18 +1032,44 @@ function ProductsPanel({ products }: { products: Product[] }) {
         if (!selectedProductId) return;
 
         setAdding(true);
-        try {
-            // TODO: When client-product API is implemented, call:
-            // await addProductToClient(clientId, selectedProductId);
+        setSuccessMessage('');
+        setErrorMessage('');
 
-            console.log('Adding product:', selectedProductId);
-            alert('Product will be added once backend client-product API is implemented');
+        try {
+            // Get the current client to access existing selectedProducts
+            const client = await getClientById(clientId);
+
+            // Create new product entry
+            const newProduct = {
+                productId: selectedProductId,
+                paymentOptionId: '', // Will be set later
+                cirAccounts: [],
+            };
+
+            // Add to existing products or create new array
+            const updatedProducts = [...(client.selectedProducts || []), newProduct];
+
+            // Update the client with the new products list
+            await updateClient(clientId, {
+                selectedProducts: updatedProducts,
+            });
+
+            const addedProduct = availableProducts.find((p) => p.id === selectedProductId);
             setSelectedProductId('');
+            setSuccessMessage(`Product "${addedProduct?.name}" added successfully!`);
+
+            // Auto-dismiss success message after 5 seconds
+            setTimeout(() => setSuccessMessage(''), 5000);
+
+            onProductAdded(); // Refresh the client data
         } catch (err) {
             console.error('Failed to add product:', err);
-            alert(
+            setErrorMessage(
                 'Failed to add product: ' + (err instanceof Error ? err.message : 'Unknown error')
             );
+
+            // Auto-dismiss error message after 8 seconds
+            setTimeout(() => setErrorMessage(''), 8000);
         } finally {
             setAdding(false);
         }
@@ -1084,6 +1117,38 @@ function ProductsPanel({ products }: { products: Product[] }) {
     return (
         <>
             <h6 className="mb-3">Products</h6>
+
+            {/* Success Message */}
+            {successMessage && (
+                <div className="alert alert-success alert-dismissible fade show mb-3" role="alert">
+                    <div className="d-flex align-items-center">
+                        <FontAwesomeIcon icon={faCheckCircle} className="me-2" />
+                        {successMessage}
+                    </div>
+                    <button
+                        type="button"
+                        className="btn-close"
+                        onClick={() => setSuccessMessage('')}
+                        aria-label="Close"
+                    ></button>
+                </div>
+            )}
+
+            {/* Error Message */}
+            {errorMessage && (
+                <div className="alert alert-danger alert-dismissible fade show mb-3" role="alert">
+                    <div className="d-flex align-items-center">
+                        <FontAwesomeIcon icon={faTriangleExclamation} className="me-2" />
+                        {errorMessage}
+                    </div>
+                    <button
+                        type="button"
+                        className="btn-close"
+                        onClick={() => setErrorMessage('')}
+                        aria-label="Close"
+                    ></button>
+                </div>
+            )}
 
             {/* Add Product Section */}
             <div className="panel glass p-3 mb-3">
@@ -1133,67 +1198,422 @@ function ProductsPanel({ products }: { products: Product[] }) {
             </div>
 
             {/* Products List */}
-            <div className="vstack gap-2">
+            <div className="vstack gap-3">
                 {filteredProducts.length === 0 ? (
                     <div className="panel glass p-3 text-center text-muted">
                         {searchQuery ? 'No products match your search.' : 'No products added yet.'}
                     </div>
                 ) : (
-                    filteredProducts.map((p) => (
-                        <div className="panel glass p-3" key={p.id}>
-                            <div className="d-flex justify-content-between align-items-start">
-                                <div>
-                                    <div className="d-flex align-items-center gap-2">
-                                        <div className="fw-bold">{p.name}</div>
-                                        <div className="text-muted">
-                                            • Status: <b>{p.status}</b>
+                    filteredProducts.map((p) => {
+                        // Find full product details from availableProducts
+                        const fullProduct = availableProducts.find((ap) => ap.id === p.id);
+
+                        return (
+                            <div
+                                className="panel glass p-4"
+                                key={p.id}
+                                style={{
+                                    borderLeft: '4px solid #667eea',
+                                    transition: 'all 0.2s ease',
+                                }}
+                            >
+                                <div className="d-flex justify-content-between align-items-start mb-3">
+                                    <div className="flex-grow-1">
+                                        <div className="d-flex align-items-center gap-2 mb-2">
+                                            <h6 className="mb-0 fw-bold">{p.name}</h6>
+                                            <span
+                                                className="badge bg-primary"
+                                                style={{ fontSize: '0.75rem' }}
+                                            >
+                                                {fullProduct?.code || 'N/A'}
+                                            </span>
+                                            <span
+                                                className={`badge ${p.status === 'active' ? 'bg-success' : 'bg-secondary'}`}
+                                                style={{ fontSize: '0.75rem' }}
+                                            >
+                                                {p.status}
+                                            </span>
+                                            {p.flag && (
+                                                <div className="ms-2">{riskBadge(p.flag)}</div>
+                                            )}
                                         </div>
-                                        <div className="ms-2">{riskBadge(p.flag)}</div>
-                                    </div>
-                                    {p.fields && (
-                                        <div className="row g-2 mt-2">
-                                            {Object.entries(p.fields).map(([k, v]) => (
-                                                <div className="col-6 col-md-4" key={k}>
-                                                    <div
-                                                        className="text-muted"
-                                                        style={{ fontSize: 12 }}
-                                                    >
-                                                        {k}
+
+                                        {fullProduct?.description && (
+                                            <p
+                                                className="text-muted mb-3"
+                                                style={{ fontSize: '0.9rem' }}
+                                            >
+                                                {fullProduct.description}
+                                            </p>
+                                        )}
+
+                                        {/* Product Details Grid */}
+                                        <div className="row g-3">
+                                            {fullProduct && (
+                                                <>
+                                                    <div className="col-md-3 col-6">
+                                                        <div className="text-muted small">
+                                                            Category
+                                                        </div>
+                                                        <div className="fw-semibold">
+                                                            {fullProduct.category
+                                                                .replace(/_/g, ' ')
+                                                                .replace(/\b\w/g, (l) =>
+                                                                    l.toUpperCase()
+                                                                )}
+                                                        </div>
                                                     </div>
-                                                    <div style={{ fontWeight: 600 }}>{v}</div>
+
+                                                    <div className="col-md-3 col-6">
+                                                        <div className="text-muted small">
+                                                            Mandate Required
+                                                        </div>
+                                                        <div className="fw-semibold">
+                                                            {fullProduct.requires_mandate ? (
+                                                                <span className="text-warning">
+                                                                    <FontAwesomeIcon
+                                                                        icon={faCheckCircle}
+                                                                    />{' '}
+                                                                    Yes
+                                                                </span>
+                                                            ) : (
+                                                                <span className="text-muted">
+                                                                    No
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="col-md-3 col-6">
+                                                        <div className="text-muted small">
+                                                            Credit Pull
+                                                        </div>
+                                                        <div className="fw-semibold">
+                                                            {fullProduct.requires_credit_pull ? (
+                                                                <span className="text-info">
+                                                                    <FontAwesomeIcon
+                                                                        icon={faCheckCircle}
+                                                                    />{' '}
+                                                                    Required
+                                                                </span>
+                                                            ) : (
+                                                                <span className="text-muted">
+                                                                    Not Required
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="col-md-3 col-6">
+                                                        <div className="text-muted small">
+                                                            Added
+                                                        </div>
+                                                        <div className="fw-semibold">
+                                                            {fullProduct.createdAt
+                                                                ? new Date(
+                                                                      fullProduct.createdAt
+                                                                  ).toLocaleDateString()
+                                                                : 'N/A'}
+                                                        </div>
+                                                    </div>
+                                                </>
+                                            )}
+                                        </div>
+
+                                        {/* Pricing Information */}
+                                        {fullProduct?.pricing_options && (
+                                            <div className="mt-3">
+                                                <div
+                                                    className="card border-0"
+                                                    style={{
+                                                        backgroundColor: '#f8f9fa',
+                                                        borderRadius: '8px',
+                                                    }}
+                                                >
+                                                    <div className="card-body p-3">
+                                                        <div className="text-muted small mb-2 fw-semibold">
+                                                            💰 Pricing
+                                                        </div>
+                                                        <div className="row g-2">
+                                                            {fullProduct.pricing_options.oneOff !==
+                                                                undefined &&
+                                                                fullProduct.pricing_options.oneOff >
+                                                                    0 && (
+                                                                    <div className="col-md-4 col-6">
+                                                                        <div
+                                                                            className="text-muted"
+                                                                            style={{
+                                                                                fontSize: '0.75rem',
+                                                                            }}
+                                                                        >
+                                                                            One-Time Fee
+                                                                        </div>
+                                                                        <div
+                                                                            className="fw-bold text-success"
+                                                                            style={{
+                                                                                fontSize: '1.1rem',
+                                                                            }}
+                                                                        >
+                                                                            R{' '}
+                                                                            {fullProduct.pricing_options.oneOff.toLocaleString(
+                                                                                'en-ZA',
+                                                                                {
+                                                                                    minimumFractionDigits: 2,
+                                                                                    maximumFractionDigits: 2,
+                                                                                }
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+
+                                                            {fullProduct.pricing_options
+                                                                .recurring && (
+                                                                <div className="col-md-4 col-6">
+                                                                    <div
+                                                                        className="text-muted"
+                                                                        style={{
+                                                                            fontSize: '0.75rem',
+                                                                        }}
+                                                                    >
+                                                                        Payment Type
+                                                                    </div>
+                                                                    <div className="fw-semibold text-info">
+                                                                        Recurring
+                                                                    </div>
+                                                                </div>
+                                                            )}
+
+                                                            {fullProduct.pricing_options
+                                                                .minimumAmount && (
+                                                                <div className="col-md-4 col-6">
+                                                                    <div
+                                                                        className="text-muted"
+                                                                        style={{
+                                                                            fontSize: '0.75rem',
+                                                                        }}
+                                                                    >
+                                                                        Minimum Amount
+                                                                    </div>
+                                                                    <div className="fw-semibold">
+                                                                        R{' '}
+                                                                        {fullProduct.pricing_options.minimumAmount.toLocaleString(
+                                                                            'en-ZA',
+                                                                            {
+                                                                                minimumFractionDigits: 2,
+                                                                                maximumFractionDigits: 2,
+                                                                            }
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            )}
+
+                                                            {fullProduct.pricing_options
+                                                                .instalments &&
+                                                                fullProduct.pricing_options
+                                                                    .instalments.length > 0 && (
+                                                                    <div className="col-12">
+                                                                        <div
+                                                                            className="text-muted"
+                                                                            style={{
+                                                                                fontSize: '0.75rem',
+                                                                            }}
+                                                                        >
+                                                                            Installment Options
+                                                                        </div>
+                                                                        <div className="d-flex gap-2 flex-wrap mt-1">
+                                                                            {fullProduct.pricing_options.instalments.map(
+                                                                                (inst, idx) => (
+                                                                                    <span
+                                                                                        key={idx}
+                                                                                        className="badge bg-primary"
+                                                                                        style={{
+                                                                                            fontSize:
+                                                                                                '0.85rem',
+                                                                                            padding:
+                                                                                                '0.4rem 0.8rem',
+                                                                                        }}
+                                                                                    >
+                                                                                        {inst.count}
+                                                                                        x R
+                                                                                        {inst.amount.toLocaleString(
+                                                                                            'en-ZA'
+                                                                                        )}
+                                                                                    </span>
+                                                                                )
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                        </div>
+                                                    </div>
                                                 </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                    {p.feeNote && (
-                                        <div className="text-muted mt-2" style={{ fontSize: 12 }}>
-                                            {p.feeNote}
-                                        </div>
-                                    )}
+                                            </div>
+                                        )}
+
+                                        {/* Custom Fields */}
+                                        {p.fields && Object.keys(p.fields).length > 0 && (
+                                            <div className="mt-3">
+                                                <div className="text-muted small mb-2">
+                                                    Product Configuration
+                                                </div>
+                                                <div className="row g-2">
+                                                    {Object.entries(p.fields).map(([k, v]) => (
+                                                        <div className="col-md-4 col-6" key={k}>
+                                                            <div className="bg-light p-2 rounded">
+                                                                <div
+                                                                    className="text-muted"
+                                                                    style={{ fontSize: '0.75rem' }}
+                                                                >
+                                                                    {k}
+                                                                </div>
+                                                                <div className="fw-semibold">
+                                                                    {v}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {p.feeNote && (
+                                            <div
+                                                className="alert alert-info mt-3 mb-0"
+                                                style={{ fontSize: '0.85rem' }}
+                                            >
+                                                <FontAwesomeIcon icon={faClock} className="me-2" />
+                                                {p.feeNote}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <Dropdown align="end">
+                                        <Dropdown.Toggle
+                                            className="btn btn-light btn-sm"
+                                            style={{
+                                                borderRadius: '8px',
+                                                border: '1px solid var(--glass-border)',
+                                            }}
+                                        >
+                                            <FontAwesomeIcon icon={faEllipsisH} />
+                                        </Dropdown.Toggle>
+                                        <Dropdown.Menu>
+                                            <Dropdown.Item>Edit Configuration</Dropdown.Item>
+                                            <Dropdown.Item>Attach File</Dropdown.Item>
+                                            <Dropdown.Item className="text-danger">
+                                                Remove
+                                            </Dropdown.Item>
+                                        </Dropdown.Menu>
+                                    </Dropdown>
                                 </div>
-                                <Dropdown align="end">
-                                    <Dropdown.Toggle
-                                        className="btn btn-light"
-                                        style={{
-                                            borderRadius: 999,
-                                            border: '1px solid var(--glass-border)',
-                                        }}
-                                    >
-                                        <FontAwesomeIcon icon={faEllipsisH} />
-                                    </Dropdown.Toggle>
-                                    <Dropdown.Menu>
-                                        <Dropdown.Item>Edit</Dropdown.Item>
-                                        <Dropdown.Item>Attach File</Dropdown.Item>
-                                        <Dropdown.Item className="text-danger">
-                                            Remove
-                                        </Dropdown.Item>
-                                    </Dropdown.Menu>
-                                </Dropdown>
                             </div>
-                        </div>
-                    ))
+                        );
+                    })
                 )}
             </div>
+
+            {/* Total Pricing Summary */}
+            {filteredProducts.length > 0 &&
+                (() => {
+                    // Calculate totals
+                    let totalOneOff = 0;
+                    let hasRecurring = false;
+                    let totalMinimum = 0;
+                    let productCount = 0;
+
+                    filteredProducts.forEach((p) => {
+                        const fullProduct = availableProducts.find((ap) => ap.id === p.id);
+                        if (fullProduct?.pricing_options) {
+                            productCount++;
+                            if (fullProduct.pricing_options.oneOff) {
+                                totalOneOff += fullProduct.pricing_options.oneOff;
+                            }
+                            if (fullProduct.pricing_options.recurring) {
+                                hasRecurring = true;
+                            }
+                            if (fullProduct.pricing_options.minimumAmount) {
+                                totalMinimum += fullProduct.pricing_options.minimumAmount;
+                            }
+                        }
+                    });
+
+                    // Only show total if there's pricing data
+                    if (totalOneOff > 0 || hasRecurring || totalMinimum > 0) {
+                        return (
+                            <div
+                                className="card border-0 shadow-sm mt-4"
+                                style={{
+                                    borderRadius: '12px',
+                                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                                }}
+                            >
+                                <div className="card-body p-4">
+                                    <div className="row align-items-center text-white">
+                                        <div className="col-md-8">
+                                            <h6 className="mb-2 fw-bold">Total Product Value</h6>
+                                            <p
+                                                className="mb-0 opacity-90"
+                                                style={{ fontSize: '0.9rem' }}
+                                            >
+                                                Based on {productCount} product
+                                                {productCount !== 1 ? 's' : ''} with pricing
+                                                information
+                                            </p>
+                                        </div>
+                                        <div className="col-md-4 text-md-end mt-3 mt-md-0">
+                                            {totalOneOff > 0 && (
+                                                <div className="mb-2">
+                                                    <div
+                                                        className="opacity-75"
+                                                        style={{ fontSize: '0.85rem' }}
+                                                    >
+                                                        One-Time Fees
+                                                    </div>
+                                                    <div className="display-6 fw-bold">
+                                                        R{' '}
+                                                        {totalOneOff.toLocaleString('en-ZA', {
+                                                            minimumFractionDigits: 2,
+                                                            maximumFractionDigits: 2,
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            )}
+                                            {totalMinimum > 0 && (
+                                                <div className="mb-2">
+                                                    <div
+                                                        className="opacity-75"
+                                                        style={{ fontSize: '0.85rem' }}
+                                                    >
+                                                        Total Minimum
+                                                    </div>
+                                                    <div className="fs-4 fw-semibold">
+                                                        R{' '}
+                                                        {totalMinimum.toLocaleString('en-ZA', {
+                                                            minimumFractionDigits: 2,
+                                                            maximumFractionDigits: 2,
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            )}
+                                            {hasRecurring && (
+                                                <div
+                                                    className="badge bg-warning text-dark"
+                                                    style={{
+                                                        fontSize: '0.85rem',
+                                                        padding: '0.5rem 1rem',
+                                                    }}
+                                                >
+                                                    + Recurring Payments
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    }
+                    return null;
+                })()}
         </>
     );
 }
@@ -1243,6 +1663,85 @@ function EditableField({
                     </Button>
                 )}
             </div>
+        </div>
+    );
+}
+
+// -----------------------------------------------
+// Masked Account Field (shows last 4 digits for agents)
+// -----------------------------------------------
+function MaskedAccountField({
+    label,
+    value,
+    disabled,
+    onChange,
+}: {
+    label: string;
+    value: string;
+    disabled?: boolean;
+    onChange: (value: string) => Promise<void>;
+}) {
+    const session = useAuthStore((state) => state.session);
+    const isAgent = session?.user?.role === 'agent';
+
+    const [localValue, setLocalValue] = useState(value);
+    const [loading, setLoading] = useState(false);
+    const [showFull, setShowFull] = useState(false);
+
+    useEffect(() => setLocalValue(value), [value]);
+
+    const handleChange = async () => {
+        setLoading(true);
+        try {
+            await onChange(localValue);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // Mask account number: show last 4 digits for agents
+    const displayValue = () => {
+        if (!localValue) return '';
+        if (!isAgent || showFull) return localValue;
+
+        // For agents: mask all but last 4 digits
+        if (localValue.length <= 4) return localValue;
+        const masked = '*'.repeat(localValue.length - 4);
+        const last4 = localValue.slice(-4);
+        return `${masked}${last4}`;
+    };
+
+    return (
+        <div className="mb-3">
+            <label className="form-label">{label}</label>
+            <div className="d-flex gap-2 align-items-center">
+                <input
+                    type="text"
+                    className="form-control"
+                    value={showFull ? localValue : displayValue()}
+                    onChange={(e) => setLocalValue(e.target.value)}
+                    disabled={disabled || loading || (isAgent && !showFull)}
+                    readOnly={isAgent && !showFull}
+                />
+                {isAgent && value && (
+                    <Button
+                        variant="outline-secondary"
+                        size="sm"
+                        onClick={() => setShowFull(!showFull)}
+                        style={{ whiteSpace: 'nowrap' }}
+                    >
+                        {showFull ? 'Hide' : 'Show'}
+                    </Button>
+                )}
+                {localValue !== value && showFull && (
+                    <Button variant="success" size="sm" disabled={loading} onClick={handleChange}>
+                        {loading ? '...' : 'Save'}
+                    </Button>
+                )}
+            </div>
+            {isAgent && !showFull && value && (
+                <small className="text-muted">Last 4 digits shown for security</small>
+            )}
         </div>
     );
 }
@@ -1333,6 +1832,58 @@ function ClientMini({
                         value={data.postalAddress || ''}
                         disabled={saving !== null}
                         onChange={(v) => handleSave('postalAddress', v)}
+                    />
+                </div>
+
+                {/* Banking Details Section */}
+                <div className="col-12 mt-4">
+                    <h6 className="mb-3" style={{ fontWeight: 600, color: '#667eea' }}>
+                        Banking Details
+                    </h6>
+                </div>
+
+                <div className="col-md-6">
+                    <EditableField
+                        label="Bank Name"
+                        value={data.bankName || ''}
+                        disabled={saving !== null}
+                        onChange={(v) => handleSave('bankName', v)}
+                    />
+                </div>
+
+                <div className="col-md-6">
+                    <EditableField
+                        label="Account Type"
+                        value={data.accountType || ''}
+                        disabled={saving !== null}
+                        onChange={(v) => handleSave('accountType', v)}
+                    />
+                </div>
+
+                <div className="col-md-6">
+                    <EditableField
+                        label="Account Holder"
+                        value={data.accountHolder || ''}
+                        disabled={saving !== null}
+                        onChange={(v) => handleSave('accountHolder', v)}
+                    />
+                </div>
+
+                <div className="col-md-6">
+                    <MaskedAccountField
+                        label="Account Number"
+                        value={data.accountNumber || ''}
+                        disabled={saving !== null}
+                        onChange={(v) => handleSave('accountNumber', v)}
+                    />
+                </div>
+
+                <div className="col-md-6">
+                    <EditableField
+                        label="Branch Code"
+                        value={data.branchCode || ''}
+                        disabled={saving !== null}
+                        onChange={(v) => handleSave('branchCode', v)}
                     />
                 </div>
             </div>

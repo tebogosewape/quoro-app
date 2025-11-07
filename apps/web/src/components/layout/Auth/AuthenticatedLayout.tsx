@@ -62,7 +62,14 @@ export default function AuthenticatedLayout() {
                     ></div>
                 )}
 
-                <main className="flex-grow-1 p-3 main-content">
+                <main
+                    className="flex-grow-1 main-content"
+                    style={{
+                        backgroundColor: '#f8f9fa',
+                        overflowY: 'auto',
+                        padding: '24px',
+                    }}
+                >
                     <Outlet />
                 </main>
             </div>

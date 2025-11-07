@@ -31,6 +31,7 @@ import { MailModule } from './mail/mail.module';
 import { WhatsappModule } from './whatsapp/whatsapp.module';
 import { LeadsModule } from './leads/leads.module';
 import { ClientsModule } from './clients/clients.module';
+import { TasksModule } from './tasks/tasks.module';
 
 @Module({
     imports: [
@@ -86,6 +87,7 @@ import { ClientsModule } from './clients/clients.module';
         WhatsappModule,
         LeadsModule,
         ClientsModule,
+        TasksModule,
     ],
     controllers: [AppController, HealthController],
     providers: [

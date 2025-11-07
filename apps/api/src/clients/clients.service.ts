@@ -10,6 +10,7 @@ import { ZoomConnectService } from '@/sms/zoomconnect.service';
 import { WhatsappService } from '@/whatsapp/whatsapp.service';
 import { AuditService } from '@/modules/audit/audit.service';
 import { AuditAction } from '@/entities/audit-log.entity';
+import { UserRole } from '@/entities/user.entity';
 
 @Injectable()
 export class ClientsService {
@@ -26,8 +27,13 @@ export class ClientsService {
 
     /**
      * Create a new client from onboarding wizard
+     * If created by an agent, automatically assigns the client to that agent
      */
-    async create(createClientDto: CreateClientDto, userId?: string): Promise<Client> {
+    async create(
+        createClientDto: CreateClientDto,
+        userId?: string,
+        userRole?: UserRole
+    ): Promise<Client> {
         this.logger.log(`Creating new client with ID number: ${createClientDto.idNumber}`);
 
         // Check if client with same ID number already exists
@@ -52,15 +58,23 @@ export class ClientsService {
             );
         }
 
+        // If created by an agent, automatically assign the client to them
+        const assignedAgentId =
+            userRole === UserRole.AGENT ? userId : createClientDto.assignedAgentId;
+
         const client = this.clientRepository.create({
             ...createClientDto,
             email: createClientDto.email.toLowerCase(),
+            assignedAgentId,
             createdBy: userId,
             updatedBy: userId,
         });
 
         const savedClient = await this.clientRepository.save(client);
         this.logger.log(`Client created successfully with ID: ${savedClient.id}`);
+        if (assignedAgentId) {
+            this.logger.log(`Client assigned to agent: ${assignedAgentId}`);
+        }
 
         // Send welcome communications asynchronously (don't block the response)
         this.sendWelcomeCommunications(savedClient, userId).catch((error) => {

@@ -133,12 +133,14 @@ export const taskResponseSchema = z.object({
             email: z.string().nullish(),
         })
         .nullish(),
-    createdByUser: z.object({
-        id: z.string(),
-        firstName: z.string(),
-        lastName: z.string(),
-        email: z.string(),
-    }),
+    createdByUser: z
+        .object({
+            id: z.string(),
+            firstName: z.string(),
+            lastName: z.string(),
+            email: z.string(),
+        })
+        .nullish(),
 });
 
 export const dashboardOverviewSchema = z.object({

@@ -53,6 +53,13 @@ export type ClientDetailPayload = {
     createdAt?: string; // ISO
     updatedAt?: string; // ISO
 
+    // Banking details
+    bankName?: string | null;
+    accountType?: string | null;
+    accountHolder?: string | null;
+    accountNumber?: string | null;
+    branchCode?: string | null;
+
     products: Product[];
     todos: Todo[];
     notes: Note[];

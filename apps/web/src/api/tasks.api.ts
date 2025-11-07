@@ -55,12 +55,14 @@ export const taskResponseSchema = z.object({
             email: z.string().nullish(),
         })
         .nullish(),
-    createdByUser: z.object({
-        id: z.string(),
-        firstName: z.string(),
-        lastName: z.string(),
-        email: z.string(),
-    }),
+    createdByUser: z
+        .object({
+            id: z.string(),
+            firstName: z.string(),
+            lastName: z.string(),
+            email: z.string(),
+        })
+        .nullish(),
 });
 
 export type TaskResponse = z.infer<typeof taskResponseSchema>;
@@ -113,7 +115,12 @@ const getAuthHeaders = () => {
     return { Authorization: `Bearer ${token}` } as AxiosRequestConfig['headers'];
 };
 
-export const listTasks = async (query?: { clientId?: string; page?: number; limit?: number }) => {
+export const listTasks = async (query?: {
+    clientId?: string;
+    assignedToUserId?: string;
+    page?: number;
+    limit?: number;
+}) => {
     const response = await apiClient.get('/tasks', { params: query, headers: getAuthHeaders() });
     return taskListResponseSchema.parse(unwrap(response.data));
 };

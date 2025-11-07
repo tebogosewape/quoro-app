@@ -2,6 +2,8 @@ import {
     Controller,
     Post,
     Get,
+    Patch,
+    Param,
     Query,
     UploadedFile,
     UseInterceptors,
@@ -14,6 +16,7 @@ import { extname } from 'node:path';
 import { LeadsService } from './leads.service';
 import { ApiTags, ApiOperation, ApiConsumes, ApiBody, ApiResponse } from '@nestjs/swagger';
 import { QueryLeadsDto } from './dto/query-leads.dto';
+import { UpdateLeadDto } from './dto/update-lead.dto';
 
 @ApiTags('Leads')
 @Controller('leads')
@@ -180,5 +183,97 @@ export class LeadsController {
     async findAll(@Query() query: QueryLeadsDto) {
         const result = await this.leadsService.findAll(query);
         return { success: true, data: result };
+    }
+
+    /**
+     * Get a single lead by ID
+     */
+    @Get(':id')
+    @ApiOperation({
+        summary: 'Get lead by ID',
+        description: 'Retrieve a single lead by its UUID',
+    })
+    @ApiResponse({
+        status: 200,
+        description: 'Lead retrieved successfully',
+        schema: {
+            type: 'object',
+            properties: {
+                success: { type: 'boolean', example: true },
+                data: {
+                    type: 'object',
+                    properties: {
+                        id: { type: 'string', example: 'uuid-here' },
+                        timeReceived: { type: 'string', example: '2025-11-05T10:30:00Z' },
+                        franchise: { type: 'string', example: 'JHB North' },
+                        name: { type: 'string', example: 'John Doe' },
+                        cell: { type: 'string', example: '0821234567' },
+                        idNumber: { type: 'string', example: '8501015800081' },
+                        affiliate: { type: 'string', example: 'Google Ads' },
+                        message: { type: 'string', example: 'Interested in debt review' },
+                        allocatedTo: { type: 'string', example: 'Agent Smith' },
+                        leadOutcome: { type: 'string', example: 'Pending' },
+                        createdAt: { type: 'string', example: '2025-11-05T10:30:00Z' },
+                        updatedAt: { type: 'string', example: '2025-11-05T10:30:00Z' },
+                    },
+                },
+            },
+        },
+    })
+    @ApiResponse({
+        status: 404,
+        description: 'Lead not found',
+    })
+    async findOne(@Param('id') id: string) {
+        const lead = await this.leadsService.findOne(id);
+        return { success: true, data: lead };
+    }
+
+    /**
+     * Update a lead (e.g., assign to agent)
+     */
+    @Patch(':id')
+    @ApiOperation({
+        summary: 'Update lead',
+        description: 'Update lead information such as allocatedTo, leadOutcome, etc.',
+    })
+    @ApiBody({
+        description: 'Lead update data',
+        schema: {
+            type: 'object',
+            properties: {
+                allocatedTo: { type: 'string', example: 'Agent Smith', nullable: true },
+                leadOutcome: { type: 'string', example: 'Converted', nullable: true },
+                franchise: { type: 'string', example: 'JHB North', nullable: true },
+                name: { type: 'string', example: 'John Doe', nullable: true },
+                message: { type: 'string', example: 'Updated message', nullable: true },
+            },
+        },
+    })
+    @ApiResponse({
+        status: 200,
+        description: 'Lead updated successfully',
+        schema: {
+            type: 'object',
+            properties: {
+                success: { type: 'boolean', example: true },
+                data: {
+                    type: 'object',
+                    properties: {
+                        id: { type: 'string', example: 'uuid-here' },
+                        allocatedTo: { type: 'string', example: 'Agent Smith' },
+                        leadOutcome: { type: 'string', example: 'Converted' },
+                    },
+                },
+            },
+        },
+    })
+    @ApiResponse({
+        status: 404,
+        description: 'Lead not found',
+    })
+    async update(@Param('id') id: string, @Body() updateDto: UpdateLeadDto) {
+        const lead = await this.leadsService.update(id, updateDto);
+        return { success: true, data: lead };
     }
 }

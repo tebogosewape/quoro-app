@@ -33,6 +33,7 @@ export class ProductsController {
         UserRole.TEAM_LEADER,
         UserRole.OPERATIONS_MANAGER,
         UserRole.CHIEF_EXECUTIVE_OFFICER,
+        UserRole.AGENT,
         UserRole.VIEWER
     )
     @ApiOperation({ summary: 'List products' })
