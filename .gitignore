@@ -26,3 +26,11 @@ dist-ssr
 .env
 node_modules
 logs
+
+# Ignore CSV files in uploads directory
+apps/api/uploads/*.csv
+
+# WhatsApp session data (contains authentication credentials)
+apps/api/storage/whatsapp-session
+storage/whatsapp-session
+**/whatsapp-session

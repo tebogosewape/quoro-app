@@ -1,165 +1,324 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { BadRequestException, Injectable, InternalServerErrorException } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import axios from 'axios';
+import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { Client as WWebClient, LocalAuth, Message } from 'whatsapp-web.js';
+import {
+    WhatsAppMessage,
+    WhatsAppMessageStatus,
+    WhatsAppMessageDirection,
+} from '@/entities/whatsapp-message.entity';
+import { WhatsAppSession, WhatsAppSessionStatus } from '@/entities/whatsapp-session.entity';
+import { Client } from '@/entities/client.entity';
+import * as fs from 'fs';
+import * as path from 'path';
 
-type InboundMsg = {
-    ts: number;
-    from: string;
-    type: string;
-    text?: string;
-    raw: any;
-};
+const SENDER_NUMBER = '+27726058688'; // The company WhatsApp number
 
 @Injectable()
-export class WhatsappService {
-    private readonly token: string;
-    private readonly phoneNumberId: string;
-    private readonly version: string;
+export class WhatsappService implements OnModuleInit, OnModuleDestroy {
+    private readonly logger = new Logger(WhatsappService.name);
+    private client: WWebClient | null = null;
+    private qrCode: string | null = null;
+    private isReady = false;
+    private readonly sessionPath: string;
+    private session: WhatsAppSession | null = null;
 
-    private readonly defaultTemplate?: string;
-    private readonly defaultLang: string;
-
-    private inbox: InboundMsg[] = [];
-    private readonly inboxCap = 200;
-
-    constructor(private readonly config: ConfigService) {
-        this.token = this.must('WHATSAPP_TOKEN');
-        this.phoneNumberId = this.must('WHATSAPP_PHONE_NUMBER_ID');
-        this.version = this.config.get<string>('WHATSAPP_API_VERSION') || 'v22.0';
-
-        this.defaultTemplate = this.config.get<string>('WHATSAPP_DEFAULT_TEMPLATE');
-        this.defaultLang = this.config.get<string>('WHATSAPP_DEFAULT_LANG') || 'en_US';
+    constructor(
+        @InjectRepository(WhatsAppMessage)
+        private messageRepo: Repository<WhatsAppMessage>,
+        @InjectRepository(WhatsAppSession)
+        private sessionRepo: Repository<WhatsAppSession>,
+        @InjectRepository(Client)
+        private clientRepo: Repository<Client>
+    ) {
+        // Store session data in apps/api/storage/whatsapp-session
+        this.sessionPath = path.join(process.cwd(), 'storage', 'whatsapp-session');
+        if (!fs.existsSync(this.sessionPath)) {
+            fs.mkdirSync(this.sessionPath, { recursive: true });
+        }
     }
 
-    private must(key: string): string {
-        const v = this.config.get<string>(key);
-        if (!v) throw new Error(`Missing required env: ${key}`);
-        return v;
+    async onModuleInit() {
+        this.logger.log('Initializing WhatsApp service...');
+        await this.initializeSession();
+        await this.initializeClient();
     }
 
-    private apiBase() {
-        return `https://graph.facebook.com/${this.version}/${this.phoneNumberId}/messages`;
+    async onModuleDestroy() {
+        this.logger.log('Destroying WhatsApp client...');
+        if (this.client) {
+            await this.client.destroy();
+        }
     }
 
-    private sanitizeNumber(msisdn: string) {
-        return (msisdn || '').replace(/[^\d]/g, '');
+    private async initializeSession() {
+        // Find or create the session record
+        let session = await this.sessionRepo.findOne({
+            where: { sessionName: 'default' },
+        });
+
+        if (!session) {
+            session = this.sessionRepo.create({
+                sessionName: 'default',
+                status: WhatsAppSessionStatus.DISCONNECTED,
+                phoneNumber: SENDER_NUMBER,
+            });
+            await this.sessionRepo.save(session);
+        }
+
+        this.session = session;
     }
 
-    private isSessionError(graph: any): boolean {
-        // Heuristic: common 24h window errors include code 470 or messages mentioning 24 hours/session
-        const s = JSON.stringify(graph || '').toLowerCase();
-        return (
-            (s.includes('24') && s.includes('hour')) ||
-            (s.includes('outside') && s.includes('session')) ||
-            graph?.error?.code === 470
-        );
-    }
-
-    async sendText(toRaw: string, body: string) {
-        const to = this.sanitizeNumber(toRaw);
-        if (!to)
-            throw new BadRequestException({ message: 'Recipient must be digits only', to: toRaw });
-
+    private async initializeClient() {
         try {
-            const res = await axios.post(
-                this.apiBase(),
-                {
-                    messaging_product: 'whatsapp',
-                    to,
-                    type: 'text',
-                    text: { preview_url: false, body },
+            this.client = new WWebClient({
+                authStrategy: new LocalAuth({
+                    clientId: 'default',
+                    dataPath: this.sessionPath,
+                }),
+                puppeteer: {
+                    headless: true,
+                    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium',
+                    args: [
+                        '--no-sandbox',
+                        '--disable-setuid-sandbox',
+                        '--disable-dev-shm-usage',
+                        '--disable-accelerated-2d-canvas',
+                        '--no-first-run',
+                        '--no-zygote',
+                        '--disable-gpu',
+                    ],
                 },
-                {
-                    headers: {
-                        Authorization: `Bearer ${this.token}`,
-                        'Content-Type': 'application/json',
-                    },
-                    timeout: 10000,
-                }
-            );
-            return res.data;
-        } catch (err: any) {
-            // Bubble real Graph error so you can see why
-            const status = err?.response?.status ?? 500;
-            const graph = err?.response?.data;
+            });
 
-            // If outside 24h (no active session) and a default template is configured, auto-fallback
-            if (this.defaultTemplate && this.isSessionError(graph)) {
-                try {
-                    const fallback = await this.sendTemplate(
-                        to,
-                        this.defaultTemplate,
-                        this.defaultLang
-                    );
-                    return {
-                        note: 'Text failed outside 24h window; sent default template instead.',
-                        fallback,
-                    };
-                } catch (fallbackErr: any) {
-                    throw new InternalServerErrorException({
-                        message: 'Text failed (no session) and template fallback also failed',
-                        text_error: graph,
-                        template_error: fallbackErr?.response?.data ?? String(fallbackErr),
-                        to,
-                        phoneNumberId: this.phoneNumberId,
-                    });
+            // QR code event
+            this.client.on('qr', async (qr: string) => {
+                this.logger.log('QR Code received, please scan it');
+                this.qrCode = qr;
+                if (this.session) {
+                    this.session.qrCode = qr;
+                    this.session.status = WhatsAppSessionStatus.QR_CODE;
+                    await this.sessionRepo.save(this.session);
                 }
+            });
+
+            // Ready event
+            this.client.on('ready', async () => {
+                this.logger.log('WhatsApp client is ready!');
+                this.isReady = true;
+                this.qrCode = null;
+                if (this.session) {
+                    this.session.status = WhatsAppSessionStatus.CONNECTED;
+                    this.session.lastConnectedAt = new Date();
+                    this.session.qrCode = undefined;
+                    await this.sessionRepo.save(this.session);
+                }
+            });
+
+            // Message received event
+            this.client.on('message', async (msg: Message) => {
+                await this.handleIncomingMessage(msg);
+            });
+
+            // Disconnected event
+            this.client.on('disconnected', async (reason: string) => {
+                this.logger.warn(`WhatsApp client disconnected: ${reason}`);
+                this.isReady = false;
+                if (this.session) {
+                    this.session.status = WhatsAppSessionStatus.DISCONNECTED;
+                    this.session.lastDisconnectedAt = new Date();
+                    this.session.errorMessage = reason;
+                    await this.sessionRepo.save(this.session);
+                }
+            });
+
+            // Authentication failure event
+            this.client.on('auth_failure', async (msg: string) => {
+                this.logger.error(`Authentication failure: ${msg}`);
+                if (this.session) {
+                    this.session.status = WhatsAppSessionStatus.FAILED;
+                    this.session.errorMessage = msg;
+                    await this.sessionRepo.save(this.session);
+                }
+            });
+
+            // Initialize the client
+            await this.client.initialize();
+
+            if (this.session) {
+                this.session.status = WhatsAppSessionStatus.CONNECTING;
+                await this.sessionRepo.save(this.session);
+            }
+        } catch (error: any) {
+            this.logger.error('Failed to initialize WhatsApp client', error);
+            if (this.session) {
+                this.session.status = WhatsAppSessionStatus.FAILED;
+                this.session.errorMessage = error?.message || 'Unknown error';
+                await this.sessionRepo.save(this.session);
+            }
+        }
+    }
+
+    private async handleIncomingMessage(msg: Message) {
+        try {
+            // Get sender number
+            const fromNumber = msg.from.replace('@c.us', '');
+
+            // Find client by phone number
+            const client = await this.clientRepo.findOne({
+                where: { phoneNumber: fromNumber },
+            });
+
+            if (!client) {
+                this.logger.warn(`Received message from unknown number: ${fromNumber}`);
+                return;
             }
 
-            throw new InternalServerErrorException({
-                message: 'Failed to send WhatsApp text',
-                status,
-                graph,
-                to,
-                phoneNumberId: this.phoneNumberId,
+            // Save message to database
+            const message = this.messageRepo.create({
+                clientId: client.id,
+                direction: WhatsAppMessageDirection.INBOUND,
+                status: WhatsAppMessageStatus.DELIVERED,
+                fromNumber: fromNumber,
+                toNumber: SENDER_NUMBER,
+                message: msg.body,
+                whatsappMessageId: msg.id._serialized,
+                sentAt: new Date(msg.timestamp * 1000),
+                deliveredAt: new Date(),
+                metadata: {
+                    hasMedia: msg.hasMedia,
+                    type: msg.type,
+                },
             });
+
+            await this.messageRepo.save(message);
+            this.logger.log(`Saved incoming message from ${fromNumber}`);
+
+            // Handle media if present
+            if (msg.hasMedia) {
+                try {
+                    const media = await msg.downloadMedia();
+                    if (media) {
+                        // Save media file
+                        const uploadsDir = path.join(process.cwd(), 'uploads', 'whatsapp');
+                        if (!fs.existsSync(uploadsDir)) {
+                            fs.mkdirSync(uploadsDir, { recursive: true });
+                        }
+
+                        const filename = `${Date.now()}_${msg.id._serialized}.${media.mimetype.split('/')[1]}`;
+                        const filepath = path.join(uploadsDir, filename);
+
+                        fs.writeFileSync(filepath, media.data, 'base64');
+
+                        message.mediaUrl = `/uploads/whatsapp/${filename}`;
+                        message.mediaMimeType = media.mimetype;
+                        message.mediaFilename = filename;
+                        await this.messageRepo.save(message);
+                    }
+                } catch (error: any) {
+                    this.logger.error('Failed to download media', error);
+                }
+            }
+        } catch (error: any) {
+            this.logger.error('Failed to handle incoming message', error);
         }
     }
 
-    async sendTemplate(toRaw: string, name: string, languageCode = 'en_US', components?: any[]) {
-        const to = this.sanitizeNumber(toRaw);
-        if (!to)
-            throw new BadRequestException({ message: 'Recipient must be digits only', to: toRaw });
+    async sendMessage(
+        clientId: string,
+        message: string,
+        userId?: string
+    ): Promise<WhatsAppMessage> {
+        if (!this.isReady || !this.client) {
+            throw new Error('WhatsApp client is not ready');
+        }
+
+        // Get client phone number
+        const client = await this.clientRepo.findOne({ where: { id: clientId } });
+        if (!client) {
+            throw new Error('Client not found');
+        }
+
+        // Create message record
+        const messageRecord = this.messageRepo.create({
+            clientId,
+            userId,
+            direction: WhatsAppMessageDirection.OUTBOUND,
+            status: WhatsAppMessageStatus.PENDING,
+            fromNumber: SENDER_NUMBER,
+            toNumber: client.phoneNumber,
+            message,
+        });
+
+        await this.messageRepo.save(messageRecord);
 
         try {
-            const res = await axios.post(
-                this.apiBase(),
-                {
-                    messaging_product: 'whatsapp',
-                    to,
-                    type: 'template',
-                    template: { name, language: { code: languageCode }, components },
-                },
-                {
-                    headers: {
-                        Authorization: `Bearer ${this.token}`,
-                        'Content-Type': 'application/json',
-                    },
-                    timeout: 10000,
-                }
-            );
-            return res.data;
-        } catch (err: any) {
-            const status = err?.response?.status ?? 500;
-            const graph = err?.response?.data;
-            throw new InternalServerErrorException({
-                message: 'Failed to send WhatsApp template',
-                status,
-                graph,
-                to,
-                phoneNumberId: this.phoneNumberId,
-            });
+            // Format number for WhatsApp
+            const formattedNumber = client.phoneNumber.replace(/\D/g, '') + '@c.us';
+
+            // Send message
+            const sentMessage = await this.client.sendMessage(formattedNumber, message);
+
+            // Update message record
+            messageRecord.status = WhatsAppMessageStatus.SENT;
+            messageRecord.sentAt = new Date();
+            messageRecord.whatsappMessageId = sentMessage.id._serialized;
+            await this.messageRepo.save(messageRecord);
+
+            this.logger.log(`Message sent to ${client.phoneNumber}`);
+            return messageRecord;
+        } catch (error: any) {
+            this.logger.error('Failed to send message', error);
+            messageRecord.status = WhatsAppMessageStatus.FAILED;
+            messageRecord.errorMessage = error?.message || 'Unknown error';
+            await this.messageRepo.save(messageRecord);
+            throw error;
         }
     }
 
-    // webhook helpers
-    recordInbound(msg: InboundMsg) {
-        this.inbox.push(msg);
-        if (this.inbox.length > this.inboxCap) this.inbox.shift();
+    async getMessages(clientId: string, limit = 50): Promise<WhatsAppMessage[]> {
+        return this.messageRepo.find({
+            where: { clientId },
+            order: { createdAt: 'DESC' },
+            take: limit,
+            relations: ['user'],
+        });
     }
 
-    listInbox(limit = 20) {
-        return this.inbox.slice(-limit).reverse();
+    async getQrCode(): Promise<string | null> {
+        return this.qrCode;
+    }
+
+    async getSessionStatus(): Promise<WhatsAppSession | null> {
+        return this.session;
+    }
+
+    isClientReady(): boolean {
+        return this.isReady;
+    }
+
+    async resetSession(): Promise<void> {
+        this.logger.log('Resetting WhatsApp session...');
+
+        if (this.client) {
+            await this.client.destroy();
+        }
+
+        // Delete session files
+        if (fs.existsSync(this.sessionPath)) {
+            fs.rmSync(this.sessionPath, { recursive: true, force: true });
+        }
+
+        // Update database
+        if (this.session) {
+            this.session.status = WhatsAppSessionStatus.DISCONNECTED;
+            this.session.qrCode = undefined;
+            this.session.lastDisconnectedAt = new Date();
+            await this.sessionRepo.save(this.session);
+        }
+
+        // Reinitialize
+        await this.initializeClient();
     }
 }

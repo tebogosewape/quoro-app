@@ -137,6 +137,8 @@ export const createClientDtoSchema = z.object({
     title: z.string().max(50, { message: 'Title must not exceed 50 characters' }).optional(),
     language: z.string().max(50, { message: 'Language must not exceed 50 characters' }).optional(),
     gender: z.string().max(10, { message: 'Gender must not exceed 10 characters' }).optional(),
+    // Lead Reference (if this client is being created from a lead)
+    leadId: z.string().uuid({ message: 'Invalid lead ID format' }).optional(),
 });
 
 export type CreateClientDto = z.infer<typeof createClientDtoSchema>;
@@ -155,6 +157,7 @@ export type UpdateClientDto = z.infer<typeof updateClientDtoSchema>;
 export const clientSchema = z
     .object({
         id: z.string().uuid(),
+        fileReference: z.string().optional().nullable(),
         idNumber: z.string(),
         firstName: z.string(),
         lastName: z.string(),
@@ -224,6 +227,9 @@ export const clientSchema = z
         title: z.string().optional().nullable(),
         language: z.string().optional().nullable(),
         gender: z.string().optional().nullable(),
+        // Credit report tracking
+        creditReportViewedAt: z.string().or(z.null()).optional(),
+        creditReportViewedBy: z.string().or(z.null()).optional(),
         // Optional nested fields sometimes included by backend
         assignedAgent: z
             .object({
@@ -260,10 +266,14 @@ export const clientSchema = z
                         action: z.string().optional(),
                         entityType: z.string().optional(),
                         entityId: z.string().optional(),
+                        actorType: z.string().optional(),
+                        changes: z.record(z.unknown()).nullable().optional(),
+                        metadata: z.record(z.unknown()).nullable().optional(),
                         actor: z
                             .object({
                                 firstName: z.string().optional(),
                                 lastName: z.string().optional(),
+                                email: z.string().optional(),
                             })
                             .optional(),
                     })
@@ -573,6 +583,30 @@ export const getClientCommunications = async (clientId: string) => {
         headers: getAuthHeaders(),
     });
     return response.data.data;
+};
+
+/**
+ * Log onboarding step completion (for audit tracking)
+ * @param step - Step name (e.g., 'personal', 'products', 'banking')
+ * @param clientId - Optional client ID if already created
+ * @param metadata - Optional additional metadata
+ */
+export const logOnboardingStep = async (
+    step: string,
+    clientId?: string,
+    metadata?: Record<string, unknown>
+): Promise<void> => {
+    await apiClient.post(
+        '/audit/onboarding-step',
+        {
+            step,
+            clientId,
+            metadata,
+        },
+        {
+            headers: getAuthHeaders(),
+        }
+    );
 };
 
 /**

@@ -34,6 +34,11 @@ export class SelectedProductDto {
 }
 
 export class CreateClientDto {
+    // File Reference (auto-generated, not provided by client)
+    @IsOptional()
+    @IsString()
+    fileReference?: string;
+
     // Personal Information
     @IsString()
     @Length(13, 13, { message: 'ID number must be exactly 13 digits' })
@@ -156,6 +161,11 @@ export class CreateClientDto {
     @IsOptional()
     @IsString()
     assignedAgentId?: string;
+
+    // Lead Reference (if this client is being created from a lead)
+    @IsOptional()
+    @IsString()
+    leadId?: string;
 
     // Document Management
     @IsOptional()

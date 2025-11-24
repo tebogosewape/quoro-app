@@ -9,19 +9,37 @@ import {
     UseInterceptors,
     Body,
     BadRequestException,
+    UseGuards,
+    HttpCode,
+    HttpStatus,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'node:path';
 import { LeadsService } from './leads.service';
-import { ApiTags, ApiOperation, ApiConsumes, ApiBody, ApiResponse } from '@nestjs/swagger';
+import {
+    ApiTags,
+    ApiOperation,
+    ApiConsumes,
+    ApiBody,
+    ApiResponse,
+    ApiBearerAuth,
+} from '@nestjs/swagger';
 import { QueryLeadsDto } from './dto/query-leads.dto';
 import { UpdateLeadDto } from './dto/update-lead.dto';
+import { Throttle } from '@nestjs/throttler';
+import { AuthenticatedUser, CurrentUser, JwtAuthGuard } from '@/auth';
+import { AuditService } from '@/modules/audit/audit.service';
 
 @ApiTags('Leads')
 @Controller('leads')
+@ApiBearerAuth('JWT-auth')
+@UseGuards(JwtAuthGuard)
 export class LeadsController {
-    constructor(private readonly leadsService: LeadsService) {}
+    constructor(
+        private readonly leadsService: LeadsService,
+        private readonly auditService: AuditService
+    ) {}
 
     /**
      * Upload and import a CSV.
@@ -131,6 +149,7 @@ export class LeadsController {
 
     /** Get all leads with pagination and filtering */
     @Get()
+    @Throttle(200, 60) // Allow 200 requests per 60 seconds for leads endpoint
     @ApiOperation({
         summary: 'Get all leads',
         description: 'Retrieve a paginated list of leads with optional filtering and search',
@@ -183,6 +202,70 @@ export class LeadsController {
     async findAll(@Query() query: QueryLeadsDto) {
         const result = await this.leadsService.findAll(query);
         return { success: true, data: result };
+    }
+
+    /** Get all unassigned leads for bulk operations */
+    @Get('bulk/unassigned')
+    @ApiOperation({
+        summary: 'Get all unassigned leads',
+        description:
+            'Retrieve all leads without allocation for bulk assignment operations. Limited to 5000 leads.',
+    })
+    @ApiResponse({
+        status: 200,
+        description: 'Unassigned leads retrieved successfully',
+        schema: {
+            type: 'object',
+            properties: {
+                success: { type: 'boolean', example: true },
+                data: {
+                    type: 'object',
+                    properties: {
+                        leads: {
+                            type: 'array',
+                            items: { type: 'object' },
+                        },
+                        total: { type: 'number', example: 150 },
+                    },
+                },
+            },
+        },
+    })
+    async getAllUnassigned() {
+        const leads = await this.leadsService.findAllUnassigned();
+        return { success: true, data: { leads, total: leads.length } };
+    }
+
+    /** Get all assigned leads for bulk operations */
+    @Get('bulk/assigned')
+    @ApiOperation({
+        summary: 'Get all assigned leads',
+        description:
+            'Retrieve all leads with allocations for bulk unassignment operations. Limited to 5000 leads.',
+    })
+    @ApiResponse({
+        status: 200,
+        description: 'Assigned leads retrieved successfully',
+        schema: {
+            type: 'object',
+            properties: {
+                success: { type: 'boolean', example: true },
+                data: {
+                    type: 'object',
+                    properties: {
+                        leads: {
+                            type: 'array',
+                            items: { type: 'object' },
+                        },
+                        total: { type: 'number', example: 450 },
+                    },
+                },
+            },
+        },
+    })
+    async getAllAssigned() {
+        const leads = await this.leadsService.findAllAssigned();
+        return { success: true, data: { leads, total: leads.length } };
     }
 
     /**
@@ -272,8 +355,41 @@ export class LeadsController {
         status: 404,
         description: 'Lead not found',
     })
-    async update(@Param('id') id: string, @Body() updateDto: UpdateLeadDto) {
-        const lead = await this.leadsService.update(id, updateDto);
+    async update(
+        @Param('id') id: string,
+        @Body() updateDto: UpdateLeadDto,
+        @CurrentUser() user: AuthenticatedUser
+    ) {
+        const lead = await this.leadsService.update(id, updateDto, user.id);
         return { success: true, data: lead };
+    }
+
+    /**
+     * Log when an agent views a lead (for audit tracking)
+     */
+    @Post(':id/view')
+    @ApiOperation({
+        summary: 'Log lead view',
+        description: 'Records when an agent views/clicks on a lead task for audit purposes',
+    })
+    @ApiResponse({
+        status: 200,
+        description: 'Lead view logged successfully',
+    })
+    async logLeadView(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+        const lead = await this.leadsService.findOne(id);
+
+        await this.auditService.logLeadViewed({
+            leadId: id,
+            agentId: user.id,
+            metadata: {
+                leadName: lead.name,
+                leadCell: lead.cell,
+                agentEmail: user.email,
+                viewedFrom: 'dashboard',
+            },
+        });
+
+        return { success: true, message: 'Lead view logged' };
     }
 }

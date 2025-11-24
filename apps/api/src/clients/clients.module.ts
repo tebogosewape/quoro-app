@@ -4,6 +4,8 @@ import { ClientsController } from './clients.controller';
 import { ClientsService } from './clients.service';
 import { ExperianReportService } from './experian-report.service';
 import { Client } from '@/entities/client.entity';
+import { Lead } from '@/entities/lead.entity';
+import { AuditLog } from '@/entities/audit-log.entity';
 import { MailModule } from '@/mail/mail.module';
 import { SmsModule } from '@/sms/sms.module';
 import { WhatsappModule } from '@/whatsapp/whatsapp.module';
@@ -11,7 +13,7 @@ import { AuditModule } from '@/modules/audit/audit.module';
 
 @Module({
     imports: [
-        TypeOrmModule.forFeature([Client]),
+        TypeOrmModule.forFeature([Client, Lead, AuditLog]),
         MailModule,
         SmsModule,
         WhatsappModule,

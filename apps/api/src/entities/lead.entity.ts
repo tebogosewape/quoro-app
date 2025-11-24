@@ -41,6 +41,9 @@ export class Lead {
     @Column({ type: 'varchar', length: 120, nullable: true })
     leadOutcome!: string | null; // "Lead Outcome"
 
+    @Column({ type: 'uuid', nullable: true })
+    clientId!: string | null; // Reference to client if lead was converted
+
     @CreateDateColumn()
     createdAt!: Date;
 

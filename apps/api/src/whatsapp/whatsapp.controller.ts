@@ -1,108 +1,119 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { Body, Controller, Get, Post, Query, Req, Res } from '@nestjs/common';
-import { ApiTags, ApiBody, ApiQuery, ApiOperation } from '@nestjs/swagger';
-import { ConfigService } from '@nestjs/config';
-import { Request, Response } from 'express';
+import {
+    Body,
+    Controller,
+    Get,
+    Post,
+    Query,
+    UseGuards,
+    Request,
+    Param,
+} from '@nestjs/common';
+import {
+    ApiTags,
+    ApiBody,
+    ApiQuery,
+    ApiOperation,
+    ApiBearerAuth,
+    ApiParam,
+} from '@nestjs/swagger';
 import { WhatsappService } from './whatsapp.service';
-import { SendTextDto } from './dto/send-text.dto';
-import { SendTemplateDto } from './dto/send-template.dto';
+import { SendMessageDto } from './dto/whatsapp.dto';
+import { JwtAuthGuard } from '@/auth/jwt-auth.guard';
+import { RolesGuard } from '@/auth/roles.guard';
+import { Roles } from '@/auth/roles.decorator';
+import { UserRole } from '@/entities/user.entity';
 
 @ApiTags('whatsapp')
+@ApiBearerAuth('JWT-auth')
+@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('whatsapp')
 export class WhatsappController {
-    constructor(
-        private readonly svc: WhatsappService,
-        private readonly config: ConfigService
-    ) {}
+    constructor(private readonly whatsappService: WhatsappService) {}
 
-    // --- Sending -------------------------------------------------------------
-
-    @Post('send/text')
-    @ApiOperation({ summary: 'Send a WhatsApp text message' })
-    @ApiBody({ type: SendTextDto })
-    async sendText(@Body() dto: SendTextDto) {
-        const to = dto.to.replace(/^"+/, '');
-        return this.svc.sendText(to, dto.message);
+    // QR Code endpoint - only CEO can access
+    @Get('qr-code')
+    @Roles(UserRole.CHIEF_EXECUTIVE_OFFICER)
+    @ApiOperation({ summary: 'Get QR code for WhatsApp authentication (CEO only)' })
+    async getQrCode() {
+        const qrCode = await this.whatsappService.getQrCode();
+        return {
+            success: true,
+            data: {
+                qrCode,
+                message: qrCode
+                    ? 'Scan this QR code with WhatsApp'
+                    : 'Already connected or connecting',
+            },
+        };
     }
 
-    @Post('send/template')
-    @ApiOperation({ summary: 'Send a WhatsApp template message' })
-    @ApiBody({ type: SendTemplateDto })
-    async sendTemplate(@Body() dto: SendTemplateDto) {
-        const to = dto.to.replace(/^"+/, '');
-        return this.svc.sendTemplate(to, dto.name, dto.languageCode, dto.components);
+    // Session status - only CEO can access
+    @Get('session/status')
+    @Roles(UserRole.CHIEF_EXECUTIVE_OFFICER)
+    @ApiOperation({ summary: 'Get WhatsApp session status (CEO only)' })
+    async getSessionStatus() {
+        const session = await this.whatsappService.getSessionStatus();
+        return {
+            success: true,
+            data: {
+                session,
+                isReady: this.whatsappService.isClientReady(),
+            },
+        };
     }
 
-    // --- Webhook: verification (GET) ----------------------------------------
-
-    @Get('webhook')
-    @ApiOperation({ summary: 'Webhook verification (Meta/Facebook)' })
-    @ApiQuery({ name: 'hub.mode', required: true, description: 'Mode (should be "subscribe")' })
-    @ApiQuery({ name: 'hub.verify_token', required: true, description: 'Verification token' })
-    @ApiQuery({ name: 'hub.challenge', required: true, description: 'Challenge string' })
-    verify(
-        @Query('hub.mode') mode: string,
-        @Query('hub.verify_token') verifyToken: string,
-        @Query('hub.challenge') challenge: string,
-        @Res() res: Response
-    ) {
-        const token = this.config.get<string>('WHATSAPP_VERIFY_TOKEN');
-        if (mode === 'subscribe' && verifyToken === token) {
-            return res.status(200).send(challenge);
-        }
-        return res.sendStatus(403);
+    // Reset session - only CEO can access
+    @Post('session/reset')
+    @Roles(UserRole.CHIEF_EXECUTIVE_OFFICER)
+    @ApiOperation({ summary: 'Reset WhatsApp session (CEO only)' })
+    async resetSession() {
+        await this.whatsappService.resetSession();
+        return {
+            success: true,
+            message: 'Session reset initiated. Please scan the new QR code.',
+        };
     }
 
-    // --- Webhook: receiver (POST) -------------------------------------------
-
-    @Post('webhook')
-    @ApiOperation({ summary: 'Webhook receiver (Meta/Facebook)' })
-    receive(@Req() req: Request, @Res() res: Response) {
-        // Meta requires a fast 200 OK
-        res.sendStatus(200);
-
-        const body = req.body as any;
-        try {
-            const entries = body?.entry ?? [];
-            for (const entry of entries) {
-                const changes = entry?.changes ?? [];
-                for (const change of changes) {
-                    const value = change?.value;
-                    const msg = value?.messages?.[0];
-                    if (!msg) continue;
-
-                    const from = msg.from; // e.g. "2772..."
-                    const type = msg.type; // "text", "image", ...
-                    const text = msg.text?.body;
-
-                    this.svc.recordInbound({
-                        ts: Date.now(),
-                        from,
-                        type,
-                        text,
-                        raw: msg,
-                    });
-
-                    // You could auto-reply here if you want:
-                    // if (type === 'text') this.svc.sendText(from, `Got: ${text}`);
-                }
-            }
-        } catch {
-            // ignore — never throw from webhook
-        }
+    // Send message to client
+    @Post('send')
+    @ApiOperation({ summary: 'Send WhatsApp message to a client' })
+    @ApiBody({ type: SendMessageDto })
+    async sendMessage(@Body() dto: SendMessageDto, @Request() req: any) {
+        const userId = req.user?.userId;
+        const message = await this.whatsappService.sendMessage(dto.clientId, dto.message, userId);
+        return {
+            success: true,
+            data: message,
+        };
     }
 
-    // --- Demo inbox (pull what we've received & stored) ---------------------
+    // Get messages for a client
+    @Get('messages/:clientId')
+    @ApiOperation({ summary: 'Get WhatsApp messages for a client' })
+    @ApiParam({ name: 'clientId', description: 'Client ID' })
+    @ApiQuery({ name: 'limit', required: false, description: 'Number of messages to retrieve' })
+    async getMessages(@Param('clientId') clientId: string, @Query('limit') limit?: string) {
+        const parsedLimit = limit ? parseInt(limit, 10) : 50;
+        const messages = await this.whatsappService.getMessages(clientId, parsedLimit);
+        return {
+            success: true,
+            data: messages,
+        };
+    }
 
-    @Get('inbox')
-    @ApiOperation({ summary: 'List received WhatsApp messages (demo inbox)' })
-    @ApiQuery({
-        name: 'limit',
-        required: false,
-        description: 'Number of messages to return (default 20, max 200)',
-    })
-    inbox(@Query('limit') limit?: string) {
-        const n = Math.max(1, Math.min(200, Number(limit) || 20));
-        return this.svc.listInbox(n);
+    // Health check - accessible to all authenticated users
+    @Get('health')
+    @ApiOperation({ summary: 'Check if WhatsApp service is ready' })
+    async health() {
+        return {
+            success: true,
+            data: {
+                isReady: this.whatsappService.isClientReady(),
+                message: this.whatsappService.isClientReady()
+                    ? 'WhatsApp service is ready'
+                    : 'WhatsApp service is not ready',
+            },
+        };
     }
 }

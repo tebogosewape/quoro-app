@@ -1,6 +1,21 @@
 # syntax=docker/dockerfile:1
 FROM node:20-alpine
 
+# Install Chromium and dependencies for Puppeteer/WhatsApp Web
+RUN apk add --no-cache \
+    chromium \
+    nss \
+    freetype \
+    harfbuzz \
+    ca-certificates \
+    ttf-freefont \
+    udev \
+    xvfb
+
+# Tell Puppeteer to skip downloading Chromium and use the installed one
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
+    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+
 WORKDIR /app
 
 # Copy root package files for workspace setup

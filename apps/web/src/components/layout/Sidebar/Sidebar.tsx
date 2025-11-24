@@ -15,12 +15,14 @@ type SidebarProps = {
 export default function Sidebar({ isOpen, onCloseSidebar }: SidebarProps) {
     const navigate = useNavigate();
     const [activeAccordion, setActiveAccordion] = useState<string | null>(null);
+    const { session } = useAuthStore();
 
     const canViewDashboard = hasPermission('view-dashboard');
     const canViewClients = hasPermission('view-clients');
     const canCreateClients = hasPermission('create-clients') || hasPermission('manage-clients');
     const canManageRoles = hasPermission('roles.manage');
     const canManageLeads = hasPermission('manage-leads');
+    const isCEO = session?.user?.role === 'chief_executive_officer';
 
     // Lock/unlock body scroll on mobile when sidebar opens
     useEffect(() => {
@@ -385,6 +387,28 @@ export default function Sidebar({ isOpen, onCloseSidebar }: SidebarProps) {
                                         </svg>
                                         Commission Settings
                                     </Nav.Link>
+                                    {isCEO && (
+                                        <Nav.Link
+                                            as={NavLink}
+                                            to="/admin/whatsapp"
+                                            className="sidebar-sublink"
+                                        >
+                                            <svg
+                                                width="16"
+                                                height="16"
+                                                viewBox="0 0 24 24"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                strokeWidth="2"
+                                                strokeLinecap="round"
+                                                strokeLinejoin="round"
+                                                style={{ marginRight: '8px' }}
+                                            >
+                                                <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+                                            </svg>
+                                            WhatsApp Management
+                                        </Nav.Link>
+                                    )}
                                 </Nav>
                             </Accordion.Body>
                         </Accordion.Item>

@@ -10,12 +10,16 @@ import dayjs from 'dayjs';
 import * as fs from 'node:fs';
 import { parse } from 'fast-csv';
 import { Lead } from '@/entities/lead.entity';
+import { AuditService } from '@/modules/audit/audit.service';
 
 @Injectable()
 export class LeadsService {
     private readonly logger = new Logger(LeadsService.name);
 
-    constructor(@InjectRepository(Lead) private readonly repo: Repository<Lead>) {}
+    constructor(
+        @InjectRepository(Lead) private readonly repo: Repository<Lead>,
+        private readonly auditService: AuditService
+    ) {}
 
     async create(dto: CreateLeadDto): Promise<Lead> {
         const lead = this.repo.create(dto);
@@ -211,14 +215,102 @@ export class LeadsService {
         };
     }
 
-    async update(id: string, dto: UpdateLeadDto): Promise<Lead> {
+    /**
+     * Get all unassigned leads (for bulk assignment operations)
+     * Limited to 5000 leads to prevent memory issues
+     */
+    async findAllUnassigned(): Promise<Lead[]> {
+        return this.repo
+            .createQueryBuilder('lead')
+            .where('lead.allocatedTo IS NULL OR lead.allocatedTo = :empty', { empty: '' })
+            .orderBy('lead.timeReceived', 'DESC')
+            .limit(5000)
+            .getMany();
+    }
+
+    /**
+     * Get all assigned leads (for bulk unassignment operations)
+     * Limited to 5000 leads to prevent memory issues
+     */
+    async findAllAssigned(): Promise<Lead[]> {
+        return this.repo
+            .createQueryBuilder('lead')
+            .where('lead.allocatedTo IS NOT NULL')
+            .andWhere('lead.allocatedTo != :empty', { empty: '' })
+            .orderBy('lead.timeReceived', 'DESC')
+            .limit(5000) // Limit to prevent memory issues
+            .getMany();
+    }
+
+    async update(id: string, dto: UpdateLeadDto, updatedBy?: string): Promise<Lead> {
         const lead = await this.repo.findOne({ where: { id } });
         if (!lead) {
             throw new NotFoundException(`Lead with ID ${id} not found`);
         }
 
+        const previousAllocatedTo = lead.allocatedTo;
+
         Object.assign(lead, dto);
-        return this.repo.save(lead);
+        const updatedLead = await this.repo.save(lead);
+
+        // Log assignment/unassignment changes
+        if (updatedBy && dto.allocatedTo !== undefined && dto.allocatedTo !== previousAllocatedTo) {
+            if (dto.allocatedTo && !previousAllocatedTo) {
+                // Lead assigned
+                await this.auditService.logLeadAssigned({
+                    leadId: id,
+                    agentId: updatedBy,
+                    agentName: dto.allocatedTo,
+                    assignedBy: updatedBy,
+                    metadata: {
+                        leadName: lead.name,
+                        leadCell: lead.cell,
+                        franchise: lead.franchise,
+                    },
+                });
+            } else if (!dto.allocatedTo && previousAllocatedTo) {
+                // Lead unassigned
+                await this.auditService.logLeadUnassigned({
+                    leadId: id,
+                    previousAgentName: previousAllocatedTo,
+                    unassignedBy: updatedBy,
+                    metadata: {
+                        leadName: lead.name,
+                        leadCell: lead.cell,
+                        franchise: lead.franchise,
+                    },
+                });
+            } else if (
+                dto.allocatedTo &&
+                previousAllocatedTo &&
+                dto.allocatedTo !== previousAllocatedTo
+            ) {
+                // Lead reassigned (log as unassign + assign)
+                await this.auditService.logLeadUnassigned({
+                    leadId: id,
+                    previousAgentName: previousAllocatedTo,
+                    unassignedBy: updatedBy,
+                    metadata: {
+                        leadName: lead.name,
+                        reason: 'reassignment',
+                    },
+                });
+                await this.auditService.logLeadAssigned({
+                    leadId: id,
+                    agentId: updatedBy,
+                    agentName: dto.allocatedTo,
+                    assignedBy: updatedBy,
+                    metadata: {
+                        leadName: lead.name,
+                        leadCell: lead.cell,
+                        franchise: lead.franchise,
+                        reason: 'reassignment',
+                    },
+                });
+            }
+        }
+
+        return updatedLead;
     }
 
     async findOne(id: string): Promise<Lead> {

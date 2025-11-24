@@ -21,6 +21,7 @@ import { getClientById, updateClient, type Client } from '../../api/clients.api'
 import { listTasks, createTask, updateTask } from '@/api/tasks.api';
 import { listInboxEmails } from '@/api/communications.api';
 import { listProducts } from '@/api/products';
+import type { WhatsAppMessage } from '@/api/whatsapp.api';
 import type { Product as BackendProduct } from '@/interfaces/Product';
 import type {
     ClientDetailPayload,
@@ -58,7 +59,10 @@ type AuditEntity = {
     entityType?: string;
     entityId?: string;
     actorId?: string;
-    actor?: { firstName?: string | null; lastName?: string | null } | null;
+    actorType?: string;
+    actor?: { firstName?: string | null; lastName?: string | null; email?: string | null } | null;
+    changes?: Record<string, unknown>;
+    metadata?: Record<string, unknown>;
 };
 
 type FinancialRecordEntity = {
@@ -140,8 +144,18 @@ async function mapClientToDetailPayload(client: Client): Promise<ClientDetailPay
         }
     }
 
-    // Map Audit Logs -> systemLog
-    const systemLog: Array<{ id: string; time: string; by: string; text: string }> = [];
+    // Map Audit Logs -> systemLog (keep full details)
+    const systemLog: Array<{
+        id: string;
+        time: string;
+        by: string;
+        text: string;
+        action?: string;
+        entityType?: string;
+        changes?: Record<string, unknown>;
+        metadata?: Record<string, unknown>;
+        actorType?: string;
+    }> = [];
     const audits = cClient.auditLogs || [];
     for (const a of audits) {
         const actorName = a.actor?.firstName
@@ -151,7 +165,17 @@ async function mapClientToDetailPayload(client: Client): Promise<ClientDetailPay
               : 'System';
         const actionLabel = String(a.action).replace(/_/g, ' ');
         const summary = `${actionLabel} on ${a.entityType}${a.entityId ? ` (${a.entityId})` : ''}`;
-        systemLog.push({ id: a.id, time: a.createdAt, by: actorName, text: summary });
+        systemLog.push({
+            id: a.id,
+            time: a.createdAt,
+            by: actorName,
+            text: summary,
+            action: a.action,
+            entityType: a.entityType,
+            changes: a.changes,
+            metadata: a.metadata,
+            actorType: a.actorType,
+        });
     }
 
     // Map Financial Records -> financialLog
@@ -171,6 +195,7 @@ async function mapClientToDetailPayload(client: Client): Promise<ClientDetailPay
 
     return {
         id: client.id,
+        fileReference: client.fileReference,
         name: `${client.firstName} ${client.lastName}`,
         phone: client.phoneNumber,
         email: client.email,
@@ -179,6 +204,7 @@ async function mapClientToDetailPayload(client: Client): Promise<ClientDetailPay
         lastUpdate: client.updatedAt ? new Date(client.updatedAt).toLocaleDateString() : '',
         lastPhone: '',
         headerChips: [
+            { label: 'File Ref', value: client.fileReference || 'N/A' },
             { label: 'ID', value: client.idNumber },
             {
                 label: 'Last update',
@@ -200,6 +226,8 @@ async function mapClientToDetailPayload(client: Client): Promise<ClientDetailPay
         accountHolder: client.accountHolder,
         accountNumber: client.accountNumber,
         branchCode: client.branchCode,
+        creditReportViewedAt: client.creditReportViewedAt,
+        creditReportViewedBy: client.creditReportViewedBy,
         products: await (async () => {
             // If backend has populated clientProducts relation, use that
             if (cClient.clientProducts && cClient.clientProducts.length > 0) {
@@ -433,7 +461,11 @@ export default function ClientDetails() {
             )}
 
             {/* Identity Header */}
-            <HeaderBlock data={data} onEdit={() => navigate(`/clients/${data.id}/edit`)} />
+            <HeaderBlock
+                data={data}
+                onEdit={() => navigate(`/clients/${data.id}/edit`)}
+                onRefetch={refetchClient}
+            />
 
             <div className="row g-3">
                 {/* LEFT */}
@@ -538,6 +570,7 @@ export default function ClientDetails() {
                                             products={data.products}
                                             clientId={cid}
                                             onProductAdded={refetchClient}
+                                            creditReportViewedAt={data.creditReportViewedAt}
                                         />
                                     </Tab.Pane>
 
@@ -601,9 +634,30 @@ export default function ClientDetails() {
 }
 
 // -----------------------------------------------
+// Helper: Mask sensitive data for agents
+// -----------------------------------------------
+function maskSensitiveDataForAgents(value: string, isAgent: boolean): string {
+    if (!value || !isAgent) return value;
+    if (value.length <= 4) return value;
+    const masked = '*'.repeat(value.length - 4);
+    const last4 = value.slice(-4);
+    return `${masked}${last4}`;
+}
+
+// -----------------------------------------------
 // Header
 // -----------------------------------------------
-function HeaderBlock({ data, onEdit }: { data: ClientDetailPayload; onEdit: () => void }) {
+function HeaderBlock({
+    data,
+    onEdit,
+    onRefetch,
+}: {
+    data: ClientDetailPayload;
+    onEdit: () => void;
+    onRefetch: () => void;
+}) {
+    const session = useAuthStore((state) => state.session);
+    const isAgent = session?.user?.role === 'agent';
     const [downloadingReport, setDownloadingReport] = useState(false);
     const navigate = useNavigate();
 
@@ -622,6 +676,9 @@ function HeaderBlock({ data, onEdit }: { data: ClientDetailPayload; onEdit: () =
             link.click();
             document.body.removeChild(link);
             window.URL.revokeObjectURL(url);
+
+            // Refetch client data to get updated creditReportViewedAt timestamp
+            onRefetch();
         } catch (error) {
             console.error('Failed to download credit report:', error);
             alert('Failed to download credit report. Please try again.');
@@ -836,6 +893,23 @@ function HeaderBlock({ data, onEdit }: { data: ClientDetailPayload; onEdit: () =
                                 }}
                             >
                                 <div className="opacity-90" style={{ fontSize: '0.85rem' }}>
+                                    File Reference
+                                </div>
+                                <div style={{ fontSize: '1.1rem', fontWeight: 600 }}>
+                                    {data.fileReference || 'N/A'}
+                                </div>
+                            </div>
+                        </div>
+                        <div className="col-md-3 col-6">
+                            <div
+                                className="text-center p-3"
+                                style={{
+                                    background: 'rgba(255, 255, 255, 0.15)',
+                                    borderRadius: '12px',
+                                    backdropFilter: 'blur(10px)',
+                                }}
+                            >
+                                <div className="opacity-90" style={{ fontSize: '0.85rem' }}>
                                     ID Number
                                 </div>
                                 <div style={{ fontSize: '1.1rem', fontWeight: 600 }}>
@@ -906,9 +980,8 @@ function HeaderBlock({ data, onEdit }: { data: ClientDetailPayload; onEdit: () =
             <div className="card border-0 shadow-sm mb-3" style={{ borderRadius: '12px' }}>
                 <div className="card-body p-3">
                     <div className="d-flex flex-wrap gap-3 align-items-center">
-                        <a
-                            className="d-inline-flex align-items-center gap-2 text-decoration-none"
-                            href={`tel:${data.phone}`}
+                        <div
+                            className="d-inline-flex align-items-center gap-2"
                             style={{ color: '#667eea', fontWeight: 500 }}
                         >
                             <svg
@@ -923,8 +996,8 @@ function HeaderBlock({ data, onEdit }: { data: ClientDetailPayload; onEdit: () =
                             >
                                 <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
                             </svg>
-                            {data.phone}
-                        </a>
+                            {maskSensitiveDataForAgents(data.phone, isAgent)}
+                        </div>
                         <a
                             className="d-inline-flex align-items-center gap-2 text-decoration-none"
                             href={`mailto:${data.email}`}
@@ -997,10 +1070,12 @@ function ProductsPanel({
     products,
     clientId,
     onProductAdded,
+    creditReportViewedAt,
 }: {
     products: Product[];
     clientId: string;
     onProductAdded: () => void;
+    creditReportViewedAt?: string | null;
 }) {
     const [availableProducts, setAvailableProducts] = useState<BackendProduct[]>([]);
     const [selectedProductId, setSelectedProductId] = useState('');
@@ -1031,6 +1106,15 @@ function ProductsPanel({
     const handleAddProduct = async () => {
         if (!selectedProductId) return;
 
+        // Validate credit report has been reviewed before adding products
+        console.log('Credit report viewed at:', creditReportViewedAt);
+        if (!creditReportViewedAt) {
+            console.log('Validation failed: Credit report not viewed');
+            setErrorMessage('Please download and review the credit report before adding products.');
+            return;
+        }
+
+        console.log('Validation passed: Adding product', selectedProductId);
         setAdding(true);
         setSuccessMessage('');
         setErrorMessage('');
@@ -1668,78 +1752,29 @@ function EditableField({
 }
 
 // -----------------------------------------------
-// Masked Account Field (shows last 4 digits for agents)
+// Masked Field (shows last 4 digits for agents, read-only)
 // -----------------------------------------------
-function MaskedAccountField({
-    label,
-    value,
-    disabled,
-    onChange,
-}: {
-    label: string;
-    value: string;
-    disabled?: boolean;
-    onChange: (value: string) => Promise<void>;
-}) {
+function MaskedField({ label, value }: { label: string; value: string }) {
     const session = useAuthStore((state) => state.session);
     const isAgent = session?.user?.role === 'agent';
 
-    const [localValue, setLocalValue] = useState(value);
-    const [loading, setLoading] = useState(false);
-    const [showFull, setShowFull] = useState(false);
-
-    useEffect(() => setLocalValue(value), [value]);
-
-    const handleChange = async () => {
-        setLoading(true);
-        try {
-            await onChange(localValue);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    // Mask account number: show last 4 digits for agents
+    // Mask sensitive data: show last 4 digits for agents
     const displayValue = () => {
-        if (!localValue) return '';
-        if (!isAgent || showFull) return localValue;
+        if (!value) return '';
+        if (!isAgent) return value;
 
         // For agents: mask all but last 4 digits
-        if (localValue.length <= 4) return localValue;
-        const masked = '*'.repeat(localValue.length - 4);
-        const last4 = localValue.slice(-4);
+        if (value.length <= 4) return value;
+        const masked = '*'.repeat(value.length - 4);
+        const last4 = value.slice(-4);
         return `${masked}${last4}`;
     };
 
     return (
         <div className="mb-3">
             <label className="form-label">{label}</label>
-            <div className="d-flex gap-2 align-items-center">
-                <input
-                    type="text"
-                    className="form-control"
-                    value={showFull ? localValue : displayValue()}
-                    onChange={(e) => setLocalValue(e.target.value)}
-                    disabled={disabled || loading || (isAgent && !showFull)}
-                    readOnly={isAgent && !showFull}
-                />
-                {isAgent && value && (
-                    <Button
-                        variant="outline-secondary"
-                        size="sm"
-                        onClick={() => setShowFull(!showFull)}
-                        style={{ whiteSpace: 'nowrap' }}
-                    >
-                        {showFull ? 'Hide' : 'Show'}
-                    </Button>
-                )}
-                {localValue !== value && showFull && (
-                    <Button variant="success" size="sm" disabled={loading} onClick={handleChange}>
-                        {loading ? '...' : 'Save'}
-                    </Button>
-                )}
-            </div>
-            {isAgent && !showFull && value && (
+            <input type="text" className="form-control" value={displayValue()} readOnly disabled />
+            {isAgent && value && (
                 <small className="text-muted">Last 4 digits shown for security</small>
             )}
         </div>
@@ -1803,12 +1838,7 @@ function ClientMini({
                 </div>
                 <div className="col-md-6">
                     <Field label="ID Number" value={data.nationalId} />
-                    <EditableField
-                        label="Cell"
-                        value={data.phone}
-                        disabled={saving !== null}
-                        onChange={(v) => handleSave('phoneNumber', v)}
-                    />
+                    <MaskedField label="Cell" value={data.phone} />
                     <EditableField
                         label="Email"
                         value={data.email}
@@ -1870,12 +1900,7 @@ function ClientMini({
                 </div>
 
                 <div className="col-md-6">
-                    <MaskedAccountField
-                        label="Account Number"
-                        value={data.accountNumber || ''}
-                        disabled={saving !== null}
-                        onChange={(v) => handleSave('accountNumber', v)}
-                    />
+                    <MaskedField label="Account Number" value={data.accountNumber || ''} />
                 </div>
 
                 <div className="col-md-6">
@@ -2595,89 +2620,142 @@ function EmailLogNew({
 }
 
 function WhatsAppChat({ clientId }: { clientId: string }) {
-    const [msgs, setMsgs] = useState<ClientDetailPayload['correspondence']['whatsapp']>([]);
+    const [msgs, setMsgs] = useState<WhatsAppMessage[]>([]);
     const [input, setInput] = useState('');
-    const [typing] = useState(false);
+    const [loading, setLoading] = useState(true);
+    const [sending, setSending] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [whatsappReady, setWhatsappReady] = useState(false);
 
     useEffect(() => {
-        let mounted = true;
-        getClientById(clientId)
-            .then((client) => {
-                const comms =
-                    (client as unknown as { communications?: Comm[] }).communications || [];
-                const messages = comms
-                    .filter((c) => c.type === 'sms')
-                    .map((c) => ({
-                        id: c.id,
-                        from: (c.direction === 'outbound' ? 'agent' : 'client') as
-                            | 'agent'
-                            | 'client',
-                        time: c.sentAt || c.createdAt || new Date().toISOString(),
-                        text: c.content ?? '',
-                        status: (c.status === 'read'
-                            ? 'read'
-                            : c.status === 'delivered'
-                              ? 'delivered'
-                              : 'sent') as 'sent' | 'delivered' | 'read',
-                    }));
-                if (mounted) setMsgs(messages);
-            })
-            .catch(() => {});
-        return () => {
-            mounted = false;
-        };
+        loadMessages();
+        checkWhatsAppStatus();
     }, [clientId]);
 
+    const checkWhatsAppStatus = async () => {
+        try {
+            const { whatsappApi } = await import('@/api/whatsapp.api');
+            const response = await whatsappApi.checkHealth();
+            setWhatsappReady(response.data.isReady);
+        } catch (error) {
+            console.error('Failed to check WhatsApp status:', error);
+            setWhatsappReady(false);
+        }
+    };
+
+    const loadMessages = async () => {
+        try {
+            setLoading(true);
+            const { whatsappApi } = await import('@/api/whatsapp.api');
+            const response = await whatsappApi.getMessages(clientId, 50);
+            setMsgs(response.data);
+            setError(null);
+        } catch (error: any) {
+            console.error('Failed to load WhatsApp messages:', error);
+            setError('Failed to load messages');
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const onSend = async () => {
-        // Disabled until communications send endpoint is available
-        return;
+        if (!input.trim()) return;
+        if (!whatsappReady) {
+            setError('WhatsApp is not connected. Please contact an administrator.');
+            return;
+        }
+
+        setSending(true);
+        setError(null);
+
+        try {
+            const { whatsappApi } = await import('@/api/whatsapp.api');
+            await whatsappApi.sendMessage({ clientId, message: input });
+            setInput('');
+            // Reload messages to show the sent message
+            await loadMessages();
+        } catch (error: any) {
+            console.error('Failed to send WhatsApp message:', error);
+            setError(error?.response?.data?.message || 'Failed to send message');
+        } finally {
+            setSending(false);
+        }
     };
 
     return (
         <div className="panel glass p-0">
+            {error && (
+                <div className="alert alert-danger m-3 mb-0" role="alert">
+                    {error}
+                </div>
+            )}
+            {!whatsappReady && (
+                <div className="alert alert-warning m-3 mb-0" role="alert">
+                    <i className="bi bi-exclamation-triangle me-2"></i>
+                    WhatsApp service is not ready. Messages may not be sent.
+                </div>
+            )}
             <div
                 style={{ maxHeight: 360, overflowY: 'auto', padding: 12 }}
                 className="vstack gap-2"
             >
-                {msgs.map((m) => (
-                    <div
-                        key={m.id}
-                        className={`p-2 rounded ${m.from === 'agent' ? 'ms-auto' : 'me-auto'}`}
-                        style={{
-                            maxWidth: '80%',
-                            background:
-                                m.from === 'agent'
-                                    ? 'rgba(8, 180, 148, 0.15)'
-                                    : 'rgba(255,255,255,0.08)',
-                            border: '1px solid var(--glass-border)',
-                        }}
-                    >
-                        <div style={{ whiteSpace: 'pre-wrap' }}>{m.text}</div>
-                        <div className="text-muted" style={{ fontSize: 11 }}>
-                            {new Date(m.time).toLocaleTimeString([], {
-                                hour: '2-digit',
-                                minute: '2-digit',
-                            })}{' '}
-                            {m.from === 'agent' && (
-                                <span className="ms-1">
-                                    {m.status === 'sent' && '✓'}
-                                    {m.status === 'delivered' && '✓✓'}
-                                    {m.status === 'read' && <b>✓✓</b>}
-                                </span>
+                {loading ? (
+                    <div className="text-center text-muted py-4">
+                        <Spinner animation="border" size="sm" className="me-2" />
+                        Loading messages...
+                    </div>
+                ) : msgs.length === 0 ? (
+                    <div className="text-center text-muted py-4">
+                        No WhatsApp messages yet. Start a conversation!
+                    </div>
+                ) : (
+                    msgs.map((m) => (
+                        <div
+                            key={m.id}
+                            className={`p-2 rounded ${m.direction === 'outbound' ? 'ms-auto' : 'me-auto'}`}
+                            style={{
+                                maxWidth: '80%',
+                                background:
+                                    m.direction === 'outbound'
+                                        ? 'rgba(8, 180, 148, 0.15)'
+                                        : 'rgba(255,255,255,0.08)',
+                                border: '1px solid var(--glass-border)',
+                            }}
+                        >
+                            <div style={{ whiteSpace: 'pre-wrap' }}>{m.message}</div>
+                            <div className="text-muted" style={{ fontSize: 11 }}>
+                                {new Date(m.sentAt || m.createdAt).toLocaleTimeString([], {
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                })}{' '}
+                                {m.direction === 'outbound' && (
+                                    <span className="ms-1">
+                                        {m.status === 'sent' && '✓'}
+                                        {m.status === 'delivered' && '✓✓'}
+                                        {m.status === 'read' && <b>✓✓</b>}
+                                        {m.status === 'failed' && (
+                                            <span className="text-danger">
+                                                ✗{' '}
+                                                {m.errorMessage && (
+                                                    <span className="small">
+                                                        ({m.errorMessage})
+                                                    </span>
+                                                )}
+                                            </span>
+                                        )}
+                                        {m.status === 'pending' && (
+                                            <span className="text-muted">⏱</span>
+                                        )}
+                                    </span>
+                                )}
+                            </div>
+                            {m.user && m.direction === 'outbound' && (
+                                <div className="text-muted" style={{ fontSize: 10 }}>
+                                    Sent by: {m.user.firstName} {m.user.lastName}
+                                </div>
                             )}
                         </div>
-                    </div>
-                ))}
-                {typing && (
-                    <div
-                        className="me-auto p-2 rounded"
-                        style={{
-                            border: '1px solid var(--glass-border)',
-                            background: 'rgba(255,255,255,0.08)',
-                        }}
-                    >
-                        typing…
-                    </div>
+                    ))
                 )}
             </div>
 
@@ -2690,10 +2768,24 @@ function WhatsAppChat({ clientId }: { clientId: string }) {
                     placeholder="Type a message…"
                     value={input}
                     onChange={(e) => setInput(e.currentTarget.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && onSend()}
+                    onKeyDown={(e) => e.key === 'Enter' && !sending && onSend()}
+                    disabled={sending || !whatsappReady}
                 />
-                <Button className="btn btn-primary" onClick={onSend} disabled>
-                    <FontAwesomeIcon icon={faPaperPlane} /> Send
+                <Button
+                    className="btn btn-primary"
+                    onClick={onSend}
+                    disabled={sending || !input.trim() || !whatsappReady}
+                >
+                    {sending ? (
+                        <>
+                            <Spinner animation="border" size="sm" className="me-2" />
+                            Sending...
+                        </>
+                    ) : (
+                        <>
+                            <FontAwesomeIcon icon={faPaperPlane} /> Send
+                        </>
+                    )}
                 </Button>
             </div>
         </div>
@@ -3101,7 +3193,7 @@ function NotesPanel({ clientId }: { clientId: string }) {
                         <LogList items={notes} />
                     </Tab.Pane>
                     <Tab.Pane eventKey="sys">
-                        <LogList items={sys} />
+                        <AuditLogList items={sys} />
                     </Tab.Pane>
                     <Tab.Pane eventKey="log">
                         <LogList items={fin} />
@@ -3135,6 +3227,187 @@ function LogList({
                 </li>
             ))}
         </ul>
+    );
+}
+
+function AuditLogList({
+    items,
+}: {
+    items: Array<{
+        id: string;
+        time: string;
+        by: string;
+        text: string;
+        action?: string;
+        entityType?: string;
+        changes?: Record<string, unknown>;
+        metadata?: Record<string, unknown>;
+        actorType?: string;
+    }>;
+}) {
+    const getActionBadge = (action?: string) => {
+        if (!action) return null;
+
+        const actionMap: Record<string, { bg: string; text: string }> = {
+            create: { bg: 'success', text: 'Created' },
+            update: { bg: 'info', text: 'Updated' },
+            delete: { bg: 'danger', text: 'Deleted' },
+            lead_assigned: { bg: 'primary', text: 'Lead Assigned' },
+            lead_unassigned: { bg: 'warning', text: 'Lead Unassigned' },
+            lead_viewed: { bg: 'secondary', text: 'Lead Viewed' },
+            lead_bulk_assigned: { bg: 'primary', text: 'Bulk Assigned' },
+            lead_bulk_unassigned: { bg: 'warning', text: 'Bulk Unassigned' },
+            onboarding_step_completed: { bg: 'info', text: 'Step Completed' },
+            onboarding_completed: { bg: 'success', text: 'Onboarding Done' },
+            client_field_updated: { bg: 'info', text: 'Field Updated' },
+            credit_report_downloaded: { bg: 'primary', text: 'Credit Report' },
+            communication_sent: { bg: 'info', text: 'Communication' },
+            status_change: { bg: 'warning', text: 'Status Changed' },
+        };
+
+        const badge = actionMap[action] || { bg: 'secondary', text: action.replace(/_/g, ' ') };
+
+        return (
+            <span className={`badge bg-${badge.bg} me-2`} style={{ fontSize: '0.75rem' }}>
+                {badge.text}
+            </span>
+        );
+    };
+
+    return (
+        <div className="list-group list-group-flush">
+            {items.length === 0 ? (
+                <div className="text-center text-muted py-4">
+                    <svg
+                        width="48"
+                        height="48"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        style={{ opacity: 0.3, margin: '0 auto 1rem' }}
+                    >
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                        <polyline points="14 2 14 8 20 8" />
+                        <line x1="16" y1="13" x2="8" y2="13" />
+                        <line x1="16" y1="17" x2="8" y2="17" />
+                        <polyline points="10 9 9 9 8 9" />
+                    </svg>
+                    <p>No audit logs yet</p>
+                </div>
+            ) : (
+                items.map((log) => (
+                    <div
+                        key={log.id}
+                        className="list-group-item border-0"
+                        style={{
+                            borderBottom: '1px solid rgba(0,0,0,0.05)',
+                            padding: '1rem 0',
+                        }}
+                    >
+                        <div className="d-flex justify-content-between align-items-start mb-2">
+                            <div className="d-flex align-items-center gap-2">
+                                {getActionBadge(log.action)}
+                                <strong style={{ fontSize: '0.95rem' }}>{log.by}</strong>
+                                {log.actorType && log.actorType !== 'user' && (
+                                    <span
+                                        className="badge bg-light text-dark"
+                                        style={{ fontSize: '0.7rem' }}
+                                    >
+                                        {log.actorType}
+                                    </span>
+                                )}
+                            </div>
+                            <span className="text-muted" style={{ fontSize: '0.8rem' }}>
+                                {new Date(log.time).toLocaleString('en-ZA', {
+                                    dateStyle: 'short',
+                                    timeStyle: 'short',
+                                })}
+                            </span>
+                        </div>
+
+                        <div style={{ fontSize: '0.9rem', color: '#555' }} className="mb-2">
+                            {log.text}
+                        </div>
+
+                        {/* Display field changes for client_field_updated */}
+                        {log.action === 'client_field_updated' && log.changes && (
+                            <div
+                                className="mt-2 p-2"
+                                style={{
+                                    backgroundColor: '#f8f9fa',
+                                    borderRadius: '6px',
+                                    fontSize: '0.85rem',
+                                }}
+                            >
+                                <div className="d-flex align-items-start gap-3">
+                                    <div className="flex-shrink-0">
+                                        <strong>Field:</strong>{' '}
+                                        <code style={{ fontSize: '0.85rem' }}>
+                                            {String(log.changes.field)}
+                                        </code>
+                                    </div>
+                                </div>
+                                <div className="mt-1">
+                                    <span className="text-danger me-2">
+                                        <strong>Before:</strong>{' '}
+                                        {log.changes.before !== null &&
+                                        log.changes.before !== undefined
+                                            ? String(log.changes.before)
+                                            : '(empty)'}
+                                    </span>
+                                    →
+                                    <span className="text-success ms-2">
+                                        <strong>After:</strong>{' '}
+                                        {log.changes.after !== null &&
+                                        log.changes.after !== undefined
+                                            ? String(log.changes.after)
+                                            : '(empty)'}
+                                    </span>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Display metadata if available */}
+                        {log.metadata && Object.keys(log.metadata).length > 0 && (
+                            <div className="mt-2">
+                                <details>
+                                    <summary
+                                        style={{
+                                            fontSize: '0.8rem',
+                                            color: '#6c757d',
+                                            cursor: 'pointer',
+                                        }}
+                                    >
+                                        Additional details
+                                    </summary>
+                                    <div
+                                        className="mt-2 p-2"
+                                        style={{
+                                            backgroundColor: '#f8f9fa',
+                                            borderRadius: '6px',
+                                            fontSize: '0.8rem',
+                                            fontFamily: 'monospace',
+                                        }}
+                                    >
+                                        {Object.entries(log.metadata).map(([key, value]) => (
+                                            <div key={key} className="mb-1">
+                                                <strong>{key}:</strong>{' '}
+                                                {typeof value === 'object'
+                                                    ? JSON.stringify(value, null, 2)
+                                                    : String(value)}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </details>
+                            </div>
+                        )}
+                    </div>
+                ))
+            )}
+        </div>
     );
 }
 

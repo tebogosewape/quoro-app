@@ -22,6 +22,7 @@ import { UpdateClientDto } from './dto/update-client.dto';
 import { SearchClientsDto } from './dto/search-clients.dto';
 import { AuthenticatedUser, CurrentUser, JwtAuthGuard, Roles, RolesGuard } from '@/auth';
 import { UserRole } from '@/entities/user.entity';
+import { AuditService } from '@/modules/audit/audit.service';
 
 @ApiTags('Clients')
 @Controller('clients')
@@ -30,7 +31,8 @@ import { UserRole } from '@/entities/user.entity';
 export class ClientsController {
     constructor(
         private readonly clientsService: ClientsService,
-        private readonly experianReportService: ExperianReportService
+        private readonly experianReportService: ExperianReportService,
+        private readonly auditService: AuditService
     ) {}
 
     /**
@@ -268,9 +270,34 @@ export class ClientsController {
         UserRole.CHIEF_EXECUTIVE_OFFICER
     )
     @ApiOperation({ summary: 'Generate mock Experian credit report PDF' })
-    async getCreditReport(@Param('id', ParseUUIDPipe) id: string, @Res() res: Response) {
+    async getCreditReport(
+        @Param('id', ParseUUIDPipe) id: string,
+        @Res() res: Response,
+        @CurrentUser() user: AuthenticatedUser
+    ) {
         const client = await this.clientsService.findOne(id);
         const pdfBuffer = await this.experianReportService.generateCreditReport(client);
+
+        // Track that the credit report was viewed
+        await this.clientsService.update(
+            id,
+            {
+                creditReportViewedAt: new Date(),
+                creditReportViewedBy: user.id,
+            },
+            user.id
+        );
+
+        // Log credit report download to audit trail
+        await this.auditService.logCreditReportDownload({
+            clientId: id,
+            downloadedBy: user.id,
+            metadata: {
+                clientName: `${client.firstName} ${client.lastName}`,
+                clientIdNumber: client.idNumber,
+                userName: user.email,
+            },
+        });
 
         res.set({
             'Content-Type': 'application/pdf',

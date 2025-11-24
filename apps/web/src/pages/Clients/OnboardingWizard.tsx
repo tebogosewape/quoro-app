@@ -2,6 +2,7 @@ import { useMemo, useState, useEffect } from 'react';
 import { Form, Button, Row, Col } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
+    faComments, // Introduction script
     faIdCard, // Personal details
     faBoxesPacking, // Products
     faClipboard, // Product Info
@@ -14,7 +15,14 @@ import { listProducts } from '@/api/products';
 import { createClient, type CreateClientDto } from '@/api/clients.api';
 import { useAuthStore } from '@/stores/auth.store';
 
-type StepKey = 'personal' | 'products' | 'product-info' | 'banking' | 'payment' | 'confirm';
+type StepKey =
+    | 'introduction'
+    | 'personal'
+    | 'products'
+    | 'product-info'
+    | 'banking'
+    | 'payment'
+    | 'confirm';
 
 type Personal = {
     title?: string;
@@ -81,7 +89,44 @@ const PRODUCTS_PLACEHOLDER: Product[] = [];
 
 import type { IconDefinition } from '@fortawesome/fontawesome-svg-core';
 
+// -----------------------------------------------
+// Validation Helpers
+// -----------------------------------------------
+const ValidationRules = {
+    idNumber: (value: string): string | null => {
+        if (!value) return 'ID Number is required';
+        if (!/^\d{13}$/.test(value)) return 'ID number must be exactly 13 digits';
+        return null;
+    },
+    phone: (value: string): string | null => {
+        if (!value) return 'Phone number is required';
+        // Remove spaces, dashes, and other non-digit characters for validation
+        const cleanPhone = value.replace(/\D/g, '');
+        if (cleanPhone.length < 10) return 'Phone number must be at least 10 digits';
+        return null;
+    },
+    email: (value: string): string | null => {
+        if (!value) return null; // Email is optional in the form
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(value)) return 'Please enter a valid email address';
+        return null;
+    },
+    required: (value: string | undefined, fieldName: string): string | null => {
+        if (!value || value.trim() === '') return `${fieldName} is required`;
+        return null;
+    },
+    accountNumber: (value: string): string | null => {
+        if (!value) return 'Account number is required';
+        // Remove spaces and dashes
+        const cleanAccount = value.replace(/[\s-]/g, '');
+        if (cleanAccount.length < 8) return 'Account number must be at least 8 digits';
+        if (!/^\d+$/.test(cleanAccount)) return 'Account number must contain only digits';
+        return null;
+    },
+};
+
 const STEPS: { key: StepKey; label: string; icon: IconDefinition }[] = [
+    { key: 'introduction', label: 'Introduction', icon: faComments },
     { key: 'personal', label: 'Your personal details', icon: faIdCard },
     { key: 'products', label: 'Select product/s', icon: faBoxesPacking },
     { key: 'product-info', label: 'Product information', icon: faClipboard },
@@ -94,14 +139,17 @@ export default function OnboardingWizard() {
     const navigate = useNavigate();
     const location = useLocation();
     const session = useAuthStore((state) => state.session);
-    const [current, setCurrent] = useState<StepKey>('personal');
+    const [current, setCurrent] = useState<StepKey>('introduction');
     const [busy, setBusy] = useState(false);
     const [loadingProducts, setLoadingProducts] = useState(true);
     const [productError, setProductError] = useState<string | null>(null);
     const [submissionError, setSubmissionError] = useState<string | null>(null);
+    const [showValidation, setShowValidation] = useState(false);
+    const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
 
     // Extract lead data from navigation state if present
     const leadData = location.state?.leadData;
+    const leadId = location.state?.leadId; // Extract leadId if available
     const [state, setState] = useState<FormState>({
         personal: leadData
             ? {
@@ -231,16 +279,66 @@ export default function OnboardingWizard() {
 
     const index = useMemo(() => STEPS.findIndex((s) => s.key === current), [current]);
 
+    function validatePersonalStep(): Record<string, string> {
+        const errors: Record<string, string> = {};
+        const p = state.personal;
+
+        const surnameError = ValidationRules.required(p.surname, 'Surname');
+        if (surnameError) errors.surname = surnameError;
+
+        const firstNamesError = ValidationRules.required(p.firstNames, 'First names');
+        if (firstNamesError) errors.firstNames = firstNamesError;
+
+        const idError = ValidationRules.idNumber(p.idNumber || '');
+        if (idError) errors.idNumber = idError;
+
+        const phoneError = ValidationRules.phone(p.phone || '');
+        if (phoneError) errors.phone = phoneError;
+
+        const emailError = ValidationRules.email(p.email || '');
+        if (emailError) errors.email = emailError;
+
+        const physicalAddressError = ValidationRules.required(
+            p.physicalAddress,
+            'Physical address'
+        );
+        if (physicalAddressError) errors.physicalAddress = physicalAddressError;
+
+        if (!p.sameAsPhysical) {
+            const postalAddressError = ValidationRules.required(p.postalAddress, 'Postal address');
+            if (postalAddressError) errors.postalAddress = postalAddressError;
+        }
+
+        return errors;
+    }
+
+    function validateBankingStep(): Record<string, string> {
+        const errors: Record<string, string> = {};
+        const b = state.banking;
+
+        const bankNameError = ValidationRules.required(b?.bankName, 'Bank name');
+        if (bankNameError) errors.bankName = bankNameError;
+
+        const accountTypeError = ValidationRules.required(b?.accountType, 'Account type');
+        if (accountTypeError) errors.accountType = accountTypeError;
+
+        const accountHolderError = ValidationRules.required(b?.accountHolder, 'Account holder');
+        if (accountHolderError) errors.accountHolder = accountHolderError;
+
+        const accountNumberError = ValidationRules.accountNumber(b?.accountNumber || '');
+        if (accountNumberError) errors.accountNumber = accountNumberError;
+
+        return errors;
+    }
+
     function canNext(step: StepKey): boolean {
-        if (step === 'personal') {
-            const p = state.personal;
-            // Check required fields
-            if (!p.surname || !p.firstNames || !p.idNumber || !p.phone) return false;
-            // Check physical address is required
-            if (!p.physicalAddress) return false;
-            // Check postal address is required only if not same as physical
-            if (!p.sameAsPhysical && !p.postalAddress) return false;
+        if (step === 'introduction') {
+            // Introduction is informational only, can always proceed
             return true;
+        }
+        if (step === 'personal') {
+            const errors = validatePersonalStep();
+            return Object.keys(errors).length === 0;
         }
         if (step === 'products') {
             return state.products.some((p) => p.selected);
@@ -251,8 +349,8 @@ export default function OnboardingWizard() {
             return (state.productInfo?.cirAccounts?.length ?? 0) >= 3;
         }
         if (step === 'banking') {
-            const b = state.banking;
-            return !!(b?.bankName && b?.accountType && b?.accountHolder && b?.accountNumber);
+            const errors = validateBankingStep();
+            return Object.keys(errors).length === 0;
         }
         if (step === 'payment') {
             const selectedProducts = state.products.filter((p) => p.selected);
@@ -264,16 +362,54 @@ export default function OnboardingWizard() {
     }
 
     function goNext() {
-        if (!canNext(current)) return;
+        // Show validation errors when user tries to proceed
+        if (!canNext(current)) {
+            setShowValidation(true);
+            // Set specific validation errors based on current step
+            if (current === 'personal') {
+                setValidationErrors(validatePersonalStep());
+            } else if (current === 'banking') {
+                setValidationErrors(validateBankingStep());
+            }
+            return;
+        }
+
+        // Reset validation display for next step
+        setShowValidation(false);
+        setValidationErrors({});
+
+        // Log step completion
+        logStepCompletion(current);
+
         if (index < STEPS.length - 1) setCurrent(STEPS[index + 1].key);
     }
     function goBack() {
+        // Reset validation when going back
+        setShowValidation(false);
+        setValidationErrors({});
         if (index > 0) setCurrent(STEPS[index - 1].key);
+    }
+
+    // Log onboarding step completion for audit trail
+    async function logStepCompletion(step: StepKey) {
+        try {
+            const { logOnboardingStep } = await import('@/api/clients.api');
+            await logOnboardingStep(step, undefined, {
+                stepLabel: STEPS.find((s) => s.key === step)?.label,
+            });
+        } catch (error) {
+            console.error('Failed to log onboarding step:', error);
+            // Don't block user progress on logging failure
+        }
     }
 
     async function submitAll() {
         if (!canNext('products')) return;
         setBusy(true);
+
+        // Log submission of product selection
+        await logStepCompletion('products');
+
         // mock submit delay
         setTimeout(() => {
             setBusy(false);
@@ -376,6 +512,8 @@ export default function OnboardingWizard() {
                 title: p.title,
                 language: p.language,
                 gender: p.gender,
+                // Add leadId if this client is being created from a lead
+                leadId: leadId || undefined,
             };
 
             console.log('[OnboardingWizard] Client data prepared:', clientData);
@@ -389,6 +527,17 @@ export default function OnboardingWizard() {
             const createdClient = await createClient(clientData);
 
             console.log('[OnboardingWizard] Client created successfully:', createdClient);
+
+            // Log onboarding completion
+            try {
+                const { logOnboardingStep } = await import('@/api/clients.api');
+                await logOnboardingStep('completed', createdClient.id, {
+                    clientName: `${createdClient.firstName} ${createdClient.lastName}`,
+                    productsSelected: clientData.selectedProducts?.length || 0,
+                });
+            } catch (error) {
+                console.error('Failed to log onboarding completion:', error);
+            }
 
             // Navigate to the newly created client's detail page
             navigate(`/clients/${createdClient.id}`);
@@ -627,18 +776,36 @@ export default function OnboardingWizard() {
                 <div className="col-md-9">
                     <div className="card border-0 shadow-sm" style={{ borderRadius: '12px' }}>
                         <div className="card-body p-3">
+                            {current === 'introduction' && (
+                                <StepIntroduction
+                                    canContinue={canNext('introduction')}
+                                    onNext={goNext}
+                                    leadData={leadData}
+                                    session={session}
+                                />
+                            )}
                             {current === 'personal' && (
                                 <StepPersonal
                                     value={state.personal}
-                                    onChange={(p) =>
+                                    onChange={(p) => {
                                         setState((prev) => ({
                                             ...prev,
                                             personal: { ...prev.personal, ...p },
-                                        }))
-                                    }
+                                        }));
+                                        // Clear validation errors for fields being updated
+                                        if (showValidation) {
+                                            const updatedErrors = { ...validationErrors };
+                                            Object.keys(p).forEach((key) => {
+                                                delete updatedErrors[key];
+                                            });
+                                            setValidationErrors(updatedErrors);
+                                        }
+                                    }}
                                     canContinue={canNext('personal')}
                                     onBack={goBack}
                                     onNext={goNext}
+                                    showValidation={showValidation}
+                                    validationErrors={validationErrors}
                                 />
                             )}
                             {current === 'products' && (
@@ -666,6 +833,7 @@ export default function OnboardingWizard() {
                                     busy={busy}
                                     loading={loadingProducts}
                                     error={productError}
+                                    showValidation={showValidation}
                                 />
                             )}
                             {current === 'product-info' && (
@@ -682,21 +850,32 @@ export default function OnboardingWizard() {
                                     onBack={goBack}
                                     onNext={goNext}
                                     busy={busy}
+                                    showValidation={showValidation}
                                 />
                             )}
                             {current === 'banking' && (
                                 <StepBanking
                                     value={state.banking || {}}
-                                    onChange={(b) =>
+                                    onChange={(b) => {
                                         setState((prev) => ({
                                             ...prev,
                                             banking: { ...prev.banking, ...b },
-                                        }))
-                                    }
+                                        }));
+                                        // Clear validation errors for fields being updated
+                                        if (showValidation) {
+                                            const updatedErrors = { ...validationErrors };
+                                            Object.keys(b).forEach((key) => {
+                                                delete updatedErrors[key];
+                                            });
+                                            setValidationErrors(updatedErrors);
+                                        }
+                                    }}
                                     canContinue={canNext('banking')}
                                     onBack={goBack}
                                     onNext={goNext}
                                     busy={busy}
+                                    showValidation={showValidation}
+                                    validationErrors={validationErrors}
                                 />
                             )}
                             {current === 'payment' && (
@@ -713,6 +892,7 @@ export default function OnboardingWizard() {
                                     onBack={goBack}
                                     onNext={submitAll}
                                     busy={busy}
+                                    showValidation={showValidation}
                                 />
                             )}
                             {current === 'confirm' && (
@@ -734,22 +914,265 @@ export default function OnboardingWizard() {
 
 /* ---------- Steps ---------- */
 
+function StepIntroduction({
+    canContinue,
+    onNext,
+    leadData,
+    session,
+}: {
+    canContinue: boolean;
+    onNext: () => void;
+    leadData?: any;
+    session?: any;
+}) {
+    return (
+        <>
+            <div className="mb-4">
+                <h5 className="mb-3">
+                    <svg
+                        width="24"
+                        height="24"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        style={{ marginRight: '8px', verticalAlign: 'middle' }}
+                    >
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                    </svg>
+                    Introduction Script - Read to Client
+                </h5>
+                <p className="text-muted">
+                    Please read the following script to the client before proceeding with the
+                    onboarding process.
+                </p>
+            </div>
+
+            <div
+                className="card border-0"
+                style={{
+                    backgroundColor: '#f8f9fa',
+                    borderRadius: '12px',
+                    padding: '24px',
+                    maxHeight: '600px',
+                    overflowY: 'auto',
+                }}
+            >
+                {/* Greeting */}
+                <div className="mb-4">
+                    <h6 className="fw-bold text-primary mb-3">Opening Greeting</h6>
+                    <p className="mb-2">
+                        Good day, Mr. / Ms.{' '}
+                        <strong>[{leadData?.name?.split(' ').slice(-1)[0] || 'Surname'}]</strong>. I
+                        hope you're well. This is{' '}
+                        <strong>
+                            {session?.user?.firstName} {session?.user?.lastName}
+                        </strong>{' '}
+                        calling from <strong>QFinance</strong>.
+                    </p>
+                    <p className="mb-0">
+                        I'm reaching out because I noticed you recently applied for vehicle finance,
+                        and I'd like to help you improve your credit to make sure you qualify in the
+                        future.
+                    </p>
+                </div>
+
+                {/* Understanding the Situation */}
+                <div className="mb-4">
+                    <h6 className="fw-bold text-primary mb-3">Understanding the Situation</h6>
+                    <p className="mb-3">
+                        I understand being declined for finance can be frustrating. We specialize in
+                        helping people improve their credit so they can get approved the next time.
+                        Could I ask if they shared any specific reasons for the decline?
+                    </p>
+                    <div className="ps-3 border-start border-3 border-info">
+                        <p className="text-muted fst-italic mb-2">
+                            <strong>Alternative questions to ask:</strong>
+                        </p>
+                        <ul className="text-muted fst-italic mb-0">
+                            <li>
+                                What challenges are you facing with your credit that might be
+                                holding you back from getting approved?
+                            </li>
+                            <li>
+                                Have you had a chance to review the reasons for the decline? We can
+                                walk through that together.
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+
+                {/* Service Offering */}
+                <div className="mb-4">
+                    <h6 className="fw-bold text-primary mb-3">Credit Report Assessment</h6>
+                    <p className="mb-0">
+                        I'm going to help you with a{' '}
+                        <strong>full credit report interpretation/assessment</strong>. It's a
+                        once-off fee of <strong className="text-success">R795</strong>, but you
+                        don't need to pay it today or tomorrow — only on your{' '}
+                        <strong>next payday</strong>. Sound okay?
+                    </p>
+                </div>
+
+                {/* Verification Section */}
+                <div className="mb-4">
+                    <h6 className="fw-bold text-primary mb-3">Client Verification</h6>
+                    <p className="mb-2">So just to confirm:</p>
+                    <ul className="list-unstyled ps-3">
+                        <li className="mb-2">
+                            ✓ Your surname is Mr/Ms{' '}
+                            <strong>
+                                [{leadData?.name?.split(' ').slice(-1)[0] || '................'}]
+                            </strong>
+                        </li>
+                        <li className="mb-2">
+                            ✓ And your names are{' '}
+                            <strong>
+                                [
+                                {leadData?.name?.split(' ').slice(0, -1).join(' ') ||
+                                    '................'}
+                                ]
+                            </strong>
+                        </li>
+                        <li className="mb-2">
+                            ✓ Your ID number is{' '}
+                            <strong>[{leadData?.idNumber || '................'}]</strong>
+                        </li>
+                        <li className="mb-2">
+                            ✓ You reside at <strong>[................]</strong>
+                        </li>
+                        <li className="mb-2">
+                            ✓ Are you still working at <strong>[................]</strong>
+                        </li>
+                    </ul>
+                </div>
+
+                {/* Contact Details */}
+                <div className="mb-4">
+                    <h6 className="fw-bold text-primary mb-3">Contact Details Confirmation</h6>
+                    <ul className="list-unstyled ps-3">
+                        <li className="mb-2">
+                            ✓ Are you on WhatsApp with the same number I called you on?{' '}
+                            <strong>[{leadData?.cell || '................'}]</strong>
+                        </li>
+                        <li className="mb-2">
+                            ✓ For verification, please confirm your email address:{' '}
+                            <strong>[................]</strong>
+                        </li>
+                    </ul>
+                </div>
+
+                {/* Financial Information */}
+                <div className="mb-4">
+                    <h6 className="fw-bold text-primary mb-3">Financial Information</h6>
+                    <ul className="list-unstyled ps-3">
+                        <li className="mb-2">
+                            ✓ Just to confirm, how much is your salary{' '}
+                            <strong>after deduction</strong>? <strong>[R................]</strong>
+                        </li>
+                        <li className="mb-2">
+                            ✓ Would you like us to deduct the assessment fee{' '}
+                            <strong>this month</strong> or <strong>next month</strong>?
+                        </li>
+                        <li className="mb-2">
+                            ✓ Can we continue and make the deduction from your{' '}
+                            <strong>[................ Bank]</strong> account?
+                        </li>
+                    </ul>
+                </div>
+
+                {/* Second Product - Affordability Assessment */}
+                <div className="mb-4">
+                    <h6 className="fw-bold text-primary mb-3">
+                        Affordability Assessment (Second Product)
+                    </h6>
+                    <p className="mb-2">For affordability assessment:</p>
+                    <ul className="list-unstyled ps-3">
+                        <li className="mb-2">
+                            ✓ You said your salary <strong>before deduction</strong> is{' '}
+                            <strong>[R................]</strong>
+                        </li>
+                        <li className="mb-2">
+                            ✓ And is <strong>[R................]</strong> after deduction
+                        </li>
+                        <li className="mb-2">
+                            ✓ How much do you spend for all your{' '}
+                            <strong>monthly living expenses</strong>?{' '}
+                            <strong>[R................]</strong>
+                        </li>
+                    </ul>
+                    <div className="alert alert-info mb-0 mt-3">
+                        <strong>Agent Note:</strong> Calculate the surplus amount, then calculate
+                        payment options for the client.
+                    </div>
+                </div>
+            </div>
+
+            {/* Navigation Buttons */}
+            <div className="d-flex justify-content-end mt-4">
+                <Button
+                    variant="primary"
+                    onClick={onNext}
+                    disabled={!canContinue}
+                    style={{
+                        borderRadius: '8px',
+                        padding: '10px 30px',
+                        fontWeight: 600,
+                        minWidth: '120px',
+                    }}
+                >
+                    Continue to Personal Details
+                    <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        style={{ marginLeft: '8px', verticalAlign: 'middle' }}
+                    >
+                        <path d="M5 12h14M12 5l7 7-7 7" />
+                    </svg>
+                </Button>
+            </div>
+        </>
+    );
+}
+
 function StepPersonal({
     value,
     onChange,
     canContinue,
     onBack,
     onNext,
+    showValidation,
+    validationErrors,
 }: {
     value: Personal;
     onChange: (p: Partial<Personal>) => void;
     canContinue: boolean;
     onBack: () => void;
     onNext: () => void;
+    showValidation: boolean;
+    validationErrors: Record<string, string>;
 }) {
     return (
         <>
             <h5 className="mb-3">1: Your personal details</h5>
+            {showValidation && !canContinue && (
+                <div className="alert alert-danger mb-3" role="alert">
+                    <strong>Please fix the following errors:</strong>
+                    <ul className="mb-0 mt-2">
+                        {Object.entries(validationErrors).map(([field, error]) => (
+                            <li key={field}>{error}</li>
+                        ))}
+                    </ul>
+                </div>
+            )}
             <Row className="g-3">
                 <Col md={6}>
                     <Form.Label>
@@ -758,7 +1181,13 @@ function StepPersonal({
                     <Form.Control
                         value={value.surname ?? ''}
                         onChange={(e) => onChange({ surname: e.target.value })}
+                        isInvalid={showValidation && !!validationErrors.surname}
                     />
+                    {showValidation && validationErrors.surname && (
+                        <Form.Control.Feedback type="invalid">
+                            {validationErrors.surname}
+                        </Form.Control.Feedback>
+                    )}
                 </Col>
                 <Col md={6}>
                     <Form.Label>
@@ -767,7 +1196,13 @@ function StepPersonal({
                     <Form.Control
                         value={value.firstNames ?? ''}
                         onChange={(e) => onChange({ firstNames: e.target.value })}
+                        isInvalid={showValidation && !!validationErrors.firstNames}
                     />
+                    {showValidation && validationErrors.firstNames && (
+                        <Form.Control.Feedback type="invalid">
+                            {validationErrors.firstNames}
+                        </Form.Control.Feedback>
+                    )}
                 </Col>
                 <Col md={6}>
                     <Form.Label>
@@ -776,7 +1211,15 @@ function StepPersonal({
                     <Form.Control
                         value={value.idNumber ?? ''}
                         onChange={(e) => onChange({ idNumber: e.target.value })}
+                        isInvalid={showValidation && !!validationErrors.idNumber}
+                        placeholder="13 digit ID number"
+                        maxLength={13}
                     />
+                    {showValidation && validationErrors.idNumber && (
+                        <Form.Control.Feedback type="invalid">
+                            {validationErrors.idNumber}
+                        </Form.Control.Feedback>
+                    )}
                 </Col>
                 <Col md={6}>
                     <Form.Label>Language</Form.Label>
@@ -817,14 +1260,28 @@ function StepPersonal({
                     <Form.Control
                         value={value.phone ?? ''}
                         onChange={(e) => onChange({ phone: e.target.value })}
+                        isInvalid={showValidation && !!validationErrors.phone}
+                        placeholder="e.g., 0821234567"
                     />
+                    {showValidation && validationErrors.phone && (
+                        <Form.Control.Feedback type="invalid">
+                            {validationErrors.phone}
+                        </Form.Control.Feedback>
+                    )}
                 </Col>
                 <Col md={12}>
                     <Form.Label>Email</Form.Label>
                     <Form.Control
                         value={value.email ?? ''}
                         onChange={(e) => onChange({ email: e.target.value })}
+                        isInvalid={showValidation && !!validationErrors.email}
+                        placeholder="email@example.com"
                     />
+                    {showValidation && validationErrors.email && (
+                        <Form.Control.Feedback type="invalid">
+                            {validationErrors.email}
+                        </Form.Control.Feedback>
+                    )}
                 </Col>
                 <Col md={12}>
                     <Form.Label>
@@ -836,7 +1293,13 @@ function StepPersonal({
                         value={value.physicalAddress ?? ''}
                         onChange={(e) => onChange({ physicalAddress: e.target.value })}
                         placeholder="Enter your physical address"
+                        isInvalid={showValidation && !!validationErrors.physicalAddress}
                     />
+                    {showValidation && validationErrors.physicalAddress && (
+                        <Form.Control.Feedback type="invalid">
+                            {validationErrors.physicalAddress}
+                        </Form.Control.Feedback>
+                    )}
                 </Col>
                 <Col md={12}>
                     <Form.Check
@@ -864,7 +1327,13 @@ function StepPersonal({
                             value={value.postalAddress ?? ''}
                             onChange={(e) => onChange({ postalAddress: e.target.value })}
                             placeholder="Enter your postal address"
+                            isInvalid={showValidation && !!validationErrors.postalAddress}
                         />
+                        {showValidation && validationErrors.postalAddress && (
+                            <Form.Control.Feedback type="invalid">
+                                {validationErrors.postalAddress}
+                            </Form.Control.Feedback>
+                        )}
                     </Col>
                 )}
             </Row>
@@ -906,6 +1375,7 @@ function StepProducts({
     busy,
     loading,
     error,
+    showValidation,
 }: {
     products: Product[];
     onToggle: (id: string, selected: boolean) => void;
@@ -915,6 +1385,7 @@ function StepProducts({
     busy?: boolean;
     loading?: boolean;
     error?: string | null;
+    showValidation: boolean;
 }) {
     // Get the currently selected product
     const selectedProduct = products.find((p) => p.selected);
@@ -945,6 +1416,12 @@ function StepProducts({
                 Please select <strong>one product</strong> for this client. You can add additional
                 products after the initial onboarding.
             </p>
+
+            {showValidation && !canContinue && (
+                <div className="alert alert-danger mb-3" role="alert">
+                    <strong>Please select a product</strong> before continuing.
+                </div>
+            )}
 
             {loading && (
                 <div className="alert alert-info">
@@ -1053,6 +1530,7 @@ function StepProductInfo({
     onBack,
     onNext,
     busy,
+    showValidation,
 }: {
     products: Product[];
     value: ProductInfo;
@@ -1061,6 +1539,7 @@ function StepProductInfo({
     onBack: () => void;
     onNext: () => void;
     busy?: boolean;
+    showValidation: boolean;
 }) {
     const selectedProducts = products.filter((p) => p.selected);
     const hasCIR = selectedProducts.some((p) => p.id === 'cir');
@@ -1071,6 +1550,12 @@ function StepProductInfo({
 
             {hasCIR && (
                 <div className="mb-4">
+                    {showValidation && !canContinue && (
+                        <div className="alert alert-danger mb-3" role="alert">
+                            <strong>Please provide at least 3 account names</strong> before
+                            continuing.
+                        </div>
+                    )}
                     <div className="card border-0 shadow-sm p-3" style={{ borderRadius: '12px' }}>
                         <div className="fw-bold mb-3">Credit Interpretation Report (Experian)</div>
                         <Form.Label>
@@ -1139,6 +1624,7 @@ function StepPayment({
     onBack,
     onNext,
     busy,
+    showValidation,
 }: {
     products: Product[];
     value: Payment;
@@ -1147,6 +1633,7 @@ function StepPayment({
     onBack: () => void;
     onNext: () => void;
     busy?: boolean;
+    showValidation: boolean;
 }) {
     const selectedProducts = products.filter((p) => p.selected);
     const selectedPayments = value.selectedPaymentOptions || {};
@@ -1176,6 +1663,13 @@ function StepPayment({
             <p className="text-muted mb-4">
                 Please select a payment option for each chosen product:
             </p>
+
+            {showValidation && !canContinue && (
+                <div className="alert alert-danger mb-3" role="alert">
+                    <strong>Please select a payment option for all products</strong> before
+                    continuing.
+                </div>
+            )}
 
             {/* Payment Options per Product */}
             <div className="mb-4">
@@ -1358,6 +1852,8 @@ function StepBanking({
     onBack,
     onNext,
     busy,
+    showValidation,
+    validationErrors,
 }: {
     value: Banking;
     onChange: (b: Partial<Banking>) => void;
@@ -1365,6 +1861,8 @@ function StepBanking({
     onBack: () => void;
     onNext: () => void;
     busy?: boolean;
+    showValidation: boolean;
+    validationErrors: Record<string, string>;
 }) {
     const SOUTH_AFRICAN_BANKS = [
         { value: 'fnb', label: 'First National Bank (FNB)' },
@@ -1397,6 +1895,16 @@ function StepBanking({
     return (
         <>
             <h5 className="mb-3">5: Banking Details</h5>
+            {showValidation && !canContinue && (
+                <div className="alert alert-danger mb-3" role="alert">
+                    <strong>Please fix the following errors:</strong>
+                    <ul className="mb-0 mt-2">
+                        {Object.entries(validationErrors).map(([field, error]) => (
+                            <li key={field}>{error}</li>
+                        ))}
+                    </ul>
+                </div>
+            )}
             <Row className="g-3">
                 <Col md={6}>
                     <Form.Label>
@@ -1405,6 +1913,7 @@ function StepBanking({
                     <Form.Select
                         value={value.bankName ?? ''}
                         onChange={(e) => onChange({ bankName: e.target.value })}
+                        isInvalid={showValidation && !!validationErrors.bankName}
                     >
                         <option value="" disabled>
                             Select your bank…
@@ -1415,6 +1924,11 @@ function StepBanking({
                             </option>
                         ))}
                     </Form.Select>
+                    {showValidation && validationErrors.bankName && (
+                        <Form.Control.Feedback type="invalid">
+                            {validationErrors.bankName}
+                        </Form.Control.Feedback>
+                    )}
                 </Col>
                 <Col md={6}>
                     <Form.Label>
@@ -1423,6 +1937,7 @@ function StepBanking({
                     <Form.Select
                         value={value.accountType ?? ''}
                         onChange={(e) => onChange({ accountType: e.target.value })}
+                        isInvalid={showValidation && !!validationErrors.accountType}
                     >
                         <option value="" disabled>
                             Select account type…
@@ -1433,6 +1948,11 @@ function StepBanking({
                             </option>
                         ))}
                     </Form.Select>
+                    {showValidation && validationErrors.accountType && (
+                        <Form.Control.Feedback type="invalid">
+                            {validationErrors.accountType}
+                        </Form.Control.Feedback>
+                    )}
                 </Col>
                 <Col md={6}>
                     <Form.Label>
@@ -1442,7 +1962,13 @@ function StepBanking({
                         value={value.accountHolder ?? ''}
                         onChange={(e) => onChange({ accountHolder: e.target.value })}
                         placeholder="Full name as it appears on account"
+                        isInvalid={showValidation && !!validationErrors.accountHolder}
                     />
+                    {showValidation && validationErrors.accountHolder && (
+                        <Form.Control.Feedback type="invalid">
+                            {validationErrors.accountHolder}
+                        </Form.Control.Feedback>
+                    )}
                 </Col>
                 <Col md={6}>
                     <Form.Label>
@@ -1453,7 +1979,13 @@ function StepBanking({
                         onChange={(e) => onChange({ accountNumber: e.target.value })}
                         placeholder="Account number"
                         type="text"
+                        isInvalid={showValidation && !!validationErrors.accountNumber}
                     />
+                    {showValidation && validationErrors.accountNumber && (
+                        <Form.Control.Feedback type="invalid">
+                            {validationErrors.accountNumber}
+                        </Form.Control.Feedback>
+                    )}
                     <Form.Text className="text-muted">Your account number is secure</Form.Text>
                 </Col>
                 <Col md={12}>

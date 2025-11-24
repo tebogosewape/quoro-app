@@ -29,6 +29,7 @@ export type Correspondence = {
 
 export type ClientDetailPayload = {
     id: string;
+    fileReference?: string;
     name: string;
     meta: string;
     phone: string;
@@ -59,6 +60,10 @@ export type ClientDetailPayload = {
     accountHolder?: string | null;
     accountNumber?: string | null;
     branchCode?: string | null;
+
+    // Credit report tracking
+    creditReportViewedAt?: string | null;
+    creditReportViewedBy?: string | null;
 
     products: Product[];
     todos: Todo[];

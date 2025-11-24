@@ -29,6 +29,7 @@
         "formik": "^2.4.6",
         "jwt-decode": "^4.0.0",
         "nodemailer": "7.0.9",
+        "qrcode.react": "^4.2.0",
         "react": "^19.1.0",
         "react-bootstrap": "^2.10.9",
         "react-bootstrap-icons": "^1.11.6",

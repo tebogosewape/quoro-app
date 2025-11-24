@@ -137,57 +137,46 @@ apiClient.interceptors.request.use(async (config) => {
         const session = useAuthStore.getState().session;
 
         // If we have a session with token and expiry info
-        if (session?.access_token && session?.expires_in && session?.issued_at) {
+        if (session?.access_token) {
             const now = Date.now();
             const issuedAt = session.issued_at;
-            const expiresIn = session.expires_in * 1000; // Convert to milliseconds
-            const expiresAt = issuedAt + expiresIn;
-            const timeUntilExpiry = expiresAt - now;
+            const expiresIn = session.expires_in ? session.expires_in * 1000 : 0; // Convert to milliseconds
+            const expiresAt = issuedAt ? issuedAt + expiresIn : 0;
+            const timeUntilExpiry = expiresAt ? expiresAt - now : Infinity;
 
             // Refresh if token expires in less than 5 minutes (300000 ms)
             const REFRESH_THRESHOLD = 5 * 60 * 1000;
 
-            if (timeUntilExpiry < REFRESH_THRESHOLD && timeUntilExpiry > 0) {
-                // Token is about to expire, refresh it proactively
+            if (timeUntilExpiry < REFRESH_THRESHOLD && session.refresh_token) {
+                // Token is about to expire or has expired, refresh it
                 if (!isRefreshing) {
                     isRefreshing = true;
-                    refreshPromise = refreshAccessToken();
+                    refreshPromise = refreshAccessToken().finally(() => {
+                        // Always reset state after refresh completes
+                        isRefreshing = false;
+                        refreshPromise = null;
+                    });
                 }
 
                 try {
+                    // Wait for the refresh to complete (whether this request initiated it or not)
                     const newToken = await refreshPromise;
-                    isRefreshing = false;
-                    refreshPromise = null;
 
                     // Update the current request with new token
                     if (config.headers) {
                         config.headers.Authorization = `Bearer ${newToken}`;
                     }
                 } catch (error) {
-                    isRefreshing = false;
-                    refreshPromise = null;
-                    // Let the request proceed with the old token, response interceptor will handle 401
-                }
-            } else if (timeUntilExpiry <= 0) {
-                // Token has already expired, refresh it
-                if (!isRefreshing) {
-                    isRefreshing = true;
-                    refreshPromise = refreshAccessToken();
-                }
-
-                try {
-                    const newToken = await refreshPromise;
-                    isRefreshing = false;
-                    refreshPromise = null;
-
-                    // Update the current request with new token
-                    if (config.headers) {
-                        config.headers.Authorization = `Bearer ${newToken}`;
+                    // Refresh failed, use the old token
+                    logger.warn('Token refresh failed in request interceptor', { error });
+                    if (config.headers && session.access_token) {
+                        config.headers.Authorization = `Bearer ${session.access_token}`;
                     }
-                } catch (error) {
-                    isRefreshing = false;
-                    refreshPromise = null;
-                    // Let the response interceptor handle the redirect
+                }
+            } else {
+                // Token is still valid, just attach it
+                if (config.headers) {
+                    config.headers.Authorization = `Bearer ${session.access_token}`;
                 }
             }
         } else if (isRefreshing && refreshPromise) {
@@ -243,31 +232,38 @@ apiClient.interceptors.response.use(
         const originalRequest = error.config;
 
         if (normalizedError.status === 401 && originalRequest && !skipAuthRedirect) {
-            // Don't retry refresh or login endpoints
+            // Don't retry refresh or login endpoints - these indicate invalid credentials
             if (
                 originalRequest.url?.includes('/auth/refresh') ||
                 originalRequest.url?.includes('/auth/login')
             ) {
-                // Clear session and redirect to login
-                const { useAuthStore } = await import('@/stores/auth.store');
-                useAuthStore.getState().clearSession();
-                if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
-                    window.location.href = '/login';
+                // Clear session and redirect to login only if refresh failed
+                if (originalRequest.url?.includes('/auth/refresh')) {
+                    const { useAuthStore } = await import('@/stores/auth.store');
+                    useAuthStore.getState().clearSession();
+                    if (
+                        typeof window !== 'undefined' &&
+                        !window.location.pathname.includes('/login')
+                    ) {
+                        logger.warn('Refresh token invalid, redirecting to login');
+                        window.location.href = '/login';
+                    }
                 }
                 return Promise.reject(normalizedError);
             }
 
-            // Try to refresh the token
-            try {
-                // If already refreshing, wait for it
-                if (!isRefreshing) {
-                    isRefreshing = true;
-                    refreshPromise = refreshAccessToken();
-                }
+            // Try to refresh the token only if not already refreshing
+            if (!isRefreshing) {
+                isRefreshing = true;
+                refreshPromise = refreshAccessToken().finally(() => {
+                    isRefreshing = false;
+                    refreshPromise = null;
+                });
+            }
 
+            try {
+                // Wait for the refresh to complete
                 const newToken = await refreshPromise;
-                isRefreshing = false;
-                refreshPromise = null;
 
                 // Retry the original request with the new token
                 if (originalRequest.headers) {
@@ -277,12 +273,10 @@ apiClient.interceptors.response.use(
                 return apiClient(originalRequest);
             } catch (refreshError) {
                 // Refresh failed, clear session and redirect
-                isRefreshing = false;
-                refreshPromise = null;
-
                 const { useAuthStore } = await import('@/stores/auth.store');
                 useAuthStore.getState().clearSession();
                 if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
+                    logger.warn('Token refresh failed on 401, redirecting to login');
                     window.location.href = '/login';
                 }
                 return Promise.reject(normalizedError);

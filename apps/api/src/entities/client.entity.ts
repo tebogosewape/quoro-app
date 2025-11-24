@@ -32,7 +32,12 @@ export enum ClientType {
 @Index(['email'])
 @Index(['phoneNumber'])
 @Index(['status'])
+@Index(['fileReference'], { unique: true })
 export class Client extends BaseEntity {
+    // File Reference Number (generated automatically on creation)
+    @Column({ type: 'varchar', length: 20, name: 'file_reference', unique: true, nullable: true })
+    fileReference?: string;
+
     // Personal Information
     @Column({ type: 'varchar', length: 13, name: 'id_number', unique: true })
     idNumber!: string;
@@ -156,6 +161,13 @@ export class Client extends BaseEntity {
 
     @Column({ type: 'varchar', length: 10, nullable: true })
     gender?: string;
+
+    // Credit Report Tracking
+    @Column({ type: 'timestamp', name: 'credit_report_viewed_at', nullable: true })
+    creditReportViewedAt?: Date;
+
+    @Column({ type: 'varchar', length: 36, name: 'credit_report_viewed_by', nullable: true })
+    creditReportViewedBy?: string;
 
     // Notes and Communication
     @Column({ type: 'text', nullable: true })

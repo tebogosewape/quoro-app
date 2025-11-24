@@ -195,6 +195,32 @@ export const getLeads = async (query?: LeadSearchQuery): Promise<LeadListRespons
 };
 
 /**
+ * Get all unassigned leads for bulk operations
+ * @returns All unassigned leads (limited to 5000)
+ */
+export const getAllUnassignedLeads = async (): Promise<Lead[]> => {
+    const response = await apiClient.get('/leads/bulk/unassigned', {
+        headers: getAuthHeaders(),
+    });
+
+    const data = unwrapApiResponse(response.data) as { leads: unknown };
+    return z.array(leadSchema).parse(data.leads);
+};
+
+/**
+ * Get all assigned leads for bulk operations
+ * @returns All assigned leads (limited to 5000)
+ */
+export const getAllAssignedLeads = async (): Promise<Lead[]> => {
+    const response = await apiClient.get('/leads/bulk/assigned', {
+        headers: getAuthHeaders(),
+    });
+
+    const data = unwrapApiResponse(response.data) as { leads: unknown };
+    return z.array(leadSchema).parse(data.leads);
+};
+
+/**
  * Get a single lead by ID
  * @param leadId - Lead UUID
  * @returns Lead details
@@ -247,6 +273,20 @@ export const deleteLead = async (leadId: string): Promise<void> => {
     await apiClient.delete(`/leads/${leadId}`, {
         headers: getAuthHeaders(),
     });
+};
+
+/**
+ * Log when an agent views a lead (for audit tracking)
+ * @param leadId - Lead UUID
+ */
+export const logLeadView = async (leadId: string): Promise<void> => {
+    await apiClient.post(
+        `/leads/${leadId}/view`,
+        {},
+        {
+            headers: getAuthHeaders(),
+        }
+    );
 };
 
 /**

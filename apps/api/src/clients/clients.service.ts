@@ -1,7 +1,9 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Injectable, NotFoundException, ConflictException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, FindOptionsWhere } from 'typeorm';
-import { Client } from '@/entities/client.entity';
+import { Client, ClientStatus } from '@/entities/client.entity';
+import { Lead } from '@/entities/lead.entity';
 import { CreateClientDto } from './dto/create-client.dto';
 import { UpdateClientDto } from './dto/update-client.dto';
 import { SearchClientsDto } from './dto/search-clients.dto';
@@ -9,7 +11,7 @@ import { MailService } from '@/mail/mail.service';
 import { ZoomConnectService } from '@/sms/zoomconnect.service';
 import { WhatsappService } from '@/whatsapp/whatsapp.service';
 import { AuditService } from '@/modules/audit/audit.service';
-import { AuditAction } from '@/entities/audit-log.entity';
+import { AuditAction, AuditLog } from '@/entities/audit-log.entity';
 import { UserRole } from '@/entities/user.entity';
 
 @Injectable()
@@ -19,11 +21,52 @@ export class ClientsService {
     constructor(
         @InjectRepository(Client)
         private readonly clientRepository: Repository<Client>,
+        @InjectRepository(Lead)
+        private readonly leadRepository: Repository<Lead>,
+        @InjectRepository(AuditLog)
+        private readonly auditLogRepository: Repository<AuditLog>,
         private readonly mailService: MailService,
         private readonly smsService: ZoomConnectService,
         private readonly whatsappService: WhatsappService,
         private readonly auditService: AuditService
     ) {}
+
+    /**
+     * Generate a unique file reference number in format QFN######
+     * Uses sequential numbering based on existing clients
+     */
+    private async generateFileReference(): Promise<string> {
+        // Find the highest existing file reference number
+        const lastClient = await this.clientRepository
+            .createQueryBuilder('client')
+            .where('client.file_reference LIKE :prefix', { prefix: 'QFN%' })
+            .orderBy('client.file_reference', 'DESC')
+            .getOne();
+
+        let nextNumber = 1;
+        if (lastClient && lastClient.fileReference) {
+            // Extract the numeric part from QFN######
+            const match = lastClient.fileReference.match(/QFN(\d+)/);
+            if (match && match[1]) {
+                nextNumber = parseInt(match[1], 10) + 1;
+            }
+        }
+
+        // Format as QFN with 6-digit padding
+        const fileReference = `QFN${String(nextNumber).padStart(6, '0')}`;
+
+        // Verify uniqueness (in case of race conditions)
+        const existing = await this.clientRepository.findOne({
+            where: { fileReference },
+        });
+
+        if (existing) {
+            // Recursively try next number if collision occurs
+            return this.generateFileReference();
+        }
+
+        return fileReference;
+    }
 
     /**
      * Create a new client from onboarding wizard
@@ -58,22 +101,86 @@ export class ClientsService {
             );
         }
 
+        // Generate unique file reference number
+        const fileReference = await this.generateFileReference();
+        this.logger.log(`Generated file reference: ${fileReference}`);
+
         // If created by an agent, automatically assign the client to them
         const assignedAgentId =
             userRole === UserRole.AGENT ? userId : createClientDto.assignedAgentId;
 
+        // Determine appropriate status based on onboarding completion
+        // If products are selected and banking info provided, set as ACTIVE, otherwise DOCUMENTATION_PENDING
+        const hasProducts =
+            createClientDto.selectedProducts && createClientDto.selectedProducts.length > 0;
+        const hasBankingInfo = !!(createClientDto.bankName && createClientDto.accountNumber);
+        const clientStatus =
+            hasProducts && hasBankingInfo
+                ? ClientStatus.ACTIVE
+                : ClientStatus.DOCUMENTATION_PENDING;
+
         const client = this.clientRepository.create({
             ...createClientDto,
+            fileReference,
             email: createClientDto.email.toLowerCase(),
+            status: createClientDto.status || clientStatus,
             assignedAgentId,
             createdBy: userId,
             updatedBy: userId,
         });
 
         const savedClient = await this.clientRepository.save(client);
-        this.logger.log(`Client created successfully with ID: ${savedClient.id}`);
+        this.logger.log(
+            `Client created successfully with ID: ${savedClient.id}, File Ref: ${savedClient.fileReference}`
+        );
         if (assignedAgentId) {
             this.logger.log(`Client assigned to agent: ${assignedAgentId}`);
+        }
+
+        // Update the lead if this client was created from a lead
+        if (createClientDto.leadId) {
+            try {
+                const lead = await this.leadRepository.findOne({
+                    where: { id: createClientDto.leadId },
+                });
+
+                if (lead) {
+                    lead.leadOutcome = 'Converted';
+                    lead.clientId = savedClient.id;
+                    await this.leadRepository.save(lead);
+                    this.logger.log(
+                        `Lead ${createClientDto.leadId} marked as converted to client ${savedClient.id}`
+                    );
+                } else {
+                    this.logger.warn(
+                        `Lead ${createClientDto.leadId} not found for conversion update`
+                    );
+                }
+            } catch (error) {
+                this.logger.error(
+                    `Failed to update lead ${createClientDto.leadId} after client creation:`,
+                    error
+                );
+                // Don't fail the client creation if lead update fails
+            }
+        }
+
+        // Log client creation in audit trail
+        if (userId) {
+            await this.auditService.logEvent({
+                entityType: 'client',
+                entityId: savedClient.id,
+                action: AuditAction.CREATE,
+                actorId: userId,
+                metadata: {
+                    fileReference: savedClient.fileReference,
+                    clientName: `${savedClient.firstName} ${savedClient.lastName}`,
+                    idNumber: savedClient.idNumber,
+                    email: savedClient.email,
+                    assignedAgentId: savedClient.assignedAgentId,
+                    convertedFromLeadId: createClientDto.leadId || undefined,
+                },
+            });
         }
 
         // Send welcome communications asynchronously (don't block the response)
@@ -94,6 +201,7 @@ export class ClientsService {
     private async sendWelcomeCommunications(client: Client, userId?: string): Promise<void> {
         const firstName = client.firstName || 'Valued Client';
         const fullName = `${client.firstName} ${client.lastName}`.trim() || 'Valued Client';
+        const fileRef = client.fileReference || 'N/A';
 
         // Email content
         const emailSubject = 'Welcome to Quora Finance - Your Application is Being Processed';
@@ -105,11 +213,12 @@ export class ClientsService {
                         <p>Thank you for choosing Quora Finance. We have successfully received your application.</p>
                         <p><strong>Application Details:</strong></p>
                         <ul>
-                            <li>Client ID: ${client.id}</li>
+                            <li><strong>File Reference:</strong> ${fileRef}</li>
                             <li>Name: ${fullName}</li>
                             <li>Email: ${client.email}</li>
                             <li>Phone: ${client.phoneNumber}</li>
                         </ul>
+                        <p>Please keep your file reference number (${fileRef}) for future correspondence.</p>
                         <p>Our team will review your application and contact you shortly with the next steps.</p>
                         <p>If you have any questions, please don't hesitate to contact us.</p>
                         <p style="margin-top: 30px;">Best regards,<br><strong>Quora Finance Team</strong></p>
@@ -119,10 +228,10 @@ export class ClientsService {
         `;
 
         // SMS content (keep it short)
-        const smsMessage = `Welcome to Quora Finance, ${firstName}! Your application has been received. Our team will contact you shortly. Ref: ${client.id.substring(0, 8)}`;
+        const smsMessage = `Welcome to Quora Finance, ${firstName}! Your application has been received. File Ref: ${fileRef}. Our team will contact you shortly.`;
 
         // WhatsApp content
-        const whatsappMessage = `Hi ${firstName},\n\nWelcome to Quora Finance! ✨\n\nYour application has been successfully received and is being processed.\n\nReference: ${client.id.substring(0, 8)}\n\nOur team will contact you shortly with the next steps.\n\nThank you for choosing us!`;
+        const whatsappMessage = `Hi ${firstName},\n\nWelcome to Quora Finance! ✨\n\nYour application has been successfully received and is being processed.\n\n📋 File Reference: ${fileRef}\n\nPlease keep this reference number for future correspondence.\n\nOur team will contact you shortly with the next steps.\n\nThank you for choosing us!`;
 
         const results = {
             email: { success: false, error: null as Error | null },
@@ -166,12 +275,10 @@ export class ClientsService {
 
         // Send WhatsApp
         try {
-            const normalizedPhone = this.normalizePhone(client.phoneNumber);
-            if (normalizedPhone) {
-                await this.whatsappService.sendText(normalizedPhone, whatsappMessage);
-                results.whatsapp.success = true;
-                this.logger.log(`Welcome WhatsApp sent to ${normalizedPhone}`);
-            }
+            // WhatsApp service now requires clientId instead of phone number
+            await this.whatsappService.sendMessage(client.id, whatsappMessage);
+            results.whatsapp.success = true;
+            this.logger.log(`Welcome WhatsApp sent to client ${client.id}`);
         } catch (error) {
             results.whatsapp.error = error as Error;
             this.logger.error(`Failed to send welcome WhatsApp to ${client.phoneNumber}:`, error);
@@ -323,6 +430,21 @@ export class ClientsService {
             throw new NotFoundException(`Client with ID ${id} not found`);
         }
 
+        // Manually query audit logs for this client
+        const auditLogs = await this.auditLogRepository.find({
+            where: {
+                entityType: 'client',
+                entityId: id,
+            },
+            relations: ['actor'],
+            order: {
+                createdAt: 'DESC',
+            },
+        });
+
+        // Attach audit logs to the client object
+        (client as any).auditLogs = auditLogs;
+
         // Fix any legacy data format issues
         if (client.selectedProducts && Array.isArray(client.selectedProducts)) {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -370,6 +492,62 @@ export class ClientsService {
             }
         }
 
+        // Track changes for audit logging
+        const changes: Array<{ field: string; oldValue: unknown; newValue: unknown }> = [];
+        const significantFields = [
+            'firstName',
+            'lastName',
+            'email',
+            'phoneNumber',
+            'alternatePhone',
+            'physicalAddress',
+            'postalAddress',
+            'dateOfBirth',
+            'idNumber',
+            'maritalStatus',
+            'clientType',
+            'status',
+            'monthlyIncome',
+            'monthlyExpenses',
+            'totalDebt',
+            'creditScore',
+            'assignedAgentId',
+        ];
+
+        // Track product additions/removals
+        let productChanges: { added: any[]; removed: any[] } | null = null;
+        if (updateClientDto.selectedProducts) {
+            const oldProducts = (client as any).selectedProducts || [];
+            const newProducts = updateClientDto.selectedProducts || [];
+
+            const oldProductIds = oldProducts.map((p: any) => p.productId);
+            const newProductIds = newProducts.map((p: any) => p.productId);
+
+            const added = newProducts.filter((p: any) => !oldProductIds.includes(p.productId));
+            const removed = oldProducts.filter((p: any) => !newProductIds.includes(p.productId));
+
+            if (added.length > 0 || removed.length > 0) {
+                productChanges = { added, removed };
+            }
+        }
+
+        for (const field of significantFields) {
+            if (field in updateClientDto && (updateClientDto as any)[field] !== undefined) {
+                const oldValue = (client as any)[field];
+                const newValue = (updateClientDto as any)[field];
+
+                // Normalize email for comparison
+                const normalizedOld =
+                    field === 'email' && oldValue ? oldValue.toLowerCase() : oldValue;
+                const normalizedNew =
+                    field === 'email' && newValue ? newValue.toLowerCase() : newValue;
+
+                if (normalizedOld !== normalizedNew) {
+                    changes.push({ field, oldValue: normalizedOld, newValue: normalizedNew });
+                }
+            }
+        }
+
         Object.assign(client, {
             ...updateClientDto,
             email: updateClientDto.email?.toLowerCase() || client.email,
@@ -378,6 +556,52 @@ export class ClientsService {
 
         const updatedClient = await this.clientRepository.save(client);
         this.logger.log(`Client updated successfully: ${updatedClient.id}`);
+
+        // Log each field change to audit log
+        if (userId && changes.length > 0) {
+            for (const change of changes) {
+                await this.auditService.logClientFieldUpdate({
+                    clientId: id,
+                    field: change.field,
+                    oldValue: change.oldValue,
+                    newValue: change.newValue,
+                    updatedBy: userId,
+                    metadata: {
+                        clientName: `${client.firstName} ${client.lastName}`,
+                    },
+                });
+            }
+        }
+
+        // Log product additions/removals
+        if (userId && productChanges) {
+            for (const product of productChanges.added) {
+                await this.auditService.logEvent({
+                    entityType: 'client',
+                    entityId: id,
+                    action: AuditAction.CLIENT_PRODUCT_ADDED,
+                    actorId: userId,
+                    metadata: {
+                        productId: product.productId,
+                        paymentOptionId: product.paymentOptionId,
+                        clientName: `${updatedClient.firstName} ${updatedClient.lastName}`,
+                    },
+                });
+            }
+
+            for (const product of productChanges.removed) {
+                await this.auditService.logEvent({
+                    entityType: 'client',
+                    entityId: id,
+                    action: AuditAction.CLIENT_PRODUCT_REMOVED,
+                    actorId: userId,
+                    metadata: {
+                        productId: product.productId,
+                        clientName: `${updatedClient.firstName} ${updatedClient.lastName}`,
+                    },
+                });
+            }
+        }
 
         return updatedClient;
     }

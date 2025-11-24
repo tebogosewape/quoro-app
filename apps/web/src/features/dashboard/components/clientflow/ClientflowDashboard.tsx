@@ -200,10 +200,25 @@ export default function ClientflowDashboard() {
         });
 
         // Handle task click - if it's a lead conversion task, navigate to onboarding with lead data
-        const handleTaskClick = (task: any) => {
+        const handleTaskClick = async (task: any) => {
+            // Log lead view if this is a lead conversion task
+            if (task.metadata?.leadId) {
+                try {
+                    const { logLeadView } = await import('@/api/leads.api');
+                    await logLeadView(task.metadata.leadId);
+                } catch (error) {
+                    console.error('Failed to log lead view:', error);
+                    // Don't block navigation on logging failure
+                }
+            }
+
+            // Navigate to appropriate page
             if (task.metadata?.leadId && task.metadata?.leadData) {
                 navigate('/clients/new', {
-                    state: { leadData: task.metadata.leadData },
+                    state: {
+                        leadData: task.metadata.leadData,
+                        leadId: task.metadata.leadId, // Pass leadId for tracking
+                    },
                 });
             } else if (task.client?.id) {
                 navigate(`/clients/${task.client.id}`);

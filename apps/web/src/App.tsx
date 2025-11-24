@@ -11,6 +11,7 @@ import OnboardingWizard from './pages/Clients/OnboardingWizard';
 import ClientDetails from './pages/Clients/ClientDetails';
 import ClientsOverview from './pages/Clients/ClientsOverview';
 import ManageRoles from './pages/Admin/ManageRoles';
+import ManageWhatsApp from './pages/Admin/ManageWhatsApp';
 import ManageProfile from './pages/Account/ManageProfile';
 import UsersPage from './pages/Users/UsersPage';
 import ProductsPage from './pages/Products/ProductsPage';
@@ -107,6 +108,15 @@ const App = () => {
                         element={
                             <PrivateRoute permission="roles.manage">
                                 <ManageRoles />
+                            </PrivateRoute>
+                        }
+                    />
+
+                    <Route
+                        path="/admin/whatsapp"
+                        element={
+                            <PrivateRoute permission="roles.manage">
+                                <ManageWhatsApp />
                             </PrivateRoute>
                         }
                     />

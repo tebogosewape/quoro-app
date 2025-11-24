@@ -14,6 +14,22 @@ export enum AuditAction {
     LOGIN_FAILURE = 'login_failure',
     PASSWORD_RESET_REQUEST = 'password_reset_request',
     PASSWORD_RESET_COMPLETE = 'password_reset_complete',
+    // Lead management actions
+    LEAD_ASSIGNED = 'lead_assigned',
+    LEAD_UNASSIGNED = 'lead_unassigned',
+    LEAD_VIEWED = 'lead_viewed',
+    LEAD_BULK_ASSIGNED = 'lead_bulk_assigned',
+    LEAD_BULK_UNASSIGNED = 'lead_bulk_unassigned',
+    // Client onboarding actions
+    ONBOARDING_STARTED = 'onboarding_started',
+    ONBOARDING_STEP_COMPLETED = 'onboarding_step_completed',
+    ONBOARDING_COMPLETED = 'onboarding_completed',
+    // Client management actions
+    CLIENT_FIELD_UPDATED = 'client_field_updated',
+    CLIENT_PRODUCT_ADDED = 'client_product_added',
+    CLIENT_PRODUCT_REMOVED = 'client_product_removed',
+    CLIENT_DOCUMENT_UPLOADED = 'client_document_uploaded',
+    CREDIT_REPORT_DOWNLOADED = 'credit_report_downloaded',
 }
 
 export enum AuditActorType {
