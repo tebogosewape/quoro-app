@@ -1,5 +1,10 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, HttpException, HttpStatus } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { Client } from '@/entities/client.entity';
+import { CreditReport } from '@/entities/credit-report.entity';
+import { ExperianApiService } from './experian-api.service';
+import { ExperianSearchResponse } from './dto/experian.dto';
 import PdfPrinter from 'pdfmake';
 import type { TDocumentDefinitions, TFontDictionary } from 'pdfmake/interfaces';
 
@@ -9,10 +14,106 @@ import type { TDocumentDefinitions, TFontDictionary } from 'pdfmake/interfaces';
 export class ExperianReportService {
     private readonly logger = new Logger(ExperianReportService.name);
 
+    constructor(
+        private readonly experianApiService: ExperianApiService,
+        @InjectRepository(CreditReport)
+        private readonly creditReportRepo: Repository<CreditReport>
+    ) {}
+
     /**
-     * Generate mock Experian credit report PDF
+     * Generate credit report PDF using real Experian API data
+     * Falls back to mock data if API is not configured
      */
-    async generateCreditReport(client: Client): Promise<Buffer> {
+    async generateCreditReport(client: Client, userId?: string): Promise<Buffer> {
+        let experianData: ExperianSearchResponse | null = null;
+        let creditReport: CreditReport | null = null;
+
+        // Try to get real data from Experian API
+        if (this.experianApiService.isConfigured()) {
+            try {
+                this.logger.log(`Fetching credit report from Experian for client ${client.id}`);
+
+                // Call real Experian API
+                experianData = (await this.experianApiService.searchConsumer({
+                    idNumber: client.idNumber,
+                    firstName: client.firstName,
+                    surname: client.lastName,
+                    dateOfBirth: client.dateOfBirth,
+                    cellphoneNumber: client.phoneNumber,
+                    emailAddress: client.email,
+                    enquiryReason: 'Credit Application',
+                    productType: 'Debt Review',
+                })) as ExperianSearchResponse;
+
+                // Store in database
+                creditReport = await this.creditReportRepo.save({
+                    clientId: client.id,
+                    requestedBy: userId || null,
+                    referenceNumber: experianData.referenceNumber,
+                    enquiryReason: 'Credit Application',
+                    enquiryPurpose: 'Debt review assessment',
+                    creditScore: experianData.creditScore.score,
+                    scoreClass: experianData.creditScore.scoreClass,
+                    totalDebt: experianData.accountSummary.totalDebt,
+                    totalAccounts: experianData.accountSummary.totalAccounts,
+                    overdueAccounts: experianData.accountSummary.overdueAccounts,
+                    totalCreditLimit: experianData.accountSummary.totalCreditLimit,
+                    utilizationRate: experianData.accountSummary.utilizationRate,
+                    judgmentCount: experianData.judgments?.length || 0,
+                    defaultCount: experianData.defaults?.length || 0,
+                    hasAdministration: (experianData.administrations?.length || 0) > 0,
+                    rawResponse: experianData as any,
+                    status: 'success',
+                    consentGiven: true, // TODO: Get from request
+                    consentDate: new Date(),
+                    purpose: 'Debt review credit assessment',
+                    requestedAt: new Date(),
+                });
+
+                this.logger.log(
+                    `Credit report saved with reference: ${experianData.referenceNumber}`
+                );
+            } catch (error) {
+                this.logger.error('Failed to fetch from Experian API, falling back to mock data', {
+                    error: error instanceof Error ? error.message : error,
+                    clientId: client.id,
+                });
+
+                // Store error in database
+                if (error instanceof HttpException) {
+                    await this.creditReportRepo.save({
+                        clientId: client.id,
+                        requestedBy: userId || null,
+                        referenceNumber: `ERROR-${Date.now()}`,
+                        enquiryReason: 'Credit Application',
+                        status: 'error',
+                        errorMessage: error.message,
+                        rawResponse: {},
+                        requestedAt: new Date(),
+                    });
+                }
+
+                // Fall through to mock data generation
+                experianData = null;
+            }
+        } else {
+            this.logger.warn(
+                'Experian API not configured. Generating mock report. Configure EXPERIAN_API_URL, EXPERIAN_SUBSCRIBER_CODE, EXPERIAN_USERNAME, and EXPERIAN_PASSWORD in .env'
+            );
+        }
+
+        // Generate PDF
+        return this.generatePdf(client, experianData, creditReport);
+    }
+
+    /**
+     * Generate PDF from Experian data or mock data
+     */
+    private async generatePdf(
+        client: Client,
+        experianData: ExperianSearchResponse | null,
+        creditReport: CreditReport | null
+    ): Promise<Buffer> {
         // Use Courier as default font (always available)
         const fonts: TFontDictionary = {
             Courier: {
@@ -37,7 +138,10 @@ export class ExperianReportService {
 
         const printer = new PdfPrinter(fonts);
 
-        const docDefinition = this.buildDocumentDefinition(client);
+        // Build PDF using real data if available, otherwise use mock
+        const docDefinition = experianData
+            ? this.buildDocumentDefinitionFromRealData(client, experianData, creditReport)
+            : this.buildDocumentDefinitionFromMockData(client);
 
         return new Promise((resolve, reject) => {
             try {
@@ -45,7 +149,20 @@ export class ExperianReportService {
                 const chunks: Buffer[] = [];
 
                 pdfDoc.on('data', (chunk) => chunks.push(chunk));
-                pdfDoc.on('end', () => resolve(Buffer.concat(chunks)));
+                pdfDoc.on('end', () => {
+                    // Update PDF generation tracking if we have a credit report
+                    if (creditReport) {
+                        this.creditReportRepo
+                            .update(creditReport.id, {
+                                pdfGenerated: true,
+                                pdfGeneratedAt: new Date(),
+                            })
+                            .catch((err) =>
+                                this.logger.error('Failed to update PDF generation status', err)
+                            );
+                    }
+                    resolve(Buffer.concat(chunks));
+                });
                 pdfDoc.on('error', reject);
 
                 pdfDoc.end();
@@ -55,7 +172,132 @@ export class ExperianReportService {
         });
     }
 
-    private buildDocumentDefinition(client: Client): TDocumentDefinitions {
+    /**
+     * Build PDF document from REAL Experian API data
+     */
+    private buildDocumentDefinitionFromRealData(
+        client: Client,
+        data: ExperianSearchResponse,
+        creditReport: CreditReport | null
+    ): TDocumentDefinitions {
+        const reportDate = new Date().toLocaleDateString('en-ZA');
+        const creditScore = data.creditScore.score;
+        const scoreRating = this.getScoreRating(creditScore);
+
+        return {
+            pageSize: 'A4',
+            pageMargins: [40, 60, 40, 60],
+            header: {
+                margin: [40, 20, 40, 0],
+                columns: [
+                    {
+                        stack: [
+                            {
+                                image: this.getExperianLogoBase64(),
+                                width: 120,
+                                margin: [0, 0, 0, 5],
+                            },
+                            {
+                                text: 'Credit Report',
+                                color: '#666666',
+                                fontSize: 8,
+                                margin: [2, 0, 0, 0],
+                            },
+                        ],
+                    },
+                    {
+                        stack: [
+                            {
+                                text: 'CONSUMER CREDIT REPORT',
+                                alignment: 'right',
+                                fontSize: 20,
+                                bold: true,
+                                color: '#003DA5',
+                                margin: [0, 5, 0, 3],
+                            },
+                            {
+                                text: 'REAL EXPERIAN DATA',
+                                alignment: 'right',
+                                fontSize: 9,
+                                color: '#2E7D32', // Green to indicate real data
+                                bold: true,
+                                margin: [0, 0, 0, 0],
+                            },
+                        ],
+                    },
+                ],
+            },
+            footer: (currentPage: number, pageCount: number) => ({
+                margin: [40, 10, 40, 0],
+                columns: [
+                    {
+                        text: [
+                            { text: 'Generated: ', fontSize: 8, color: '#666666' },
+                            { text: reportDate, fontSize: 8, color: '#333333' },
+                            creditReport
+                                ? [
+                                      { text: ' | Ref: ', fontSize: 8, color: '#666666' },
+                                      {
+                                          text: creditReport.referenceNumber,
+                                          fontSize: 8,
+                                          color: '#333333',
+                                      },
+                                  ]
+                                : '',
+                        ],
+                        width: '*',
+                    },
+                    {
+                        text: `Page ${currentPage} of ${pageCount}`,
+                        alignment: 'right',
+                        fontSize: 8,
+                        color: '#666666',
+                    },
+                ],
+            }),
+            content: [
+                // Personal Information
+                this.buildPersonalInfoSection(data.consumer),
+
+                // Credit Score
+                this.buildCreditScoreSection(creditScore, scoreRating, data.creditScore),
+
+                // Account Summary
+                this.buildAccountSummarySection(data.accountSummary),
+
+                // Credit Accounts
+                this.buildCreditAccountsSection(data.accounts),
+
+                // Payment Profile
+                this.buildPaymentProfileSection(data.paymentProfile),
+
+                // Negative Information
+                ...this.buildNegativeInfoSections(
+                    data.judgments,
+                    data.defaults,
+                    data.administrations
+                ),
+
+                // Credit Enquiries
+                this.buildEnquiriesSection(data.enquiries),
+
+                // Addresses (if available)
+                ...(data.addresses && data.addresses.length > 0
+                    ? [this.buildAddressesSection(data.addresses)]
+                    : []),
+            ],
+            defaultStyle: {
+                font: 'Helvetica',
+                fontSize: 9,
+                lineHeight: 1.4,
+            },
+        };
+    }
+
+    /**
+     * Build PDF document from MOCK data (fallback)
+     */
+    private buildDocumentDefinitionFromMockData(client: Client): TDocumentDefinitions {
         const reportDate = new Date().toLocaleDateString('en-ZA');
         const creditScore = client.creditScore || this.generateMockCreditScore(client);
         const scoreRating = this.getScoreRating(creditScore);
@@ -755,5 +997,597 @@ export class ExperianReportService {
         const date = new Date();
         date.setDate(date.getDate() - Math.floor(Math.random() * maxDaysAgo));
         return date.toLocaleDateString('en-ZA');
+    }
+
+    /**
+     * ============================================================
+     * HELPER METHODS FOR REAL EXPERIAN DATA PDF GENERATION
+     * ============================================================
+     */
+
+    private buildPersonalInfoSection(consumer: any): any {
+        return {
+            text: 'PERSONAL INFORMATION',
+            style: 'sectionHeader',
+            margin: [0, 25, 0, 15],
+            decoration: 'underline',
+            bold: true,
+            fontSize: 13,
+            color: '#003DA5',
+            table: {
+                widths: ['25%', '25%', '25%', '25%'],
+                body: [
+                    [
+                        {
+                            text: [
+                                { text: 'Full Name:\n', bold: true, fontSize: 8 },
+                                {
+                                    text: `${consumer.firstName} ${consumer.surname}`,
+                                    fontSize: 9,
+                                },
+                            ],
+                        },
+                        {
+                            text: [
+                                { text: 'ID Number:\n', bold: true, fontSize: 8 },
+                                { text: consumer.idNumber, fontSize: 9 },
+                            ],
+                        },
+                        {
+                            text: [
+                                { text: 'Date of Birth:\n', bold: true, fontSize: 8 },
+                                {
+                                    text: consumer.dateOfBirth
+                                        ? new Date(consumer.dateOfBirth).toLocaleDateString('en-ZA')
+                                        : 'N/A',
+                                    fontSize: 9,
+                                },
+                            ],
+                        },
+                        {
+                            text: [
+                                { text: 'Gender:\n', bold: true, fontSize: 8 },
+                                { text: consumer.gender || 'N/A', fontSize: 9 },
+                            ],
+                        },
+                    ],
+                ],
+            },
+            layout: 'noBorders',
+        };
+    }
+
+    private buildCreditScoreSection(score: number, rating: any, scoreData: any): any {
+        return {
+            text: 'CREDIT SCORE',
+            style: 'sectionHeader',
+            margin: [0, 25, 0, 15],
+            decoration: 'underline',
+            bold: true,
+            fontSize: 13,
+            color: '#003DA5',
+            stack: [
+                {
+                    columns: [
+                        {
+                            width: '50%',
+                            stack: [
+                                {
+                                    text: score.toString(),
+                                    fontSize: 48,
+                                    bold: true,
+                                    color: rating.color,
+                                    margin: [0, 0, 0, 10],
+                                },
+                                {
+                                    text: rating.label,
+                                    fontSize: 16,
+                                    color: rating.color,
+                                    bold: true,
+                                },
+                                {
+                                    text: `Score Class: ${scoreData.scoreClass}`,
+                                    fontSize: 10,
+                                    color: '#666',
+                                    margin: [0, 10, 0, 0],
+                                },
+                            ],
+                        },
+                        {
+                            width: '50%',
+                            stack: [
+                                {
+                                    text: 'Score Range',
+                                    bold: true,
+                                    fontSize: 10,
+                                    margin: [0, 0, 0, 10],
+                                },
+                                this.getScoreBands(score),
+                            ],
+                        },
+                    ],
+                },
+            ],
+        };
+    }
+
+    private buildAccountSummarySection(summary: any): any {
+        return {
+            text: 'ACCOUNT SUMMARY',
+            style: 'sectionHeader',
+            margin: [0, 25, 0, 10],
+            decoration: 'underline',
+            bold: true,
+            fontSize: 13,
+            color: '#003DA5',
+            table: {
+                widths: ['*', '*', '*', '*'],
+                body: [
+                    [
+                        {
+                            text: 'Total Accounts',
+                            bold: true,
+                            fillColor: '#F5F5F5',
+                            fontSize: 8,
+                        },
+                        {
+                            text: 'Active Accounts',
+                            bold: true,
+                            fillColor: '#F5F5F5',
+                            fontSize: 8,
+                        },
+                        { text: 'Total Debt', bold: true, fillColor: '#F5F5F5', fontSize: 8 },
+                        {
+                            text: 'Credit Limit',
+                            bold: true,
+                            fillColor: '#F5F5F5',
+                            fontSize: 8,
+                        },
+                    ],
+                    [
+                        { text: summary.totalAccounts.toString(), fontSize: 11, bold: true },
+                        { text: summary.activeAccounts.toString(), fontSize: 11, bold: true },
+                        {
+                            text: `R ${summary.totalDebt.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`,
+                            fontSize: 11,
+                            bold: true,
+                            color: summary.totalDebt > 0 ? '#C62828' : '#2E7D32',
+                        },
+                        {
+                            text: `R ${summary.totalCreditLimit.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`,
+                            fontSize: 11,
+                            bold: true,
+                        },
+                    ],
+                ],
+            },
+            layout: {
+                hLineWidth: () => 1,
+                vLineWidth: () => 1,
+                hLineColor: () => '#E0E0E0',
+                vLineColor: () => '#E0E0E0',
+            },
+        };
+    }
+
+    private buildCreditAccountsSection(accounts: any[]): any {
+        if (!accounts || accounts.length === 0) {
+            return {
+                text: 'No credit accounts found',
+                margin: [0, 10],
+                italics: true,
+                color: '#666',
+            };
+        }
+
+        return {
+            text: 'CREDIT ACCOUNTS',
+            style: 'sectionHeader',
+            margin: [0, 25, 0, 10],
+            decoration: 'underline',
+            bold: true,
+            fontSize: 13,
+            color: '#003DA5',
+            stack: accounts.slice(0, 10).map((account) => ({
+                margin: [0, 0, 0, 15],
+                table: {
+                    widths: ['25%', '25%', '25%', '25%'],
+                    body: [
+                        [
+                            {
+                                text: account.subscriber,
+                                bold: true,
+                                fontSize: 11,
+                                colSpan: 2,
+                            },
+                            {},
+                            {
+                                text: account.accountType,
+                                alignment: 'right',
+                                color: '#666',
+                                fontSize: 9,
+                                colSpan: 2,
+                            },
+                            {},
+                        ],
+                        [
+                            {
+                                text: [
+                                    { text: 'Status: ', fontSize: 8, color: '#666' },
+                                    {
+                                        text: account.status,
+                                        fontSize: 9,
+                                        color: account.status === 'Active' ? '#2E7D32' : '#C62828',
+                                    },
+                                ],
+                            },
+                            {
+                                text: [
+                                    { text: 'Balance: ', fontSize: 8, color: '#666' },
+                                    {
+                                        text: `R ${account.currentBalance.toLocaleString('en-ZA')}`,
+                                        fontSize: 9,
+                                    },
+                                ],
+                            },
+                            {
+                                text: [
+                                    { text: 'Opened: ', fontSize: 8, color: '#666' },
+                                    {
+                                        text: new Date(account.openedDate).toLocaleDateString(
+                                            'en-ZA'
+                                        ),
+                                        fontSize: 9,
+                                    },
+                                ],
+                            },
+                            {
+                                text: [
+                                    { text: 'Overdue: ', fontSize: 8, color: '#666' },
+                                    {
+                                        text: `R ${account.overdueAmount.toLocaleString('en-ZA')}`,
+                                        fontSize: 9,
+                                        color: account.overdueAmount > 0 ? '#C62828' : '#2E7D32',
+                                    },
+                                ],
+                            },
+                        ],
+                    ],
+                },
+                layout: {
+                    hLineWidth: () => 1,
+                    vLineWidth: () => 1,
+                    hLineColor: () => '#E0E0E0',
+                    vLineColor: () => '#E0E0E0',
+                    fillColor: (rowIndex: number) => (rowIndex === 0 ? '#F5F5F5' : null),
+                },
+            })),
+        };
+    }
+
+    private buildPaymentProfileSection(paymentProfile: any): any {
+        return {
+            text: 'PAYMENT PROFILE',
+            style: 'sectionHeader',
+            margin: [0, 25, 0, 10],
+            decoration: 'underline',
+            bold: true,
+            fontSize: 13,
+            color: '#003DA5',
+            table: {
+                widths: ['*', '*', '*', '*', '*'],
+                body: [
+                    [
+                        { text: 'Current', bold: true, fillColor: '#F5F5F5', fontSize: 8 },
+                        {
+                            text: '1 Month Overdue',
+                            bold: true,
+                            fillColor: '#F5F5F5',
+                            fontSize: 8,
+                        },
+                        {
+                            text: '2 Months Overdue',
+                            bold: true,
+                            fillColor: '#F5F5F5',
+                            fontSize: 8,
+                        },
+                        {
+                            text: '3+ Months Overdue',
+                            bold: true,
+                            fillColor: '#F5F5F5',
+                            fontSize: 8,
+                        },
+                        {
+                            text: 'On-Time %',
+                            bold: true,
+                            fillColor: '#F5F5F5',
+                            fontSize: 8,
+                        },
+                    ],
+                    [
+                        {
+                            text: paymentProfile.currentPayments.toString(),
+                            fontSize: 11,
+                            bold: true,
+                            color: '#2E7D32',
+                        },
+                        {
+                            text: paymentProfile.paymentsOneMonth.toString(),
+                            fontSize: 11,
+                            bold: true,
+                            color: paymentProfile.paymentsOneMonth > 0 ? '#F57C00' : '#2E7D32',
+                        },
+                        {
+                            text: paymentProfile.paymentsTwoMonths.toString(),
+                            fontSize: 11,
+                            bold: true,
+                            color: paymentProfile.paymentsTwoMonths > 0 ? '#F57C00' : '#2E7D32',
+                        },
+                        {
+                            text: paymentProfile.paymentsThreeMonths.toString(),
+                            fontSize: 11,
+                            bold: true,
+                            color: paymentProfile.paymentsThreeMonths > 0 ? '#C62828' : '#2E7D32',
+                        },
+                        {
+                            text: `${paymentProfile.onTimePaymentPercentage.toFixed(1)}%`,
+                            fontSize: 11,
+                            bold: true,
+                            color:
+                                paymentProfile.onTimePaymentPercentage >= 90
+                                    ? '#2E7D32'
+                                    : '#C62828',
+                        },
+                    ],
+                ],
+            },
+            layout: {
+                hLineWidth: () => 1,
+                vLineWidth: () => 1,
+                hLineColor: () => '#E0E0E0',
+                vLineColor: () => '#E0E0E0',
+            },
+        };
+    }
+
+    private buildNegativeInfoSections(
+        judgments: any[],
+        defaults: any[],
+        administrations?: any[]
+    ): any[] {
+        const sections = [];
+
+        // Judgments
+        if (judgments && judgments.length > 0) {
+            sections.push({
+                text: 'JUDGMENTS',
+                style: 'sectionHeader',
+                margin: [0, 25, 0, 10],
+                decoration: 'underline',
+                bold: true,
+                fontSize: 13,
+                color: '#C62828',
+                stack: judgments.map((judgment) => ({
+                    margin: [0, 0, 0, 10],
+                    table: {
+                        widths: ['*', '*', '*'],
+                        body: [
+                            [
+                                {
+                                    text: [
+                                        { text: 'Case: ', fontSize: 8, color: '#666' },
+                                        { text: judgment.caseNumber, fontSize: 9 },
+                                    ],
+                                },
+                                {
+                                    text: [
+                                        { text: 'Amount: ', fontSize: 8, color: '#666' },
+                                        {
+                                            text: `R ${judgment.amount.toLocaleString('en-ZA')}`,
+                                            fontSize: 9,
+                                        },
+                                    ],
+                                },
+                                {
+                                    text: [
+                                        { text: 'Granted: ', fontSize: 8, color: '#666' },
+                                        {
+                                            text: new Date(judgment.grantedDate).toLocaleDateString(
+                                                'en-ZA'
+                                            ),
+                                            fontSize: 9,
+                                        },
+                                    ],
+                                },
+                            ],
+                            [
+                                {
+                                    text: [
+                                        { text: 'Plaintiff: ', fontSize: 8, color: '#666' },
+                                        { text: judgment.plaintiff, fontSize: 9 },
+                                    ],
+                                    colSpan: 2,
+                                },
+                                {},
+                                {
+                                    text: [
+                                        { text: 'Status: ', fontSize: 8, color: '#666' },
+                                        { text: judgment.status, fontSize: 9 },
+                                    ],
+                                },
+                            ],
+                        ],
+                    },
+                    layout: 'noBorders',
+                })),
+            });
+        }
+
+        // Defaults
+        if (defaults && defaults.length > 0) {
+            sections.push({
+                text: 'DEFAULTS',
+                style: 'sectionHeader',
+                margin: [0, 25, 0, 10],
+                decoration: 'underline',
+                bold: true,
+                fontSize: 13,
+                color: '#C62828',
+                stack: defaults.map((defaultItem) => ({
+                    margin: [0, 0, 0, 10],
+                    table: {
+                        widths: ['*', '*', '*'],
+                        body: [
+                            [
+                                {
+                                    text: [
+                                        { text: 'Subscriber: ', fontSize: 8, color: '#666' },
+                                        { text: defaultItem.subscriber, fontSize: 9 },
+                                    ],
+                                },
+                                {
+                                    text: [
+                                        { text: 'Amount: ', fontSize: 8, color: '#666' },
+                                        {
+                                            text: `R ${defaultItem.amount.toLocaleString('en-ZA')}`,
+                                            fontSize: 9,
+                                        },
+                                    ],
+                                },
+                                {
+                                    text: [
+                                        { text: 'Status: ', fontSize: 8, color: '#666' },
+                                        { text: defaultItem.status, fontSize: 9 },
+                                    ],
+                                },
+                            ],
+                        ],
+                    },
+                    layout: 'noBorders',
+                })),
+            });
+        }
+
+        // Administrations
+        if (administrations && administrations.length > 0) {
+            sections.push({
+                text: 'ADMINISTRATIONS / SEQUESTRATIONS',
+                style: 'sectionHeader',
+                margin: [0, 25, 0, 10],
+                decoration: 'underline',
+                bold: true,
+                fontSize: 13,
+                color: '#C62828',
+                stack: administrations.map((admin) => ({
+                    margin: [0, 0, 0, 10],
+                    text: [
+                        { text: `${admin.type}: `, bold: true, fontSize: 9 },
+                        { text: `Granted ${admin.dateGranted} - `, fontSize: 9 },
+                        { text: `Status: ${admin.status}`, fontSize: 9, color: '#666' },
+                    ],
+                })),
+            });
+        }
+
+        // If no negative info
+        if (sections.length === 0) {
+            sections.push({
+                text: 'NEGATIVE INFORMATION',
+                style: 'sectionHeader',
+                margin: [0, 25, 0, 10],
+                decoration: 'underline',
+                bold: true,
+                fontSize: 13,
+                color: '#2E7D32',
+                stack: [
+                    {
+                        text: 'No judgments, defaults, or administrations found',
+                        color: '#2E7D32',
+                        fontSize: 10,
+                        margin: [0, 5],
+                    },
+                ],
+            });
+        }
+
+        return sections;
+    }
+
+    private buildEnquiriesSection(enquiries: any[]): any {
+        if (!enquiries || enquiries.length === 0) {
+            return {
+                text: 'No recent enquiries',
+                margin: [0, 10],
+                italics: true,
+                color: '#666',
+            };
+        }
+
+        return {
+            text: 'CREDIT ENQUIRIES',
+            style: 'sectionHeader',
+            margin: [0, 25, 0, 10],
+            decoration: 'underline',
+            bold: true,
+            fontSize: 13,
+            color: '#003DA5',
+            table: {
+                widths: ['20%', '40%', '20%', '20%'],
+                body: [
+                    [
+                        { text: 'Date', bold: true, fillColor: '#F5F5F5', fontSize: 8 },
+                        { text: 'Subscriber', bold: true, fillColor: '#F5F5F5', fontSize: 8 },
+                        { text: 'Type', bold: true, fillColor: '#F5F5F5', fontSize: 8 },
+                        { text: 'Product', bold: true, fillColor: '#F5F5F5', fontSize: 8 },
+                    ],
+                    ...enquiries.slice(0, 10).map((enq) => [
+                        {
+                            text: new Date(enq.enquiryDate).toLocaleDateString('en-ZA'),
+                            fontSize: 9,
+                        },
+                        { text: enq.subscriber, fontSize: 9 },
+                        { text: enq.enquiryType, fontSize: 9 },
+                        { text: enq.productType || 'N/A', fontSize: 9, color: '#666' },
+                    ]),
+                ],
+            },
+            layout: {
+                hLineWidth: () => 1,
+                vLineWidth: () => 1,
+                hLineColor: () => '#E0E0E0',
+                vLineColor: () => '#E0E0E0',
+                fillColor: (rowIndex: number) => (rowIndex % 2 === 0 ? '#FAFAFA' : null),
+            },
+        };
+    }
+
+    private buildAddressesSection(addresses: any[]): any {
+        return {
+            text: 'ADDRESS HISTORY',
+            style: 'sectionHeader',
+            margin: [0, 25, 0, 10],
+            decoration: 'underline',
+            bold: true,
+            fontSize: 13,
+            color: '#003DA5',
+            stack: addresses.slice(0, 5).map((address) => ({
+                text: [
+                    { text: `${address.type}: `, bold: true, fontSize: 9 },
+                    {
+                        text: [
+                            address.streetNumber,
+                            address.streetName,
+                            address.suburb,
+                            address.city,
+                            address.postalCode,
+                        ]
+                            .filter(Boolean)
+                            .join(', '),
+                        fontSize: 9,
+                    },
+                ],
+                margin: [0, 0, 0, 5],
+            })),
+        };
     }
 }

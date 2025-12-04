@@ -30,7 +30,9 @@ export class ExperianApiService {
 
         // Validate configuration
         if (!this.apiUrl || !this.subscriberCode || !this.username || !this.password) {
-            this.logger.warn('Experian API credentials not configured. Service will run in mock mode.');
+            this.logger.warn(
+                'Experian API credentials not configured. Service will run in mock mode.'
+            );
         }
 
         this.httpClient = axios.create({
@@ -53,12 +55,12 @@ export class ExperianApiService {
      * Perform credit search via Experian API
      */
     async searchConsumer(
-        request: Partial<ExperianSearchRequest>,
+        request: Partial<ExperianSearchRequest>
     ): Promise<ExperianSearchResponse | ExperianErrorResponse> {
         if (!this.isConfigured()) {
             throw new HttpException(
                 'Experian API is not configured. Please set up credentials.',
-                HttpStatus.SERVICE_UNAVAILABLE,
+                HttpStatus.SERVICE_UNAVAILABLE
             );
         }
 
@@ -80,7 +82,7 @@ export class ExperianApiService {
             const parsedResponse = await this.parseSoapResponse(response.data);
 
             this.logger.log(
-                `Experian search completed. Reference: ${parsedResponse.referenceNumber}`,
+                `Experian search completed. Reference: ${parsedResponse.referenceNumber}`
             );
 
             return parsedResponse;
@@ -91,13 +93,13 @@ export class ExperianApiService {
                 // Network or HTTP errors
                 throw new HttpException(
                     `Failed to connect to Experian API: ${error.message}`,
-                    HttpStatus.SERVICE_UNAVAILABLE,
+                    HttpStatus.SERVICE_UNAVAILABLE
                 );
             }
 
             throw new HttpException(
                 'An error occurred while processing Experian request',
-                HttpStatus.INTERNAL_SERVER_ERROR,
+                HttpStatus.INTERNAL_SERVER_ERROR
             );
         }
     }
@@ -169,7 +171,7 @@ export class ExperianApiService {
         suburb?: string,
         city?: string,
         postalCode?: string,
-        province?: string,
+        province?: string
     ): string {
         if (!streetNumber && !streetName && !suburb && !city && !postalCode && !province) {
             return '';
@@ -215,7 +217,7 @@ export class ExperianApiService {
                         errorMessage: response.ErrorMessage || 'Unknown error',
                         referenceNumber: response.ReferenceNumber,
                     } as ExperianErrorResponse,
-                    HttpStatus.BAD_REQUEST,
+                    HttpStatus.BAD_REQUEST
                 );
             }
 

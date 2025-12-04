@@ -13,12 +13,14 @@ The **foundation is complete**! You now have:
 ## 🚀 Quick Start (3 Options)
 
 ### Option 1: Keep Mock Mode (No Changes Needed)
+
 ```bash
 # Do nothing - system continues generating mock reports
 # Perfect for: Demo, development, testing UI
 ```
 
 ### Option 2: Connect to Experian Sandbox
+
 ```bash
 # 1. Get sandbox credentials from Experian
 # 2. Copy environment template
@@ -39,6 +41,7 @@ cd apps/api && npm run start:dev
 ```
 
 ### Option 3: Full Production Setup
+
 ```bash
 # Follow Option 2 but use production credentials
 # See: documentation/EXPERIAN_SETUP_GUIDE.md
@@ -47,61 +50,70 @@ cd apps/api && npm run start:dev
 ## 📋 Next Priority Tasks
 
 ### IMMEDIATE (Must Do First)
+
 1. **Run Database Migration**
-   ```bash
-   mysql -u root -p quora-app < apps/api/database/migrations/add-credit-reports-table.sql
-   ```
+
+    ```bash
+    mysql -u root -p quora-app < apps/api/database/migrations/add-credit-reports-table.sql
+    ```
 
 2. **Choose Your Mode**
-   - Mock Mode: Do nothing, keep demo functionality
-   - Real Mode: Get Experian credentials, follow Option 2
+    - Mock Mode: Do nothing, keep demo functionality
+    - Real Mode: Get Experian credentials, follow Option 2
 
 ### HIGH PRIORITY (This Week)
+
 3. **Update ExperianReportService**
-   - File: `apps/api/src/clients/experian-report.service.ts`
-   - Task: Replace mock generation with real API calls
-   - See: `documentation/EXPERIAN_IMPLEMENTATION_SUMMARY.md` for code example
+    - File: `apps/api/src/clients/experian-report.service.ts`
+    - Task: Replace mock generation with real API calls
+    - See: `documentation/EXPERIAN_IMPLEMENTATION_SUMMARY.md` for code example
 
 4. **Add Consent Management**
-   - Frontend: Add consent dialog before credit check
-   - Backend: Validate consent before API call
-   - Required for POPIA compliance
+    - Frontend: Add consent dialog before credit check
+    - Backend: Validate consent before API call
+    - Required for POPIA compliance
 
 ### MEDIUM PRIORITY (Next Week)
+
 5. **Update Frontend UI**
-   - Remove "MOCK" label from button
-   - Add loading state (30+ seconds)
-   - Add error handling
-   - Show credit report history
+    - Remove "MOCK" label from button
+    - Add loading state (30+ seconds)
+    - Add error handling
+    - Show credit report history
 
 6. **Testing**
-   - Test with sandbox if available
-   - Test error scenarios
-   - Performance testing
+    - Test with sandbox if available
+    - Test error scenarios
+    - Performance testing
 
 ## 📁 Important Files
 
 ### Configuration
+
 - `apps/api/.env.experian.example` - Copy this to `.env` and fill in credentials
 - `apps/api/src/clients/clients.module.ts` - Services already registered ✅
 
 ### Code to Modify
+
 - `apps/api/src/clients/experian-report.service.ts` - **Main file to update**
 - `apps/api/src/clients/clients.controller.ts` - Add consent validation
 - `apps/web/src/pages/Clients/ClientDetails.tsx` - Update UI
 
 ### Documentation
+
 - `documentation/EXPERIAN_SETUP_GUIDE.md` - **Read this first!**
 - `documentation/EXPERIAN_IMPLEMENTATION_SUMMARY.md` - Full status report
 - `docs/Experian Normal Search V2 SOAP Interface_V2.17 (20).pdf` - API spec
 
 ### Database
+
 - `apps/api/database/migrations/add-credit-reports-table.sql` - **Run this!**
 - `apps/api/src/entities/credit-report.entity.ts` - Entity definition
 
 ## 💰 Cost Information
 
 Experian charges per credit check:
+
 - **Per Check**: R25-35
 - **Monthly Minimum**: R500-1,000
 - **Setup Fee**: R5,000-10,000 (one-time)
@@ -111,6 +123,7 @@ Experian charges per credit check:
 ## 🔒 POPIA Compliance
 
 Before going live:
+
 - [ ] Add consent dialog
 - [ ] Record purpose of each check
 - [ ] Set up data retention (365 days default)
@@ -120,11 +133,13 @@ Before going live:
 ## 📞 Support
 
 ### Need Experian Credentials?
+
 - Email: support@experian.co.za
 - Phone: +27 11 799 3400
 - Website: https://www.experian.co.za
 
 ### Technical Questions?
+
 - Setup Guide: `documentation/EXPERIAN_SETUP_GUIDE.md`
 - Implementation: `documentation/EXPERIAN_IMPLEMENTATION_SUMMARY.md`
 - API Spec: `docs/Experian Normal Search V2 SOAP Interface_V2.17 (20).pdf`
@@ -134,6 +149,7 @@ Before going live:
 **Choose ONE path:**
 
 ### Path A: Keep Mock Mode ⏸️
+
 ```
 ✅ No changes needed
 ✅ Continue demos with mock data
@@ -142,6 +158,7 @@ Before going live:
 ```
 
 ### Path B: Connect to Sandbox 🧪
+
 ```
 1. Get sandbox credentials (free)
 2. Run migration
@@ -151,6 +168,7 @@ Before going live:
 ```
 
 ### Path C: Go to Production 🚀
+
 ```
 1. Get production credentials ($$$)
 2. Run migration

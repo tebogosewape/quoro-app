@@ -258,7 +258,7 @@ export class ClientsController {
     }
 
     /**
-     * Generate mock Experian credit report PDF
+     * Generate Experian credit report PDF (uses real API if configured)
      */
     @Get(':id/credit-report')
     @Roles(
@@ -269,14 +269,16 @@ export class ClientsController {
         UserRole.OPERATIONS_MANAGER,
         UserRole.CHIEF_EXECUTIVE_OFFICER
     )
-    @ApiOperation({ summary: 'Generate mock Experian credit report PDF' })
+    @ApiOperation({ summary: 'Generate Experian credit report PDF (real or mock)' })
     async getCreditReport(
         @Param('id', ParseUUIDPipe) id: string,
         @Res() res: Response,
         @CurrentUser() user: AuthenticatedUser
     ) {
         const client = await this.clientsService.findOne(id);
-        const pdfBuffer = await this.experianReportService.generateCreditReport(client);
+
+        // Pass user ID for audit tracking
+        const pdfBuffer = await this.experianReportService.generateCreditReport(client, user.id);
 
         // Track that the credit report was viewed
         await this.clientsService.update(

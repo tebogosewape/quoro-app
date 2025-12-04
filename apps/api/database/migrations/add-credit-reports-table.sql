@@ -8,13 +8,13 @@ CREATE TABLE IF NOT EXISTS `credit_reports` (
     `requestedBy` VARCHAR(36) NULL,
     `referenceNumber` VARCHAR(100) NOT NULL UNIQUE,
     `requestedAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    
+
     -- Enquiry details
     `enquiryReason` VARCHAR(100) NOT NULL,
     `enquiryPurpose` VARCHAR(100) NULL COMMENT 'For POPIA compliance',
     `enquiryAmount` DECIMAL(15,2) NULL,
     `productType` VARCHAR(100) NULL,
-    
+
     -- Key metrics (denormalized for performance)
     `creditScore` INT NULL,
     `scoreClass` VARCHAR(50) NULL COMMENT 'Excellent, Good, Fair, Poor',
@@ -23,46 +23,46 @@ CREATE TABLE IF NOT EXISTS `credit_reports` (
     `overdueAccounts` INT DEFAULT 0,
     `totalCreditLimit` DECIMAL(15,2) DEFAULT 0,
     `utilizationRate` DECIMAL(5,2) DEFAULT 0 COMMENT 'Percentage 0-100',
-    
+
     -- Negative information counts
     `judgmentCount` INT DEFAULT 0,
     `defaultCount` INT DEFAULT 0,
     `hasAdministration` BOOLEAN DEFAULT FALSE,
-    
+
     -- Raw response data
     `rawResponse` JSON NOT NULL COMMENT 'Full Experian API response',
-    
+
     -- Status
     `status` ENUM('success', 'error', 'pending') DEFAULT 'pending',
     `errorMessage` TEXT NULL,
     `errorCode` VARCHAR(50) NULL,
-    
+
     -- Compliance (POPIA/GDPR)
     `consentGiven` BOOLEAN DEFAULT FALSE,
     `consentDate` TIMESTAMP NULL,
     `consentMethod` VARCHAR(255) NULL COMMENT 'verbal, electronic, written',
     `purpose` TEXT NULL COMMENT 'Business purpose for credit check',
-    
+
     -- Data retention
     `expiresAt` TIMESTAMP NULL COMMENT 'When to delete report data',
     `isArchived` BOOLEAN DEFAULT FALSE,
-    
+
     -- PDF generation tracking
     `pdfGenerated` BOOLEAN DEFAULT FALSE,
     `pdfGeneratedAt` TIMESTAMP NULL,
     `pdfPath` VARCHAR(255) NULL COMMENT 'Path to stored PDF file',
-    
+
     -- Audit trail
     `updatedAt` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     `viewedAt` TIMESTAMP NULL,
     `viewedBy` VARCHAR(36) NULL,
     `viewCount` INT DEFAULT 0,
-    
+
     -- Foreign keys
     FOREIGN KEY (`clientId`) REFERENCES `clients`(`id`) ON DELETE CASCADE,
     FOREIGN KEY (`requestedBy`) REFERENCES `users`(`id`) ON DELETE SET NULL,
     FOREIGN KEY (`viewedBy`) REFERENCES `users`(`id`) ON DELETE SET NULL,
-    
+
     -- Indexes for performance
     INDEX `idx_client_id` (`clientId`),
     INDEX `idx_reference_number` (`referenceNumber`),
