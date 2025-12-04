@@ -7,3 +7,6 @@ export {
     WhatsAppMessageDirection,
 } from './whatsapp-message.entity';
 export { WhatsAppSession, WhatsAppSessionStatus } from './whatsapp-session.entity';
+export { CreditReport } from './credit-report.entity';
+export { Client } from './client.entity';
+export { Lead } from './lead.entity';
