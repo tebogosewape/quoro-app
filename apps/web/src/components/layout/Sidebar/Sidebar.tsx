@@ -23,6 +23,14 @@ export default function Sidebar({ isOpen, onCloseSidebar }: SidebarProps) {
     const canManageRoles = hasPermission('roles.manage');
     const canManageLeads = hasPermission('manage-leads');
     const isCEO = session?.user?.role === 'chief_executive_officer';
+    const isTeamLeader = session?.user?.role === 'team_leader';
+
+    // Debug logging
+    console.log('Sidebar Debug:', {
+        hasSession: !!session,
+        userRole: session?.user?.role,
+        isTeamLeader,
+    });
 
     // Lock/unlock body scroll on mobile when sidebar opens
     useEffect(() => {
@@ -250,6 +258,29 @@ export default function Sidebar({ isOpen, onCloseSidebar }: SidebarProps) {
                                         </svg>
                                         Import Leads
                                     </Nav.Link>
+                                    <Nav.Link
+                                        as={NavLink}
+                                        to="/leads/bulk-allocate"
+                                        className="sidebar-sublink"
+                                    >
+                                        <svg
+                                            width="16"
+                                            height="16"
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            strokeWidth="2"
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            style={{ marginRight: '8px' }}
+                                        >
+                                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                                            <circle cx="9" cy="7" r="4" />
+                                            <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                                            <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                                        </svg>
+                                        Bulk Allocation
+                                    </Nav.Link>
                                     {canManageRoles && (
                                         <Nav.Link
                                             as={NavLink}
@@ -278,6 +309,29 @@ export default function Sidebar({ isOpen, onCloseSidebar }: SidebarProps) {
                                 </Nav>
                             </Accordion.Body>
                         </Accordion.Item>
+                    )}
+
+                    {/* Team Management Section (Team Leaders Only) */}
+                    {isTeamLeader && (
+                        <Nav.Link as={NavLink} to="/team/dashboard" className="sidebar-link">
+                            <svg
+                                width="18"
+                                height="18"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                style={{ marginRight: '12px' }}
+                            >
+                                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                                <circle cx="9" cy="7" r="4" />
+                                <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                                <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                            </svg>
+                            Team Management
+                        </Nav.Link>
                     )}
 
                     {/* Administration Section */}

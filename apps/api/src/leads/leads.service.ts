@@ -1,6 +1,6 @@
 /* eslint-disable indent */
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Brackets } from 'typeorm';
 import { CreateLeadDto } from './dto/create-lead.dto';
@@ -10,6 +10,7 @@ import dayjs from 'dayjs';
 import * as fs from 'node:fs';
 import { parse } from 'fast-csv';
 import { Lead } from '@/entities/lead.entity';
+import { User } from '@/entities/user.entity';
 import { AuditService } from '@/modules/audit/audit.service';
 
 @Injectable()
@@ -18,6 +19,7 @@ export class LeadsService {
 
     constructor(
         @InjectRepository(Lead) private readonly repo: Repository<Lead>,
+        @InjectRepository(User) private readonly userRepo: Repository<User>,
         private readonly auditService: AuditService
     ) {}
 
@@ -319,5 +321,100 @@ export class LeadsService {
             throw new NotFoundException(`Lead with ID ${id} not found`);
         }
         return lead;
+    }
+
+    /**
+     * Bulk allocate unassigned leads to an agent
+     * @param agentId - User ID of the agent
+     * @param agentName - Full name of the agent for display
+     * @param count - Number of leads to allocate
+     * @returns Number of leads actually allocated (may be less than requested if not enough available)
+     */
+    async bulkAllocate(
+        agentId: string,
+        agentName: string,
+        count: number
+    ): Promise<{ allocated: number; leadIds: string[] }> {
+        // Check if agent is on leave
+        const agent = await this.userRepo.findOne({
+            where: { id: agentId },
+            select: ['id', 'isOnLeave', 'firstName', 'lastName'],
+        });
+
+        if (!agent) {
+            throw new BadRequestException(`Agent with ID ${agentId} not found`);
+        }
+
+        if (agent.isOnLeave) {
+            this.logger.warn(
+                `Cannot allocate leads to ${agentName} (${agentId}) - agent is on leave`
+            );
+            throw new BadRequestException(
+                `Cannot allocate leads to ${agentName} - agent is currently on leave`
+            );
+        }
+
+        // Find unallocated leads (oldest first)
+        const unallocatedLeads = await this.repo
+            .createQueryBuilder('lead')
+            .where('lead.allocatedTo IS NULL OR lead.allocatedTo = :empty', { empty: '' })
+            .orderBy('lead.timeReceived', 'ASC')
+            .limit(count)
+            .getMany();
+
+        if (unallocatedLeads.length === 0) {
+            return { allocated: 0, leadIds: [] };
+        }
+
+        // Update all selected leads
+        const leadIds = unallocatedLeads.map((lead) => lead.id);
+        await this.repo
+            .createQueryBuilder()
+            .update(Lead)
+            .set({ allocatedTo: agentName })
+            .whereInIds(leadIds)
+            .execute();
+
+        this.logger.log(
+            `Bulk allocated ${leadIds.length} leads to ${agentName} (agentId: ${agentId})`
+        );
+
+        return { allocated: leadIds.length, leadIds };
+    }
+
+    /**
+     * Bulk unallocate leads from an agent
+     * @param agentName - Full name of the agent whose leads should be unallocated
+     * @param count - Number of leads to unallocate
+     * @returns Number of leads actually unallocated (may be less than requested if agent has fewer leads)
+     */
+    async bulkUnallocate(
+        agentName: string,
+        count: number
+    ): Promise<{ unallocated: number; leadIds: string[] }> {
+        // Find leads allocated to this agent (oldest first)
+        const allocatedLeads = await this.repo
+            .createQueryBuilder('lead')
+            .where('lead.allocatedTo = :agentName', { agentName })
+            .orderBy('lead.timeReceived', 'ASC')
+            .limit(count)
+            .getMany();
+
+        if (allocatedLeads.length === 0) {
+            return { unallocated: 0, leadIds: [] };
+        }
+
+        // Update all selected leads to be unallocated
+        const leadIds = allocatedLeads.map((lead) => lead.id);
+        await this.repo
+            .createQueryBuilder()
+            .update(Lead)
+            .set({ allocatedTo: null })
+            .whereInIds(leadIds)
+            .execute();
+
+        this.logger.log(`Bulk unallocated ${leadIds.length} leads from ${agentName}`);
+
+        return { unallocated: leadIds.length, leadIds };
     }
 }

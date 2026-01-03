@@ -392,4 +392,149 @@ export class LeadsController {
 
         return { success: true, message: 'Lead view logged' };
     }
+
+    /**
+     * Bulk allocate unassigned leads to an agent
+     */
+    @Post('bulk-allocate')
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({
+        summary: 'Bulk allocate leads to an agent',
+        description: 'Automatically assigns the specified number of unallocated leads to an agent',
+    })
+    @ApiBody({
+        schema: {
+            type: 'object',
+            properties: {
+                agentId: {
+                    type: 'string',
+                    description: 'Agent user ID to allocate leads to',
+                    example: 'uuid-here',
+                },
+                agentName: {
+                    type: 'string',
+                    description: 'Agent full name for allocatedTo field',
+                    example: 'John Smith',
+                },
+                count: {
+                    type: 'number',
+                    description: 'Number of leads to allocate',
+                    example: 5,
+                    minimum: 1,
+                },
+            },
+            required: ['agentId', 'agentName', 'count'],
+        },
+    })
+    @ApiResponse({
+        status: 200,
+        description: 'Leads allocated successfully',
+        schema: {
+            type: 'object',
+            properties: {
+                success: { type: 'boolean', example: true },
+                allocated: { type: 'number', example: 5 },
+                agentName: { type: 'string', example: 'John Smith' },
+            },
+        },
+    })
+    async bulkAllocate(
+        @Body() body: { agentId: string; agentName: string; count: number },
+        @CurrentUser() user: AuthenticatedUser
+    ) {
+        const { agentId, agentName, count } = body;
+
+        if (!agentId || !agentName || !count || count < 1) {
+            throw new BadRequestException('agentId, agentName, and count (>0) are required');
+        }
+
+        const result = await this.leadsService.bulkAllocate(agentId, agentName, count);
+
+        // Audit log
+        await this.auditService.logLeadBulkAssigned({
+            leadIds: result.leadIds,
+            agentId,
+            agentName,
+            assignedBy: user.id,
+            metadata: {
+                requestedCount: count,
+                actualAllocated: result.allocated,
+                performedByName: `${user.firstName} ${user.lastName}`,
+            },
+        });
+
+        return { success: true, allocated: result.allocated, agentName };
+    }
+
+    /**
+     * Bulk unallocate leads from an agent
+     */
+    @Post('bulk-unallocate')
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({
+        summary: 'Bulk unallocate leads from an agent',
+        description: 'Removes allocation from the specified number of leads assigned to an agent',
+    })
+    @ApiBody({
+        schema: {
+            type: 'object',
+            properties: {
+                agentId: {
+                    type: 'string',
+                    description: 'Agent user ID to unallocate leads from',
+                    example: 'uuid-here',
+                },
+                agentName: {
+                    type: 'string',
+                    description: 'Agent full name for filtering',
+                    example: 'John Smith',
+                },
+                count: {
+                    type: 'number',
+                    description: 'Number of leads to unallocate',
+                    example: 3,
+                    minimum: 1,
+                },
+            },
+            required: ['agentId', 'agentName', 'count'],
+        },
+    })
+    @ApiResponse({
+        status: 200,
+        description: 'Leads unallocated successfully',
+        schema: {
+            type: 'object',
+            properties: {
+                success: { type: 'boolean', example: true },
+                unallocated: { type: 'number', example: 3 },
+                agentName: { type: 'string', example: 'John Smith' },
+            },
+        },
+    })
+    async bulkUnallocate(
+        @Body() body: { agentId: string; agentName: string; count: number },
+        @CurrentUser() user: AuthenticatedUser
+    ) {
+        const { agentId, agentName, count } = body;
+
+        if (!agentId || !agentName || !count || count < 1) {
+            throw new BadRequestException('agentId, agentName, and count (>0) are required');
+        }
+
+        const result = await this.leadsService.bulkUnallocate(agentName, count);
+
+        // Audit log
+        await this.auditService.logLeadBulkUnassigned({
+            leadIds: result.leadIds,
+            agentName,
+            unassignedBy: user.id,
+            metadata: {
+                requestedCount: count,
+                actualUnallocated: result.unallocated,
+                performedByName: `${user.firstName} ${user.lastName}`,
+            },
+        });
+
+        return { success: true, unallocated: result.unallocated, agentName };
+    }
 }

@@ -1,2 +1,9 @@
 node_modules
 dist
+vite.config.ts
+vitest.config.ts
+apps/web
+apps/api/storage/whatsapp-session
+apps/api/logs
+apps/api/uploads
+apps/api/data

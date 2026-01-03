@@ -38,9 +38,14 @@ export class ExperianReportService {
                     idNumber: client.idNumber,
                     firstName: client.firstName,
                     surname: client.lastName,
-                    dateOfBirth: client.dateOfBirth ? new Date(client.dateOfBirth).toISOString().split('T')[0] : undefined,
+                    dateOfBirth: client.dateOfBirth
+                        ? new Date(client.dateOfBirth).toISOString().split('T')[0]
+                        : undefined,
                     cellphoneNumber: client.phoneNumber,
                     emailAddress: client.email,
+                    // Address - use physical address
+                    streetName: client.physicalAddress || 'Unknown',
+                    // Enquiry details
                     enquiryReason: 'Credit Application',
                     productType: 'Debt Review',
                 })) as ExperianSearchResponse;

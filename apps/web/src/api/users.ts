@@ -30,6 +30,7 @@ export type UserDto = {
     phoneNumber?: string;
     title?: string;
     managerId?: string;
+    isOnLeave?: boolean;
     lastLoginAt?: string | Date | null;
     emailVerifiedAt?: string | Date | null;
     createdAt?: string | Date;
@@ -147,4 +148,60 @@ export async function deleteUser(id: string): Promise<void> {
         return;
     }
     throw new Error(resp.errorMessage || 'Failed to delete user');
+}
+
+// Team Lead Dashboard APIs
+
+export type AgentStats = {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    role: UserRole;
+    isOnLeave: boolean;
+    totalLeads: number;
+    convertedClients: number;
+    hotLeads: number;
+    busyLeads: number;
+    callLaterLeads: number;
+    conversionRate: number;
+};
+
+export type AgentsListResponse = {
+    agents: AgentStats[];
+};
+
+export async function getTeamLeadAgents(): Promise<AgentStats[]> {
+    const token = getBearer();
+    const resp = await http.request<Envelope<AgentsListResponse>>(
+        'TEAM_LEAD_AGENTS',
+        '/users/team-lead/agents',
+        'GET',
+        {},
+        false,
+        token
+    );
+    if (resp.statusCode >= 200 && resp.statusCode < 300 && resp.data?.success) {
+        return resp.data.data.agents;
+    }
+    throw new Error(resp.errorMessage || 'Failed to fetch team lead agents');
+}
+
+export async function updateAgentLeaveStatus(
+    agentId: string,
+    isOnLeave: boolean
+): Promise<UserDto> {
+    const token = getBearer();
+    const resp = await http.request<Envelope<UserDto>>(
+        'UPDATE_AGENT_LEAVE_STATUS',
+        `/users/${agentId}/leave-status`,
+        'PATCH',
+        { isOnLeave },
+        false,
+        token
+    );
+    if (resp.statusCode >= 200 && resp.statusCode < 300 && resp.data?.success) {
+        return resp.data.data;
+    }
+    throw new Error(resp.errorMessage || 'Failed to update agent leave status');
 }

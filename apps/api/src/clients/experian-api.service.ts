@@ -75,8 +75,22 @@ export class ExperianApiService {
                 password: this.password,
             } as ExperianSearchRequest);
 
-            // Send request
-            const response = await this.httpClient.post(this.apiUrl, soapRequest);
+            // Log SOAP request for debugging
+            this.logger.debug(`SOAP Request URL: ${this.apiUrl}`);
+            this.logger.debug(`SOAP Request Body: ${soapRequest}`);
+
+            // Send request with proper headers (no SOAPAction per WSDL)
+            const response = await this.httpClient.post(this.apiUrl, soapRequest, {
+                headers: {
+                    'Content-Type': 'text/xml; charset=utf-8',
+                },
+            });
+
+            // Log response for debugging
+            this.logger.debug(`Experian Response Status: ${response.status}`);
+            this.logger.debug(
+                `Experian Response Data: ${JSON.stringify(response.data).substring(0, 500)}`
+            );
 
             // Parse response
             const parsedResponse = await this.parseSoapResponse(response.data);
@@ -87,9 +101,14 @@ export class ExperianApiService {
 
             return parsedResponse;
         } catch (error) {
-            this.logger.error('Experian API error', error);
+            this.logger.error('Experian API error');
 
             if (axios.isAxiosError(error)) {
+                // Log detailed error information
+                this.logger.error(`Response Status: ${error.response?.status}`);
+                this.logger.error(`Response Headers: ${JSON.stringify(error.response?.headers)}`);
+                this.logger.error(`Response Data: ${JSON.stringify(error.response?.data)}`);
+
                 // Network or HTTP errors
                 throw new HttpException(
                     `Failed to connect to Experian API: ${error.message}`,
@@ -132,32 +151,79 @@ export class ExperianApiService {
             productType,
         } = request;
 
-        // Build SOAP envelope
+        // Build SOAP envelope - Using OFFICIAL Experian V2.17 specification
+        // Operation: DoNormalEnquiry with parameters: pUsrnme, pPasswrd, pVersion, pOrigin, pOrigin_Version, pInput_Format, pTransaction
+        // Transaction XML: <Transactions><Search_Criteria> format as per official docs
+
+        // Format date of birth as YYYYMMDD (required format per spec)
+        const formattedDOB = dateOfBirth ? dateOfBirth.replace(/-/g, '') : '';
+
+        // Determine gender from ID number (SA ID format: YYMMDDGSSSCAZ where G is gender)
+        let gender = 'M'; // Default
+        if (idNumber && idNumber.length === 13) {
+            const genderDigit = parseInt(idNumber.substring(6, 10));
+            gender = genderDigit >= 5000 ? 'M' : 'F';
+        }
+
+        // Format client reference
+        const clientRef = `QM-${Date.now()}`;
+
+        // Build the transaction XML according to official spec (page 13 of PDF)
+        const transactionXml = `<Transactions>
+  <Search_Criteria>
+    <CS_Data>Y</CS_Data>
+    <CPA_Plus_NLR_Data>N</CPA_Plus_NLR_Data>
+    <Deeds_Data>N</Deeds_Data>
+    <Directors_Data>N</Directors_Data>
+    <Identity_number>${this.escapeXml(idNumber || '')}</Identity_number>
+    <Surname>${this.escapeXml(surname)}</Surname>
+    <Forename>${this.escapeXml(firstName)}</Forename>
+    <Forename2></Forename2>
+    <Forename3></Forename3>
+    <Gender>${gender}</Gender>
+    <Passport_flag>${passportNumber ? 'Y' : 'N'}</Passport_flag>
+    <DateOfBirth>${formattedDOB}</DateOfBirth>
+    <Address1>${this.escapeXml(streetName || city || 'Unknown')}</Address1>
+    <Address2>${this.escapeXml(suburb || province || 'Unknown')}</Address2>
+    <Address3></Address3>
+    <Address4></Address4>
+    <PostalCode>${this.escapeXml(postalCode || '0000')}</PostalCode>
+    <HomeTelCode></HomeTelCode>
+    <HomeTelNo></HomeTelNo>
+    <WorkTelCode></WorkTelCode>
+    <WorkTelNo></WorkTelNo>
+    <CellTelNo>${this.escapeXml(cellphoneNumber || '')}</CellTelNo>
+    <ResultType>XML</ResultType>
+    <RunCodix>N</RunCodix>
+    <Adrs_Mandatory>Y</Adrs_Mandatory>
+    <Enq_Purpose>12</Enq_Purpose>
+    <Run_CompuScore>Y</Run_CompuScore>
+    <ClientConsent>Y</ClientConsent>
+    <ClientRef>${this.escapeXml(clientRef)}</ClientRef>
+    <Enquirer>
+      <EnquirerName>QAPP</EnquirerName>
+      <EnquirerContact>System</EnquirerContact>
+      <EnquirerTel></EnquirerTel>
+    </Enquirer>
+  </Search_Criteria>
+</Transactions>`;
+
+        // Build SOAP envelope with correct structure as per XSD schema
+        // DoNormalEnquiry has a <request> wrapper containing NormalEnqRequestParamsType
         return `<?xml version="1.0" encoding="utf-8"?>
-<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:web="http://webServices/">
   <soap:Body>
-    <NormalSearch xmlns="http://www.experian.co.za/CAIS">
-      <SubscriberCode>${this.escapeXml(subscriberCode)}</SubscriberCode>
-      <Username>${this.escapeXml(username)}</Username>
-      <Password>${this.escapeXml(password)}</Password>
-      <Consumer>
-        ${idNumber ? `<IDNumber>${this.escapeXml(idNumber)}</IDNumber>` : ''}
-        ${passportNumber ? `<PassportNumber>${this.escapeXml(passportNumber)}</PassportNumber>` : ''}
-        <FirstName>${this.escapeXml(firstName)}</FirstName>
-        <Surname>${this.escapeXml(surname)}</Surname>
-        ${dateOfBirth ? `<DateOfBirth>${this.escapeXml(dateOfBirth)}</DateOfBirth>` : ''}
-        ${telephoneCode ? `<TelephoneCode>${this.escapeXml(telephoneCode)}</TelephoneCode>` : ''}
-        ${telephoneNumber ? `<TelephoneNumber>${this.escapeXml(telephoneNumber)}</TelephoneNumber>` : ''}
-        ${cellphoneNumber ? `<CellphoneNumber>${this.escapeXml(cellphoneNumber)}</CellphoneNumber>` : ''}
-        ${emailAddress ? `<EmailAddress>${this.escapeXml(emailAddress)}</EmailAddress>` : ''}
-      </Consumer>
-      ${this.buildAddressXml(streetNumber, streetName, suburb, city, postalCode, province)}
-      <EnquiryDetails>
-        <Reason>${this.escapeXml(enquiryReason)}</Reason>
-        ${enquiryAmount ? `<Amount>${enquiryAmount}</Amount>` : ''}
-        ${productType ? `<ProductType>${this.escapeXml(productType)}</ProductType>` : ''}
-      </EnquiryDetails>
-    </NormalSearch>
+    <web:DoNormalEnquiry>
+      <request>
+        <pUsrnme>${this.escapeXml(username)}</pUsrnme>
+        <pPasswrd>${this.escapeXml(password)}</pPasswrd>
+        <pVersion>1.0</pVersion>
+        <pOrigin>${this.escapeXml(subscriberCode)}</pOrigin>
+        <pOrigin_Version>1</pOrigin_Version>
+        <pInput_Format>XML</pInput_Format>
+        <pTransaction><![CDATA[${transactionXml}]]></pTransaction>
+      </request>
+    </web:DoNormalEnquiry>
   </soap:Body>
 </soap:Envelope>`;
     }
@@ -200,12 +266,23 @@ export class ExperianApiService {
 
             const result = await parser.parseStringPromise(xmlData);
 
-            // Navigate SOAP structure
+            // Navigate SOAP structure for DoNormalEnquiry response
             const body = result.Envelope?.Body;
-            const response = body?.NormalSearchResponse?.NormalSearchResult;
+            const response = body?.DoNormalEnquiryResponse?.TransReplyClass;
 
             if (!response) {
+                this.logger.error(`Raw response structure: ${JSON.stringify(result, null, 2)}`);
                 throw new Error('Invalid SOAP response structure');
+            }
+
+            // Check if transaction completed successfully
+            if (response.transactionCompleted === 'false') {
+                this.logger.error(
+                    `Experian API Error: ${response.errorCode} - ${response.errorString}`
+                );
+                throw new Error(
+                    `Experian API error: ${response.errorString} (Code: ${response.errorCode})`
+                );
             }
 
             // Check for errors

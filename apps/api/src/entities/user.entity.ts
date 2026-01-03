@@ -126,6 +126,15 @@ export class User extends BaseEntity {
     managerId?: string;
 
     @Column({
+        type: 'tinyint',
+        width: 1,
+        default: 0,
+        name: 'is_on_leave',
+        comment: 'Whether the agent is currently on leave and cannot receive new leads',
+    })
+    isOnLeave!: boolean;
+
+    @Column({
         type: 'datetime',
         nullable: true,
         name: 'last_login_at',

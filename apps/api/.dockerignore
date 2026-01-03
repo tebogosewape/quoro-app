@@ -1,0 +1,7 @@
+../../vite.config.ts
+../../vitest.config.ts
+../../node_modules
+../../apps/web
+storage/whatsapp-session
+logs
+uploads

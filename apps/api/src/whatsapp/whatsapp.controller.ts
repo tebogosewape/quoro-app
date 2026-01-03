@@ -1,22 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import {
-    Body,
-    Controller,
-    Get,
-    Post,
-    Query,
-    UseGuards,
-    Request,
-    Param,
-} from '@nestjs/common';
-import {
-    ApiTags,
-    ApiBody,
-    ApiQuery,
-    ApiOperation,
-    ApiBearerAuth,
-    ApiParam,
-} from '@nestjs/swagger';
+import { Body, Controller, Get, Post, Query, UseGuards, Request, Param } from '@nestjs/common';
+import { ApiTags, ApiBody, ApiQuery, ApiOperation, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
+import { SkipThrottle } from '@nestjs/throttler';
 import { WhatsappService } from './whatsapp.service';
 import { SendMessageDto } from './dto/whatsapp.dto';
 import { JwtAuthGuard } from '@/auth/jwt-auth.guard';
@@ -27,6 +12,7 @@ import { UserRole } from '@/entities/user.entity';
 @ApiTags('whatsapp')
 @ApiBearerAuth('JWT-auth')
 @UseGuards(JwtAuthGuard, RolesGuard)
+@SkipThrottle() // Skip rate limiting for WhatsApp endpoints (status polling)
 @Controller('whatsapp')
 export class WhatsappController {
     constructor(private readonly whatsappService: WhatsappService) {}

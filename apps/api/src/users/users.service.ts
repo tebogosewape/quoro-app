@@ -3,11 +3,15 @@ import {
     NotFoundException,
     ConflictException,
     BadRequestException,
+    ForbiddenException,
     Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, FindOptionsWhere } from 'typeorm';
+import { Repository, FindOptionsWhere, In } from 'typeorm';
 import { User, UserRole, UserStatus } from '../entities/user.entity';
+import { Lead } from '../entities/lead.entity';
+import { Client, ClientStatus } from '../entities/client.entity';
+import { AuditAction } from '../entities/audit-log.entity';
 import {
     CreateUserDto,
     UpdateUserDto,
@@ -47,6 +51,10 @@ export class UsersService {
     constructor(
         @InjectRepository(User)
         private userRepository: Repository<User>,
+        @InjectRepository(Lead)
+        private leadRepository: Repository<Lead>,
+        @InjectRepository(Client)
+        private clientRepository: Repository<Client>,
         private readonly configService: ConfigService,
         private readonly auditService: AuditService
     ) {}
@@ -485,5 +493,134 @@ export class UsersService {
 
     private hashResetToken(token: string): string {
         return crypto.createHash('sha256').update(token).digest('hex');
+    }
+
+    // --- Team Lead Dashboard ---------------------------------------------------
+
+    /**
+     * Get all agents managed by a team lead with their stats
+     */
+    async getTeamLeadAgents(teamLeadId: string) {
+        this.logger.log(`Fetching agents for team lead ${teamLeadId}`);
+
+        // Get all agents managed by this team lead
+        const agents = await this.userRepository.find({
+            where: {
+                managerId: teamLeadId,
+            },
+            select: ['id', 'firstName', 'lastName', 'email', 'role', 'isOnLeave', 'employeeNumber'],
+        });
+
+        // For each agent, get their stats
+        const agentsWithStats = await Promise.all(
+            agents.map(async (agent) => {
+                const fullName = `${agent.firstName} ${agent.lastName}`;
+
+                // Count total leads allocated to this agent (by name)
+                const totalLeads = await this.leadRepository.count({
+                    where: {
+                        allocatedTo: fullName,
+                    },
+                });
+
+                // Count converted clients (APPROVED, ACTIVE, COMPLETED statuses)
+                const totalConverted = await this.clientRepository.count({
+                    where: {
+                        assignedAgentId: agent.id,
+                        status: In([
+                            ClientStatus.APPROVED,
+                            ClientStatus.ACTIVE,
+                            ClientStatus.COMPLETED,
+                        ]),
+                    },
+                });
+
+                // Count leads by outcome status
+                const hotLeads = await this.leadRepository.count({
+                    where: {
+                        allocatedTo: fullName,
+                        leadOutcome: 'Hot Leads',
+                    },
+                });
+
+                const busyLeads = await this.leadRepository.count({
+                    where: {
+                        allocatedTo: fullName,
+                        leadOutcome: 'Busy',
+                    },
+                });
+
+                const callLaterLeads = await this.leadRepository.count({
+                    where: {
+                        allocatedTo: fullName,
+                        leadOutcome: 'Call Later',
+                    },
+                });
+
+                const conversionRate = totalLeads > 0 ? (totalConverted / totalLeads) * 100 : 0;
+
+                return {
+                    id: agent.id,
+                    firstName: agent.firstName,
+                    lastName: agent.lastName,
+                    email: agent.email,
+                    role: agent.role,
+                    isOnLeave: agent.isOnLeave,
+                    totalLeads,
+                    convertedClients: totalConverted,
+                    hotLeads,
+                    busyLeads,
+                    callLaterLeads,
+                    conversionRate: Math.round(conversionRate * 100) / 100, // 2 decimal places
+                };
+            })
+        );
+
+        return agentsWithStats;
+    }
+
+    /**
+     * Update agent leave status (only by their team lead)
+     */
+    async updateAgentLeaveStatus(
+        teamLeadId: string,
+        agentId: string,
+        isOnLeave: boolean
+    ): Promise<User> {
+        this.logger.log(`Updating leave status for agent ${agentId} to ${isOnLeave}`);
+
+        // Find the agent and verify they are managed by this team lead
+        const agent = await this.userRepository.findOne({
+            where: {
+                id: agentId,
+            },
+        });
+
+        if (!agent) {
+            throw new NotFoundException(`Agent with ID ${agentId} not found`);
+        }
+
+        if (agent.managerId !== teamLeadId) {
+            throw new ForbiddenException('You can only manage agents assigned to you');
+        }
+
+        // Update leave status
+        agent.isOnLeave = isOnLeave;
+        await this.userRepository.save(agent);
+
+        // Audit log
+        await this.auditService.logEvent({
+            action: AuditAction.UPDATE,
+            entityType: 'User',
+            entityId: agentId,
+            actorId: teamLeadId,
+            metadata: {
+                isOnLeave,
+                agentName: `${agent.firstName} ${agent.lastName}`,
+                field: 'isOnLeave',
+            },
+        });
+
+        return this.stripPassword(agent);
     }
 }

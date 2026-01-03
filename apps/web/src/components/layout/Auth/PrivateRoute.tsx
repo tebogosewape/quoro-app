@@ -5,10 +5,11 @@ import { hasPermission, type AppPermission } from '../../../utils/permissions';
 
 type PrivateRouteProps = {
     permission?: AppPermission | AppPermission[];
+    role?: string; // Support role-based checks
     children: React.ReactNode;
 };
 
-export const PrivateRoute: React.FC<PrivateRouteProps> = ({ permission, children }) => {
+export const PrivateRoute: React.FC<PrivateRouteProps> = ({ permission, role, children }) => {
     const session = useAuthStore((state) => state.session);
     const hydrated = useAuthStore((state) => state.hydrated);
     const location = useLocation();
@@ -24,6 +25,20 @@ export const PrivateRoute: React.FC<PrivateRouteProps> = ({ permission, children
                 state={{
                     from: location.pathname,
                     error: 'Session expired. Please log in to continue.',
+                }}
+                replace
+            />
+        );
+    }
+
+    // Check role if specified
+    if (role && session.user?.role !== role) {
+        return (
+            <Navigate
+                to="/dashboard"
+                state={{
+                    from: location.pathname,
+                    error: 'You do not have permission to access this page.',
                 }}
                 replace
             />

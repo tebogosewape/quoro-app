@@ -2627,9 +2627,19 @@ function WhatsAppChat({ clientId }: { clientId: string }) {
     const [error, setError] = useState<string | null>(null);
     const [whatsappReady, setWhatsappReady] = useState(false);
 
+    // Load messages on mount and when clientId changes
     useEffect(() => {
         loadMessages();
         checkWhatsAppStatus();
+    }, [clientId]);
+
+    // Poll for new messages every 5 seconds
+    useEffect(() => {
+        const interval = setInterval(() => {
+            loadMessages(false); // Don't show loading spinner when polling
+        }, 5000);
+
+        return () => clearInterval(interval);
     }, [clientId]);
 
     const checkWhatsAppStatus = async () => {
@@ -2643,18 +2653,24 @@ function WhatsAppChat({ clientId }: { clientId: string }) {
         }
     };
 
-    const loadMessages = async () => {
+    const loadMessages = async (showLoading = true) => {
         try {
-            setLoading(true);
+            if (showLoading) {
+                setLoading(true);
+            }
             const { whatsappApi } = await import('@/api/whatsapp.api');
             const response = await whatsappApi.getMessages(clientId, 50);
             setMsgs(response.data);
             setError(null);
         } catch (error: any) {
             console.error('Failed to load WhatsApp messages:', error);
-            setError('Failed to load messages');
+            if (showLoading) {
+                setError('Failed to load messages');
+            }
         } finally {
-            setLoading(false);
+            if (showLoading) {
+                setLoading(false);
+            }
         }
     };
 

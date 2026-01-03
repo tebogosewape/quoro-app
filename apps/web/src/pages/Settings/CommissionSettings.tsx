@@ -1,18 +1,35 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Card, Button, Form, InputGroup, Spinner, Alert, Row, Col } from 'react-bootstrap';
-import * as Yup from 'yup';
-import { Formik, Form as FormikForm, Field, ErrorMessage } from 'formik';
-import { fetchCommission, updateCommission } from '@/api/commission';
+import { useEffect, useState } from 'react';
+import { Table, Spinner, Alert, Badge, Button, Form, InputGroup, Modal } from 'react-bootstrap';
+import { listProducts, updateProduct } from '@/api/products';
+import type { Product } from '@/interfaces/Product';
 import { hasPermission } from '@/utils/permissions';
 import { useAuthStore } from '@/stores/auth.store';
+import { toast } from 'react-toastify';
 
-const schema = Yup.object({
-    percentage: Yup.number()
-        .typeError('Enter a number')
-        .min(0, 'Must be ≥ 0')
-        .max(100, 'Must be ≤ 100')
-        .required('Required'),
-});
+// Helper to format commission rules for display
+function formatCommissionRules(rules: any): string {
+    if (!rules) return 'Not configured';
+
+    try {
+        const r = typeof rules === 'string' ? JSON.parse(rules) : rules;
+
+        // Check for different commission structures
+        if (r.firstPayment) {
+            return `R ${r.firstPayment.toFixed(2)} on first payment`;
+        }
+        if (r.percentage) {
+            const applicableOn = r.applicableOn ? ` (${r.applicableOn.replace(/_/g, ' ')})` : '';
+            return `${r.percentage}%${applicableOn}`;
+        }
+        if (r.rate) {
+            return `${r.rate}% commission`;
+        }
+
+        return JSON.stringify(r);
+    } catch {
+        return String(rules);
+    }
+}
 
 export default function CommissionSettings() {
     const session = useAuthStore((s) => s.session);
@@ -20,44 +37,118 @@ export default function CommissionSettings() {
     const canManage = hasPermission('manage-commissions');
 
     const [loading, setLoading] = useState(true);
-    const [initial, setInitial] = useState<number>(10);
+    const [products, setProducts] = useState<Product[]>([]);
     const [error, setError] = useState<string>('');
-    const [saved, setSaved] = useState<string>('');
+
+    // Edit modal state
+    const [showEditModal, setShowEditModal] = useState(false);
+    const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+    const [editType, setEditType] = useState<'fixed' | 'percentage'>('fixed');
+    const [fixedAmount, setFixedAmount] = useState('');
+    const [percentageValue, setPercentageValue] = useState('');
+    const [applicableOn, setApplicableOn] = useState('first_instalment');
+    const [saving, setSaving] = useState(false);
+
+    async function loadProducts() {
+        setLoading(true);
+        try {
+            const resp = await listProducts({ limit: 100, status: 'active' });
+            setProducts(resp.products);
+        } catch (e: any) {
+            setError(e?.message || 'Failed to load products');
+        } finally {
+            setLoading(false);
+        }
+    }
 
     useEffect(() => {
-        let mounted = true;
         setError('');
-        if (!canView && !canManage) {
+        if (!canView) {
             setLoading(false);
             return;
         }
-        (async () => {
-            try {
-                const data = await fetchCommission();
-                if (mounted) {
-                    setInitial(data.percentage ?? 10);
-                }
-            } catch (e: any) {
-                if (mounted) setError(e?.message || 'Failed to load commission');
-            } finally {
-                if (mounted) setLoading(false);
+        loadProducts();
+    }, [session?.user?.id, canView]);
+
+    function handleEditClick(product: Product) {
+        setEditingProduct(product);
+
+        // Parse existing commission rules
+        try {
+            const rules = product.agent_commission_rules;
+            const r = typeof rules === 'string' ? JSON.parse(rules) : rules;
+
+            if (r?.firstPayment) {
+                setEditType('fixed');
+                setFixedAmount(String(r.firstPayment));
+            } else if (r?.percentage) {
+                setEditType('percentage');
+                setPercentageValue(String(r.percentage));
+                setApplicableOn(r.applicableOn || 'first_instalment');
+            } else {
+                // Default to fixed
+                setEditType('fixed');
+                setFixedAmount('');
             }
-        })();
-        return () => {
-            mounted = false;
-        };
-    }, [session?.user?.id, canView, canManage]);
+        } catch {
+            setEditType('fixed');
+            setFixedAmount('');
+        }
 
-    const headerNote = useMemo(() => {
-        if (canManage) return 'Configure the global commission percentage for all agents';
-        if (canView) return 'View the current global agent commission percentage';
-        return 'You do not have permission to view this setting.';
-    }, [canManage, canView]);
+        setShowEditModal(true);
+    }
 
-    if (!canView && !canManage) {
+    async function handleSaveCommission() {
+        if (!editingProduct) return;
+
+        setSaving(true);
+        try {
+            let commissionRules: any;
+
+            if (editType === 'fixed') {
+                const amount = parseFloat(fixedAmount);
+                if (isNaN(amount) || amount < 0) {
+                    toast.error('Please enter a valid amount');
+                    return;
+                }
+                commissionRules = { firstPayment: amount };
+            } else {
+                const pct = parseFloat(percentageValue);
+                if (isNaN(pct) || pct < 0 || pct > 100) {
+                    toast.error('Please enter a valid percentage (0-100)');
+                    return;
+                }
+                commissionRules = {
+                    percentage: pct,
+                    applicableOn: applicableOn,
+                };
+            }
+
+            await updateProduct(editingProduct.id, {
+                agent_commission_rules: commissionRules,
+            });
+
+            toast.success(`Commission updated for ${editingProduct.name}`);
+            setShowEditModal(false);
+            loadProducts();
+        } catch (e: any) {
+            toast.error(e?.message || 'Failed to update commission');
+        } finally {
+            setSaving(false);
+        }
+    }
+
+    function handleCloseModal() {
+        setShowEditModal(false);
+        setEditingProduct(null);
+        setFixedAmount('');
+        setPercentageValue('');
+        setApplicableOn('first_instalment');
+    }
+
+    if (!canView) {
         return (
             <div className="container-fluid px-4 py-4">
-                {/* Modern Header Card with Gradient */}
                 <div
                     className="card border-0 shadow-sm mb-4"
                     style={{
@@ -71,28 +162,29 @@ export default function CommissionSettings() {
                                 className="bg-white bg-opacity-25 rounded-3 p-3 me-3"
                                 style={{ backdropFilter: 'blur(10px)' }}
                             >
-                                <svg width="32" height="32" viewBox="0 0 24 24" fill="white">
-                                    <text
-                                        x="12"
-                                        y="18"
-                                        fontSize="20"
-                                        fontWeight="bold"
-                                        textAnchor="middle"
-                                        fill="white"
-                                    >
-                                        R
-                                    </text>
+                                <svg
+                                    width="32"
+                                    height="32"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="white"
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                >
+                                    <line x1="12" y1="1" x2="12" y2="23"></line>
+                                    <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
                                 </svg>
                             </div>
                             <div>
                                 <h2 className="text-white mb-1 fw-bold">Commission Settings</h2>
-                                <p className="text-white text-opacity-75 mb-0">{headerNote}</p>
+                                <p className="text-white text-opacity-75 mb-0">
+                                    Product-specific commission rates for agents
+                                </p>
                             </div>
                         </div>
                     </div>
                 </div>
-
-                {/* Permission Error Card */}
                 <div className="card border-0 shadow-sm" style={{ borderRadius: '12px' }}>
                     <div className="card-body p-4">
                         <div className="text-center py-4">
@@ -117,15 +209,9 @@ export default function CommissionSettings() {
                             </div>
                             <h5 className="mb-2">Permission Required</h5>
                             <p className="text-muted mb-3">
-                                You need one of the following permissions to view this page:
+                                You need the following permission to view this page:
                             </p>
-                            <div className="d-flex gap-2 justify-content-center">
-                                <code className="bg-light px-3 py-2 rounded">view-commissions</code>
-                                <span className="text-muted">or</span>
-                                <code className="bg-light px-3 py-2 rounded">
-                                    manage-commissions
-                                </code>
-                            </div>
+                            <code className="bg-light px-3 py-2 rounded">view-commissions</code>
                         </div>
                     </div>
                 </div>
@@ -135,7 +221,6 @@ export default function CommissionSettings() {
 
     return (
         <div className="container-fluid px-4 py-4">
-            {/* Modern Header Card with Gradient */}
             <div
                 className="card border-0 shadow-sm mb-4"
                 style={{
@@ -144,46 +229,71 @@ export default function CommissionSettings() {
                 }}
             >
                 <div className="card-body p-4">
-                    <div className="row align-items-center">
-                        <div className="col-md-8">
-                            <div className="d-flex align-items-center">
-                                <div
-                                    className="bg-white bg-opacity-25 rounded-3 p-3 me-3"
-                                    style={{ backdropFilter: 'blur(10px)' }}
-                                >
-                                    <svg
-                                        width="32"
-                                        height="32"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="white"
-                                        strokeWidth="2"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                    >
-                                        <line x1="12" y1="1" x2="12" y2="23"></line>
-                                        <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
-                                    </svg>
-                                </div>
-                                <div>
-                                    <h2 className="text-white mb-1 fw-bold">Commission Settings</h2>
-                                    <p className="text-white text-opacity-75 mb-0">{headerNote}</p>
-                                </div>
-                            </div>
+                    <div className="d-flex align-items-center">
+                        <div
+                            className="bg-white bg-opacity-25 rounded-3 p-3 me-3"
+                            style={{ backdropFilter: 'blur(10px)' }}
+                        >
+                            <svg
+                                width="32"
+                                height="32"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="white"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                            >
+                                <line x1="12" y1="1" x2="12" y2="23"></line>
+                                <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+                            </svg>
                         </div>
-                        <div className="col-md-4">
-                            <div className="text-white text-center">
-                                <div className="fs-2 fw-bold">{initial}%</div>
-                                <div className="small opacity-75">Current Commission Rate</div>
-                            </div>
+                        <div>
+                            <h2 className="text-white mb-1 fw-bold">Commission Settings</h2>
+                            <p className="text-white text-opacity-75 mb-0">
+                                Product-specific commission rates for agents
+                            </p>
                         </div>
                     </div>
                 </div>
             </div>
 
-            {/* Main Settings Card */}
+            <Alert variant="info" className="mb-4">
+                <div className="d-flex align-items-start">
+                    <svg
+                        width="20"
+                        height="20"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="me-2 mt-1"
+                    >
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <line x1="12" y1="16" x2="12" y2="12"></line>
+                        <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                    </svg>
+                    <div>
+                        <strong>Product-Specific Commission</strong>
+                        <p className="mb-0 mt-1">
+                            {canManage
+                                ? 'Click the Edit button to configure commission rules for each product. You can set fixed amounts or percentage-based commissions.'
+                                : 'Commission rates are configured per product. Contact an administrator to modify them.'}
+                        </p>
+                    </div>
+                </div>
+            </Alert>
+
+            {error && (
+                <Alert variant="danger" onClose={() => setError('')} dismissible className="mb-4">
+                    {error}
+                </Alert>
+            )}
+
             <div className="card border-0 shadow-sm" style={{ borderRadius: '12px' }}>
-                <div className="card-body p-4">
+                <div className="card-body p-0">
                     {loading ? (
                         <div className="text-center py-5">
                             <Spinner
@@ -193,403 +303,317 @@ export default function CommissionSettings() {
                             <p className="text-muted mt-3 mb-0">Loading commission settings...</p>
                         </div>
                     ) : (
-                        <>
-                            {error && (
-                                <Alert
-                                    variant="danger"
-                                    onClose={() => setError('')}
-                                    dismissible
-                                    className="d-flex align-items-center shadow-sm"
-                                    style={{ borderRadius: '8px' }}
+                        <div style={{ overflowX: 'auto' }}>
+                            <Table hover responsive className="align-middle mb-0">
+                                <thead
+                                    style={{
+                                        background: '#f8f9fa',
+                                        borderBottom: '2px solid #dee2e6',
+                                    }}
                                 >
-                                    <svg
-                                        width="20"
-                                        height="20"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        strokeWidth="2"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        className="me-2"
-                                    >
-                                        <circle cx="12" cy="12" r="10"></circle>
-                                        <line x1="15" y1="9" x2="9" y2="15"></line>
-                                        <line x1="9" y1="9" x2="15" y2="15"></line>
-                                    </svg>
-                                    {error}
-                                </Alert>
-                            )}
-                            {saved && (
-                                <Alert
-                                    variant="success"
-                                    onClose={() => setSaved('')}
-                                    dismissible
-                                    className="d-flex align-items-center shadow-sm"
-                                    style={{ borderRadius: '8px' }}
-                                >
-                                    <svg
-                                        width="20"
-                                        height="20"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        strokeWidth="2"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        className="me-2"
-                                    >
-                                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-                                        <polyline points="22 4 12 14.01 9 11.01"></polyline>
-                                    </svg>
-                                    {saved}
-                                </Alert>
-                            )}
-
-                            <Formik
-                                enableReinitialize
-                                initialValues={{ percentage: initial }}
-                                validationSchema={schema}
-                                onSubmit={async (values, helpers) => {
-                                    setError('');
-                                    setSaved('');
-                                    try {
-                                        if (!canManage) return; // silent guard
-                                        const result = await updateCommission(values.percentage);
-                                        setInitial(result.percentage);
-                                        setSaved('Commission updated successfully.');
-                                    } catch (e: any) {
-                                        setError(e?.message || 'Failed to update commission');
-                                    } finally {
-                                        helpers.setSubmitting(false);
-                                    }
-                                }}
-                            >
-                                {({ isSubmitting, values, setFieldValue }) => (
-                                    <FormikForm>
-                                        <Row>
-                                            <Col md={6}>
-                                                <div className="mb-4">
-                                                    <Form.Label className="fw-semibold mb-2">
-                                                        <svg
-                                                            width="18"
-                                                            height="18"
-                                                            viewBox="0 0 24 24"
-                                                            fill="currentColor"
-                                                            className="me-2"
-                                                            style={{ marginTop: '-3px' }}
-                                                        >
-                                                            <text
-                                                                x="12"
-                                                                y="18"
-                                                                fontSize="18"
-                                                                fontWeight="bold"
-                                                                textAnchor="middle"
-                                                                fill="currentColor"
-                                                            >
-                                                                R
-                                                            </text>
-                                                        </svg>
-                                                        Agent Commission Percentage
-                                                    </Form.Label>
-                                                    <InputGroup
-                                                        className="shadow-sm"
-                                                        style={{ maxWidth: 400 }}
+                                    <tr>
+                                        <th
+                                            style={{
+                                                fontWeight: 600,
+                                                fontSize: '0.875rem',
+                                                color: '#495057',
+                                                padding: '1rem 0.75rem',
+                                                textTransform: 'uppercase',
+                                                letterSpacing: '0.5px',
+                                            }}
+                                        >
+                                            Product Code
+                                        </th>
+                                        <th
+                                            style={{
+                                                fontWeight: 600,
+                                                fontSize: '0.875rem',
+                                                color: '#495057',
+                                                padding: '1rem 0.75rem',
+                                                textTransform: 'uppercase',
+                                                letterSpacing: '0.5px',
+                                            }}
+                                        >
+                                            Product Name
+                                        </th>
+                                        <th
+                                            style={{
+                                                fontWeight: 600,
+                                                fontSize: '0.875rem',
+                                                color: '#495057',
+                                                padding: '1rem 0.75rem',
+                                                textTransform: 'uppercase',
+                                                letterSpacing: '0.5px',
+                                            }}
+                                        >
+                                            Category
+                                        </th>
+                                        <th
+                                            style={{
+                                                fontWeight: 600,
+                                                fontSize: '0.875rem',
+                                                color: '#495057',
+                                                padding: '1rem 0.75rem',
+                                                textTransform: 'uppercase',
+                                                letterSpacing: '0.5px',
+                                            }}
+                                        >
+                                            Agent Commission
+                                        </th>
+                                        {canManage && (
+                                            <th
+                                                style={{
+                                                    fontWeight: 600,
+                                                    fontSize: '0.875rem',
+                                                    color: '#495057',
+                                                    padding: '1rem 0.75rem',
+                                                    textTransform: 'uppercase',
+                                                    letterSpacing: '0.5px',
+                                                    width: '120px',
+                                                    textAlign: 'center',
+                                                }}
+                                            >
+                                                Actions
+                                            </th>
+                                        )}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {products.length === 0 && (
+                                        <tr>
+                                            <td
+                                                colSpan={canManage ? 5 : 4}
+                                                className="text-center py-5"
+                                                style={{ color: '#6c757d' }}
+                                            >
+                                                <div className="d-flex flex-column align-items-center gap-3">
+                                                    <svg
+                                                        width="64"
+                                                        height="64"
+                                                        viewBox="0 0 24 24"
+                                                        fill="none"
+                                                        stroke="currentColor"
+                                                        strokeWidth="1"
+                                                        strokeLinecap="round"
+                                                        strokeLinejoin="round"
+                                                        opacity="0.3"
                                                     >
-                                                        <InputGroup.Text
-                                                            className="bg-light"
-                                                            style={{ borderRadius: '8px 0 0 8px' }}
-                                                        >
-                                                            <svg
-                                                                width="18"
-                                                                height="18"
-                                                                viewBox="0 0 24 24"
-                                                                fill="currentColor"
-                                                            >
-                                                                <text
-                                                                    x="12"
-                                                                    y="18"
-                                                                    fontSize="18"
-                                                                    fontWeight="bold"
-                                                                    textAnchor="middle"
-                                                                    fill="currentColor"
-                                                                >
-                                                                    R
-                                                                </text>
-                                                            </svg>
-                                                        </InputGroup.Text>
-                                                        <Field
-                                                            as={Form.Control}
-                                                            name="percentage"
-                                                            type="number"
-                                                            step="0.1"
-                                                            min={0}
-                                                            max={100}
-                                                            placeholder="e.g. 10"
-                                                            disabled={!canManage}
-                                                            onWheel={(e: any) =>
-                                                                e.currentTarget.blur()
-                                                            }
-                                                            className="border-start-0 border-end-0"
-                                                            style={{
-                                                                fontSize: '1.1rem',
-                                                                fontWeight: 500,
-                                                            }}
-                                                        />
-                                                        <InputGroup.Text
-                                                            className="bg-light fw-semibold"
-                                                            style={{ borderRadius: '0 8px 8px 0' }}
-                                                        >
-                                                            %
-                                                        </InputGroup.Text>
-                                                    </InputGroup>
-                                                    <div className="mt-2">
-                                                        <small className="text-muted">
-                                                            <svg
-                                                                width="14"
-                                                                height="14"
-                                                                viewBox="0 0 24 24"
-                                                                fill="none"
-                                                                stroke="currentColor"
-                                                                strokeWidth="2"
-                                                                strokeLinecap="round"
-                                                                strokeLinejoin="round"
-                                                                className="me-1"
-                                                                style={{ marginTop: '-2px' }}
-                                                            >
-                                                                <circle
-                                                                    cx="12"
-                                                                    cy="12"
-                                                                    r="10"
-                                                                ></circle>
-                                                                <line
-                                                                    x1="12"
-                                                                    y1="16"
-                                                                    x2="12"
-                                                                    y2="12"
-                                                                ></line>
-                                                                <line
-                                                                    x1="12"
-                                                                    y1="8"
-                                                                    x2="12.01"
-                                                                    y2="8"
-                                                                ></line>
-                                                            </svg>
-                                                            Default is <b>10%</b>. Decimal values
-                                                            are allowed (e.g. 12.5)
-                                                        </small>
+                                                        <circle cx="9" cy="21" r="1"></circle>
+                                                        <circle cx="20" cy="21" r="1"></circle>
+                                                        <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path>
+                                                    </svg>
+                                                    <div>
+                                                        <div className="fw-semibold mb-1">
+                                                            No active products found
+                                                        </div>
+                                                        <div className="small text-muted">
+                                                            Add products to configure commission
+                                                            rates
+                                                        </div>
                                                     </div>
-                                                    <ErrorMessage
-                                                        name="percentage"
-                                                        render={(msg) => (
-                                                            <div className="text-danger mt-2 small">
-                                                                <svg
-                                                                    width="14"
-                                                                    height="14"
-                                                                    viewBox="0 0 24 24"
-                                                                    fill="none"
-                                                                    stroke="currentColor"
-                                                                    strokeWidth="2"
-                                                                    strokeLinecap="round"
-                                                                    strokeLinejoin="round"
-                                                                    className="me-1"
-                                                                >
-                                                                    <circle
-                                                                        cx="12"
-                                                                        cy="12"
-                                                                        r="10"
-                                                                    ></circle>
-                                                                    <line
-                                                                        x1="15"
-                                                                        y1="9"
-                                                                        x2="9"
-                                                                        y2="15"
-                                                                    ></line>
-                                                                    <line
-                                                                        x1="9"
-                                                                        y1="9"
-                                                                        x2="15"
-                                                                        y2="15"
-                                                                    ></line>
-                                                                </svg>
-                                                                {msg}
-                                                            </div>
-                                                        )}
-                                                    />
                                                 </div>
-
-                                                {canManage ? (
-                                                    <div className="d-flex gap-2">
-                                                        <Button
-                                                            type="submit"
-                                                            disabled={isSubmitting}
-                                                            className="shadow-sm px-4"
-                                                            style={{
-                                                                borderRadius: '8px',
-                                                                background:
-                                                                    'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                                                                border: 'none',
-                                                            }}
-                                                        >
-                                                            {isSubmitting ? (
-                                                                <>
-                                                                    <Spinner
-                                                                        animation="border"
-                                                                        size="sm"
-                                                                        className="me-2"
-                                                                    />
-                                                                    Saving...
-                                                                </>
-                                                            ) : (
-                                                                <>
-                                                                    <svg
-                                                                        width="18"
-                                                                        height="18"
-                                                                        viewBox="0 0 24 24"
-                                                                        fill="none"
-                                                                        stroke="currentColor"
-                                                                        strokeWidth="2"
-                                                                        strokeLinecap="round"
-                                                                        strokeLinejoin="round"
-                                                                        className="me-2"
-                                                                        style={{
-                                                                            marginTop: '-3px',
-                                                                        }}
-                                                                    >
-                                                                        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
-                                                                        <polyline points="17 21 17 13 7 13 7 21"></polyline>
-                                                                        <polyline points="7 3 7 8 15 8"></polyline>
-                                                                    </svg>
-                                                                    Save Changes
-                                                                </>
-                                                            )}
-                                                        </Button>
-                                                        <Button
-                                                            variant="outline-secondary"
-                                                            type="button"
-                                                            disabled={isSubmitting}
-                                                            onClick={() =>
-                                                                setFieldValue('percentage', initial)
-                                                            }
-                                                            className="shadow-sm px-4"
-                                                            style={{ borderRadius: '8px' }}
-                                                        >
-                                                            <svg
-                                                                width="18"
-                                                                height="18"
-                                                                viewBox="0 0 24 24"
-                                                                fill="none"
-                                                                stroke="currentColor"
-                                                                strokeWidth="2"
-                                                                strokeLinecap="round"
-                                                                strokeLinejoin="round"
-                                                                className="me-2"
-                                                                style={{ marginTop: '-3px' }}
-                                                            >
-                                                                <polyline points="1 4 1 10 7 10"></polyline>
-                                                                <polyline points="23 20 23 14 17 14"></polyline>
-                                                                <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"></path>
-                                                            </svg>
-                                                            Reset
-                                                        </Button>
-                                                    </div>
-                                                ) : (
-                                                    <Alert
-                                                        variant="info"
-                                                        className="mb-0 shadow-sm d-flex align-items-center"
-                                                        style={{ borderRadius: '8px' }}
-                                                    >
-                                                        <svg
-                                                            width="20"
-                                                            height="20"
-                                                            viewBox="0 0 24 24"
-                                                            fill="none"
-                                                            stroke="currentColor"
-                                                            strokeWidth="2"
-                                                            strokeLinecap="round"
-                                                            strokeLinejoin="round"
-                                                            className="me-2"
-                                                        >
-                                                            <circle cx="12" cy="12" r="10"></circle>
-                                                            <line
-                                                                x1="12"
-                                                                y1="16"
-                                                                x2="12"
-                                                                y2="12"
-                                                            ></line>
-                                                            <line
-                                                                x1="12"
-                                                                y1="8"
-                                                                x2="12.01"
-                                                                y2="8"
-                                                            ></line>
-                                                        </svg>
-                                                        Read-only for your role.
-                                                    </Alert>
-                                                )}
-                                            </Col>
-                                            <Col md={6}>
-                                                <div
-                                                    className="bg-light p-4 rounded-3"
-                                                    style={{ borderRadius: '12px' }}
+                                            </td>
+                                        </tr>
+                                    )}
+                                    {products.map((product) => (
+                                        <tr
+                                            key={product.id}
+                                            style={{
+                                                borderBottom: '1px solid #e9ecef',
+                                            }}
+                                        >
+                                            <td style={{ padding: '1rem 0.75rem' }}>
+                                                <code
+                                                    className="bg-light px-2 py-1 rounded fw-semibold"
+                                                    style={{ fontSize: '0.85rem' }}
                                                 >
-                                                    <h6 className="fw-semibold mb-3">
+                                                    {product.code}
+                                                </code>
+                                            </td>
+                                            <td
+                                                style={{
+                                                    padding: '1rem 0.75rem',
+                                                    fontWeight: 500,
+                                                }}
+                                            >
+                                                {product.name}
+                                            </td>
+                                            <td style={{ padding: '1rem 0.75rem' }}>
+                                                <span className="text-capitalize">
+                                                    {product.category.replace(/_/g, ' ')}
+                                                </span>
+                                            </td>
+                                            <td style={{ padding: '1rem 0.75rem' }}>
+                                                <Badge
+                                                    bg={
+                                                        product.agent_commission_rules
+                                                            ? 'success'
+                                                            : 'secondary'
+                                                    }
+                                                    className="px-3 py-2"
+                                                >
+                                                    {formatCommissionRules(
+                                                        product.agent_commission_rules
+                                                    )}
+                                                </Badge>
+                                            </td>
+                                            {canManage && (
+                                                <td
+                                                    style={{
+                                                        padding: '1rem 0.75rem',
+                                                        textAlign: 'center',
+                                                    }}
+                                                >
+                                                    <Button
+                                                        variant="outline-primary"
+                                                        size="sm"
+                                                        onClick={() => handleEditClick(product)}
+                                                        style={{
+                                                            borderRadius: '8px',
+                                                            padding: '0.375rem 0.75rem',
+                                                        }}
+                                                    >
                                                         <svg
-                                                            width="18"
-                                                            height="18"
+                                                            width="14"
+                                                            height="14"
                                                             viewBox="0 0 24 24"
                                                             fill="none"
                                                             stroke="currentColor"
                                                             strokeWidth="2"
                                                             strokeLinecap="round"
                                                             strokeLinejoin="round"
-                                                            className="me-2"
-                                                            style={{ marginTop: '-3px' }}
+                                                            style={{ marginRight: '4px' }}
                                                         >
-                                                            <circle cx="12" cy="12" r="10"></circle>
-                                                            <line
-                                                                x1="12"
-                                                                y1="16"
-                                                                x2="12"
-                                                                y2="12"
-                                                            ></line>
-                                                            <line
-                                                                x1="12"
-                                                                y1="8"
-                                                                x2="12.01"
-                                                                y2="8"
-                                                            ></line>
+                                                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                                                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
                                                         </svg>
-                                                        About Commission Settings
-                                                    </h6>
-                                                    <ul className="small text-muted mb-0 ps-3">
-                                                        <li className="mb-2">
-                                                            This percentage applies globally to all
-                                                            agents across the system
-                                                        </li>
-                                                        <li className="mb-2">
-                                                            Commission is calculated on approved
-                                                            loan amounts
-                                                        </li>
-                                                        <li className="mb-2">
-                                                            Changes take effect immediately for new
-                                                            transactions
-                                                        </li>
-                                                        <li className="mb-0">
-                                                            Historical commissions are not affected
-                                                            by this change
-                                                        </li>
-                                                    </ul>
-                                                </div>
-                                            </Col>
-                                        </Row>
-                                    </FormikForm>
-                                )}
-                            </Formik>
-                        </>
+                                                        Edit
+                                                    </Button>
+                                                </td>
+                                            )}
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </Table>
+                        </div>
                     )}
                 </div>
             </div>
+
+            {/* Edit Commission Modal */}
+            <Modal show={showEditModal} onHide={handleCloseModal} centered size="lg">
+                <Modal.Header closeButton>
+                    <Modal.Title>Edit Commission - {editingProduct?.name}</Modal.Title>
+                </Modal.Header>
+                <Modal.Body>
+                    <Form>
+                        <Form.Group className="mb-3">
+                            <Form.Label>Commission Type</Form.Label>
+                            <div className="d-flex gap-3">
+                                <Form.Check
+                                    type="radio"
+                                    label="Fixed Amount"
+                                    name="commissionType"
+                                    checked={editType === 'fixed'}
+                                    onChange={() => setEditType('fixed')}
+                                />
+                                <Form.Check
+                                    type="radio"
+                                    label="Percentage"
+                                    name="commissionType"
+                                    checked={editType === 'percentage'}
+                                    onChange={() => setEditType('percentage')}
+                                />
+                            </div>
+                        </Form.Group>
+
+                        {editType === 'fixed' ? (
+                            <Form.Group className="mb-3">
+                                <Form.Label>Fixed Amount (R)</Form.Label>
+                                <InputGroup>
+                                    <InputGroup.Text>R</InputGroup.Text>
+                                    <Form.Control
+                                        type="number"
+                                        placeholder="e.g., 100.00"
+                                        step="0.01"
+                                        min="0"
+                                        value={fixedAmount}
+                                        onChange={(e) => setFixedAmount(e.target.value)}
+                                    />
+                                </InputGroup>
+                                <Form.Text className="text-muted">
+                                    Agent will receive this fixed amount on first payment
+                                </Form.Text>
+                            </Form.Group>
+                        ) : (
+                            <>
+                                <Form.Group className="mb-3">
+                                    <Form.Label>Percentage (%)</Form.Label>
+                                    <InputGroup>
+                                        <Form.Control
+                                            type="number"
+                                            placeholder="e.g., 5"
+                                            step="0.1"
+                                            min="0"
+                                            max="100"
+                                            value={percentageValue}
+                                            onChange={(e) => setPercentageValue(e.target.value)}
+                                        />
+                                        <InputGroup.Text>%</InputGroup.Text>
+                                    </InputGroup>
+                                </Form.Group>
+
+                                <Form.Group className="mb-3">
+                                    <Form.Label>Applicable On</Form.Label>
+                                    <Form.Select
+                                        value={applicableOn}
+                                        onChange={(e) => setApplicableOn(e.target.value)}
+                                    >
+                                        <option value="first_instalment">First Instalment</option>
+                                        <option value="all_instalments">All Instalments</option>
+                                        <option value="first_payment">First Payment</option>
+                                        <option value="total_amount">Total Amount</option>
+                                    </Form.Select>
+                                    <Form.Text className="text-muted">
+                                        Select when the commission percentage applies
+                                    </Form.Text>
+                                </Form.Group>
+                            </>
+                        )}
+
+                        <Alert variant="info" className="mb-0">
+                            <small>
+                                <strong>Product:</strong> {editingProduct?.name} (
+                                {editingProduct?.code})
+                                <br />
+                                <strong>Category:</strong>{' '}
+                                {editingProduct?.category.replace(/_/g, ' ')}
+                            </small>
+                        </Alert>
+                    </Form>
+                </Modal.Body>
+                <Modal.Footer>
+                    <Button variant="secondary" onClick={handleCloseModal} disabled={saving}>
+                        Cancel
+                    </Button>
+                    <Button variant="primary" onClick={handleSaveCommission} disabled={saving}>
+                        {saving ? (
+                            <>
+                                <Spinner
+                                    as="span"
+                                    animation="border"
+                                    size="sm"
+                                    role="status"
+                                    className="me-2"
+                                />
+                                Saving...
+                            </>
+                        ) : (
+                            'Save Changes'
+                        )}
+                    </Button>
+                </Modal.Footer>
+            </Modal>
         </div>
     );
 }

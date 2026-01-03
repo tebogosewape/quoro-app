@@ -18,7 +18,9 @@ import ProductsPage from './pages/Products/ProductsPage';
 import CommissionSettings from './pages/Settings/CommissionSettings';
 import LeadsOverview from './pages/Leads/LeadsOverview';
 import LeadsImport from './pages/Leads/LeadsImport';
+import BulkLeadAllocation from './pages/Leads/BulkLeadAllocation';
 import LeadAllocation from './pages/Admin/LeadAllocation';
+import TeamLeadDashboard from './pages/TeamLead/TeamLeadDashboard';
 
 const App = () => {
     return (
@@ -86,10 +88,28 @@ const App = () => {
                     />
 
                     <Route
+                        path="/leads/bulk-allocate"
+                        element={
+                            <PrivateRoute permission="manage-leads">
+                                <BulkLeadAllocation />
+                            </PrivateRoute>
+                        }
+                    />
+
+                    <Route
                         path="/leads/allocation"
                         element={
                             <PrivateRoute permission="roles.manage">
                                 <LeadAllocation />
+                            </PrivateRoute>
+                        }
+                    />
+
+                    <Route
+                        path="/team/dashboard"
+                        element={
+                            <PrivateRoute role="team_leader">
+                                <TeamLeadDashboard />
                             </PrivateRoute>
                         }
                     />

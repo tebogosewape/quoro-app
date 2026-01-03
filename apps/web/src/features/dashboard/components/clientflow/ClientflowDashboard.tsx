@@ -251,11 +251,6 @@ export default function ClientflowDashboard() {
                 icon: 'bi-people',
             },
             {
-                label: 'Commission (Month)',
-                value: `R ${(agentData?.commissionSummary.totalEarned || 0).toLocaleString()}`,
-                icon: 'bi-currency-dollar',
-            },
-            {
                 label: 'Active Tasks',
                 value: activeTasks,
                 icon: 'bi-list-check',
@@ -1215,58 +1210,9 @@ export default function ClientflowDashboard() {
                     </div>
                 </div>
 
-                {/* Commission & Tasks */}
+                {/* Task Management */}
                 <div className="row">
-                    <div className="col-md-6 mb-4">
-                        <h5 className="mb-3">Commission Settings</h5>
-                        <div
-                            className="card border-0"
-                            style={{ borderRadius: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}
-                        >
-                            <div className="card-body">
-                                <div className="d-flex align-items-center mb-3">
-                                    <svg
-                                        width="48"
-                                        height="48"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="#667eea"
-                                        strokeWidth="2"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        className="me-3"
-                                    >
-                                        <text
-                                            x="12"
-                                            y="18"
-                                            fontSize="18"
-                                            fontWeight="bold"
-                                            textAnchor="middle"
-                                            fill="#667eea"
-                                        >
-                                            R
-                                        </text>
-                                    </svg>
-                                    <div>
-                                        <div className="h2 mb-0">
-                                            {commissionQuery.isLoading
-                                                ? '...'
-                                                : `${commission.percentage}%`}
-                                        </div>
-                                        <div className="text-muted small">
-                                            Global Agent Commission Rate
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="text-muted small">
-                                    This is the default commission percentage applied to all agent
-                                    transactions. Update this value in Commission Settings.
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="col-md-6 mb-4">
+                    <div className="col-12 mb-4">
                         <h5 className="mb-3">Task Management</h5>
                         <div className="row">
                             <div className="col-md-4 mb-3">

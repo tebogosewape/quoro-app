@@ -3,6 +3,7 @@ import {
     Get,
     Post,
     Put,
+    Patch,
     Delete,
     Body,
     Param,
@@ -166,6 +167,93 @@ export class UsersController {
     async getUserStats() {
         const stats = await this.usersService.getUserStats();
         return this.ok(stats);
+    }
+
+    @Get('team-lead/agents')
+    @Roles(UserRole.TEAM_LEADER)
+    @ApiOperation({
+        summary: 'Get agents managed by team lead',
+        description:
+            'Retrieve all agents assigned to the current team lead with their lead counts, conversion stats, and leave status',
+    })
+    @ApiResponse({
+        status: 200,
+        description: 'Agents retrieved successfully',
+        schema: {
+            type: 'object',
+            properties: {
+                agents: {
+                    type: 'array',
+                    items: {
+                        type: 'object',
+                        properties: {
+                            id: { type: 'string' },
+                            firstName: { type: 'string' },
+                            lastName: { type: 'string' },
+                            email: { type: 'string' },
+                            role: { type: 'string' },
+                            isOnLeave: { type: 'boolean' },
+                            totalLeads: { type: 'number' },
+                            convertedClients: { type: 'number' },
+                            hotLeads: { type: 'number' },
+                            busyLeads: { type: 'number' },
+                            callLaterLeads: { type: 'number' },
+                            conversionRate: { type: 'number' },
+                        },
+                    },
+                },
+            },
+        },
+    })
+    @ApiResponse({ status: 401, description: 'Unauthorized' })
+    @ApiResponse({
+        status: 403,
+        description: 'Insufficient permissions - team leader role required',
+    })
+    async getTeamLeadAgents(@CurrentUser() currentUser: AuthenticatedUser) {
+        this.logger.log(`Team lead ${currentUser.id} fetching their agents`);
+        const agents = await this.usersService.getTeamLeadAgents(currentUser.id);
+        return this.ok({ agents });
+    }
+
+    @Patch(':id/leave-status')
+    @Roles(UserRole.TEAM_LEADER)
+    @ApiOperation({
+        summary: 'Toggle agent leave status',
+        description:
+            'Update the leave status of an agent. Agents on leave will not receive new lead allocations.',
+    })
+    @ApiParam({ name: 'id', description: 'Agent User UUID' })
+    @ApiBody({
+        schema: {
+            type: 'object',
+            properties: {
+                isOnLeave: { type: 'boolean' },
+            },
+            required: ['isOnLeave'],
+        },
+    })
+    @ApiResponse({ status: 200, description: 'Leave status updated successfully' })
+    @ApiResponse({ status: 401, description: 'Unauthorized' })
+    @ApiResponse({
+        status: 403,
+        description: 'Insufficient permissions or not managing this agent',
+    })
+    @ApiResponse({ status: 404, description: 'Agent not found' })
+    async updateAgentLeaveStatus(
+        @Param('id', ParseUUIDPipe) agentId: string,
+        @Body('isOnLeave') isOnLeave: boolean,
+        @CurrentUser() currentUser: AuthenticatedUser
+    ) {
+        this.logger.log(
+            `Team lead ${currentUser.id} updating leave status for agent ${agentId} to ${isOnLeave}`
+        );
+        const user = await this.usersService.updateAgentLeaveStatus(
+            currentUser.id,
+            agentId,
+            isOnLeave
+        );
+        return this.ok(user);
     }
 
     @Get(':id')

@@ -8,6 +8,7 @@ import {
     faClipboard, // Product Info
     faBank, // Banking
     faCreditCard, // Payment
+    faFileContract, // Debit Order Agreement
     faClipboardCheck, // Confirm
 } from '@fortawesome/free-solid-svg-icons';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -22,6 +23,7 @@ type StepKey =
     | 'product-info'
     | 'banking'
     | 'payment'
+    | 'debit-order-agreement'
     | 'confirm';
 
 type Personal = {
@@ -76,12 +78,20 @@ type Payment = {
     agreedToCreditCheck?: boolean;
 };
 
+type DebitOrderAgreement = {
+    paymentDate?: string;
+    agreedToCreditCheck?: boolean;
+    agreedToAttorneyAppointment?: boolean;
+    agreedToAcceptance?: boolean;
+};
+
 type FormState = {
     personal: Personal;
     products: Product[];
     productInfo?: ProductInfo;
     banking?: Banking;
     payment?: Payment;
+    debitOrderAgreement?: DebitOrderAgreement;
 };
 
 // This will be replaced by API data
@@ -132,6 +142,7 @@ const STEPS: { key: StepKey; label: string; icon: IconDefinition }[] = [
     { key: 'product-info', label: 'Product information', icon: faClipboard },
     { key: 'banking', label: 'Banking details', icon: faBank },
     { key: 'payment', label: 'Payment details', icon: faCreditCard },
+    { key: 'debit-order-agreement', label: 'Debit Order Agreement', icon: faFileContract },
     { key: 'confirm', label: 'Confirm', icon: faClipboardCheck },
 ];
 
@@ -357,6 +368,15 @@ export default function OnboardingWizard() {
             const paymentOptions = state.payment?.selectedPaymentOptions || {};
             // Check that each selected product has a payment option selected
             return selectedProducts.every((p) => paymentOptions[p.id]);
+        }
+        if (step === 'debit-order-agreement') {
+            const doa = state.debitOrderAgreement;
+            return !!(
+                doa?.paymentDate &&
+                doa?.agreedToCreditCheck &&
+                doa?.agreedToAttorneyAppointment &&
+                doa?.agreedToAcceptance
+            );
         }
         return true;
     }
@@ -742,28 +762,98 @@ export default function OnboardingWizard() {
             )}
 
             <div className="row">
-                {/* vertical tabs */}
+                {/* Modern Vertical Step Navigation */}
                 <div className="col-md-3">
-                    <div className="card border-0 shadow-sm mb-3" style={{ borderRadius: '12px' }}>
-                        <div className="card-body p-2">
-                            <div className="cf-tabs d-flex flex-column gap-2">
+                    <div className="card border-0 shadow-sm mb-3" style={{ borderRadius: '16px' }}>
+                        <div className="card-body p-3">
+                            <div className="d-flex flex-column gap-3">
                                 {STEPS.map((s, i) => {
                                     const active = s.key === current;
-                                    const done = i < index;
+
                                     return (
                                         <button
                                             key={s.key}
                                             type="button"
-                                            className={`cf-tab ${active ? 'active' : ''} ${done ? 'done' : ''}`}
-                                            onClick={() => (done ? setCurrent(s.key) : null)}
-                                            aria-current={active}
+                                            className="text-start border-0 p-3 position-relative"
+                                            onClick={() => setCurrent(s.key)}
+                                            style={{
+                                                background: active
+                                                    ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+                                                    : 'transparent',
+                                                color: active ? '#fff' : '#2c3e50',
+                                                cursor: 'pointer',
+                                                transition: 'all 0.3s ease',
+                                                borderRadius: '12px',
+                                                fontWeight: active ? 600 : 500,
+                                                boxShadow: active
+                                                    ? '0 4px 12px rgba(102, 126, 234, 0.3)'
+                                                    : 'none',
+                                            }}
+                                            onMouseEnter={(e) => {
+                                                if (!active) {
+                                                    e.currentTarget.style.background = '#f8f9fa';
+                                                    e.currentTarget.style.transform =
+                                                        'translateX(4px)';
+                                                }
+                                            }}
+                                            onMouseLeave={(e) => {
+                                                if (!active) {
+                                                    e.currentTarget.style.background =
+                                                        'transparent';
+                                                    e.currentTarget.style.transform =
+                                                        'translateX(0)';
+                                                }
+                                            }}
                                         >
-                                            <span className="cf-tab-icon">
-                                                <FontAwesomeIcon icon={s.icon} />
-                                            </span>
-                                            <span className="cf-tab-label">
-                                                {i + 1}. {s.label}
-                                            </span>
+                                            <div className="d-flex align-items-center gap-3">
+                                                <div
+                                                    className="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0"
+                                                    style={{
+                                                        width: '48px',
+                                                        height: '48px',
+                                                        background: active
+                                                            ? 'rgba(255, 255, 255, 0.25)'
+                                                            : 'rgba(102, 126, 234, 0.1)',
+                                                        color: active ? '#fff' : '#667eea',
+                                                        fontSize: '1.2rem',
+                                                    }}
+                                                >
+                                                    <FontAwesomeIcon icon={s.icon} />
+                                                </div>
+                                                <div className="flex-grow-1">
+                                                    <div
+                                                        style={{
+                                                            fontSize: '0.75rem',
+                                                            opacity: 0.8,
+                                                            marginBottom: '2px',
+                                                        }}
+                                                    >
+                                                        Step {i + 1}
+                                                    </div>
+                                                    <div
+                                                        style={{
+                                                            fontSize: '0.95rem',
+                                                            lineHeight: '1.3',
+                                                        }}
+                                                    >
+                                                        {s.label}
+                                                    </div>
+                                                </div>
+                                                {active && (
+                                                    <div className="flex-shrink-0">
+                                                        <svg
+                                                            width="20"
+                                                            height="20"
+                                                            viewBox="0 0 24 24"
+                                                            fill="none"
+                                                            stroke="currentColor"
+                                                            strokeWidth="2"
+                                                        >
+                                                            <polyline points="9 18 15 12 9 6" />
+                                                        </svg>
+                                                    </div>
+                                                )}
+                                            </div>
                                         </button>
                                     );
                                 })}
@@ -890,6 +980,26 @@ export default function OnboardingWizard() {
                                     }
                                     canContinue={canNext('payment')}
                                     onBack={goBack}
+                                    onNext={goNext}
+                                    busy={busy}
+                                    showValidation={showValidation}
+                                />
+                            )}
+                            {current === 'debit-order-agreement' && (
+                                <StepDebitOrderAgreement
+                                    value={state.debitOrderAgreement || {}}
+                                    onChange={(d) =>
+                                        setState((prev) => ({
+                                            ...prev,
+                                            debitOrderAgreement: {
+                                                ...prev.debitOrderAgreement,
+                                                ...d,
+                                            },
+                                        }))
+                                    }
+                                    customerName={`${state.personal.firstNames || ''} ${state.personal.surname || ''}`.trim()}
+                                    canContinue={canNext('debit-order-agreement')}
+                                    onBack={goBack}
                                     onNext={submitAll}
                                     busy={busy}
                                     showValidation={showValidation}
@@ -898,7 +1008,7 @@ export default function OnboardingWizard() {
                             {current === 'confirm' && (
                                 <StepConfirm
                                     data={state}
-                                    onBack={() => setCurrent('payment')}
+                                    onBack={() => setCurrent('debit-order-agreement')}
                                     onFinish={handleFinish}
                                     busy={busy}
                                     error={submissionError}
@@ -1845,6 +1955,254 @@ function StepPayment({
     );
 }
 
+function StepDebitOrderAgreement({
+    value,
+    onChange,
+    customerName,
+    canContinue,
+    onBack,
+    onNext,
+    busy,
+    showValidation,
+}: {
+    value: DebitOrderAgreement;
+    onChange: (d: Partial<DebitOrderAgreement>) => void;
+    customerName: string;
+    canContinue: boolean;
+    onBack: () => void;
+    onNext: () => void;
+    busy?: boolean;
+    showValidation: boolean;
+}) {
+    // Generate payment date options (1-31)
+    const paymentDates = Array.from({ length: 31 }, (_, i) => (i + 1).toString());
+
+    return (
+        <>
+            <h5 className="mb-3">Debit Order Agreement</h5>
+
+            {showValidation && !canContinue && (
+                <div className="alert alert-danger mb-3" role="alert">
+                    <strong>Please complete all required fields</strong> including selecting a
+                    payment date and agreeing to all three checkboxes.
+                </div>
+            )}
+
+            <div
+                className="card border-0 shadow-sm p-4 mb-4"
+                style={{
+                    borderRadius: '12px',
+                    maxHeight: '500px',
+                    overflowY: 'auto',
+                }}
+            >
+                <div className="mb-4">
+                    <p className="mb-3">
+                        I, <strong>{customerName || '[Customer Name]'}</strong>, hereby authorize{' '}
+                        <strong>QFinance (PTY) Ltd</strong> to issue and deliver payment
+                        instructions to my banker for collection against my bank account, provided
+                        the following conditions:
+                    </p>
+
+                    <ul className="mb-3">
+                        <li>
+                            The deductions from my bank account shall commence on the date agreed
+                            upon between myself and <strong>QFinance (PTY) Ltd</strong>, and will
+                            continue on the same date each month thereafter until the total amount
+                            has been paid in full.
+                        </li>
+                        <li>
+                            The payment date agreed upon by myself and{' '}
+                            <strong>QFinance (PTY) Ltd</strong> is (please select):
+                        </li>
+                    </ul>
+
+                    <Form.Group className="mb-4">
+                        <Form.Label>
+                            Payment Date <span className="text-danger">*</span>
+                        </Form.Label>
+                        <Form.Select
+                            value={value.paymentDate ?? ''}
+                            onChange={(e) => onChange({ paymentDate: e.target.value })}
+                            isInvalid={showValidation && !value.paymentDate}
+                        >
+                            <option value="" disabled>
+                                Select payment date...
+                            </option>
+                            {paymentDates.map((date) => (
+                                <option key={date} value={date}>
+                                    {date}
+                                </option>
+                            ))}
+                        </Form.Select>
+                        {showValidation && !value.paymentDate && (
+                            <Form.Control.Feedback type="invalid">
+                                Please select a payment date
+                            </Form.Control.Feedback>
+                        )}
+                    </Form.Group>
+
+                    <ul className="mb-3">
+                        <li>
+                            The mandate may be cancelled by myself by giving{' '}
+                            <strong>QFinance (PTY) Ltd</strong> 30 days' notice in writing, sent by
+                            prepaid registered post.
+                        </li>
+                        <li>
+                            I understand that the withdrawals hereby authorized will be processed
+                            through a computerized system provided by the South African Banks.
+                        </li>
+                        <li>
+                            <strong>QFinance (PTY) Ltd</strong> may not cede, assign, or delegate
+                            this authority to any third party without my prior written consent.
+                        </li>
+                        <li>
+                            I understand that this authority is provided as a back-up payment
+                            instruction only, should I fail to pay{' '}
+                            <strong>QFinance (PTY) Ltd</strong> directly on or before the agreed
+                            payment dates.
+                        </li>
+                        <li>
+                            I understand that my account will be debited on each agreed payment
+                            date, and if there are insufficient funds,{' '}
+                            <strong>QFinance (PTY) Ltd</strong> will take the necessary steps to
+                            collect the outstanding amount.
+                        </li>
+                        <li>
+                            The abbreviated name that will appear on my bank statement will be:{' '}
+                            <strong>NPQFinance</strong>
+                        </li>
+                        <li>
+                            This mandate will not be subject to any time limits unless specified by
+                            myself and will remain in force until all obligations to{' '}
+                            <strong>QFinance (PTY) Ltd</strong> are settled.
+                        </li>
+                        <li>
+                            Should any payment fall due on a weekend or public holiday, the payment
+                            will be made on the next ordinary business day. Furthermore, should I be
+                            absent from work for any reason, including, but not limited to,
+                            vacation, sickness, leave, accident, or any other form of absence, I
+                            acknowledge that payment of the outstanding amount will still be my
+                            responsibility.
+                        </li>
+                    </ul>
+
+                    <p className="mb-3">
+                        <strong>Contact Information:</strong>
+                        <br />
+                        QFinance (PTY) Ltd
+                        <br />
+                        Tel: <strong>0129437575</strong>
+                    </p>
+
+                    <p className="mb-3">
+                        This agreement shall be effective from <strong>25 November 2025</strong>.
+                    </p>
+
+                    <p className="mb-3">
+                        <strong>File Number:</strong>{' '}
+                        {customerName ? `[File Number for ${customerName}]` : '[File Number]'}
+                    </p>
+                </div>
+
+                <div className="border-top pt-4">
+                    <h6 className="fw-bold mb-3">Required Agreements</h6>
+
+                    <Form.Group className="mb-3">
+                        <Form.Check
+                            type="checkbox"
+                            id="agree-credit-check-doa"
+                            checked={value.agreedToCreditCheck ?? false}
+                            onChange={(e) => onChange({ agreedToCreditCheck: e.target.checked })}
+                            isInvalid={showValidation && !value.agreedToCreditCheck}
+                            label={
+                                <span>
+                                    I authorize <strong>QFinance (PTY) Ltd</strong> to conduct a
+                                    credit check on my behalf.{' '}
+                                    <span className="text-danger">*</span>
+                                </span>
+                            }
+                        />
+                    </Form.Group>
+
+                    <Form.Group className="mb-3">
+                        <Form.Check
+                            type="checkbox"
+                            id="agree-attorney"
+                            checked={value.agreedToAttorneyAppointment ?? false}
+                            onChange={(e) =>
+                                onChange({ agreedToAttorneyAppointment: e.target.checked })
+                            }
+                            isInvalid={showValidation && !value.agreedToAttorneyAppointment}
+                            label={
+                                <span>
+                                    I appoint <strong>QFinance (PTY) Ltd</strong> as my attorney to
+                                    take any necessary actions on my behalf related to this
+                                    agreement. <span className="text-danger">*</span>
+                                </span>
+                            }
+                        />
+                    </Form.Group>
+
+                    <Form.Group className="mb-0">
+                        <Form.Check
+                            type="checkbox"
+                            id="agree-acceptance"
+                            checked={value.agreedToAcceptance ?? false}
+                            onChange={(e) => onChange({ agreedToAcceptance: e.target.checked })}
+                            isInvalid={showValidation && !value.agreedToAcceptance}
+                            label={
+                                <span>
+                                    I have read, understood, and accept all the terms and conditions
+                                    of this Debit Order Agreement.{' '}
+                                    <span className="text-danger">*</span>
+                                </span>
+                            }
+                        />
+                    </Form.Group>
+                </div>
+            </div>
+
+            <div className="d-flex justify-content-between mt-4">
+                <Button
+                    variant="outline-secondary"
+                    onClick={onBack}
+                    type="button"
+                    style={{ borderRadius: '8px' }}
+                    disabled={busy}
+                >
+                    Back
+                </Button>
+                <Button
+                    disabled={!canContinue || busy}
+                    onClick={onNext}
+                    type="button"
+                    style={{
+                        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                        border: 'none',
+                        color: 'white',
+                        borderRadius: '8px',
+                        fontWeight: 500,
+                    }}
+                >
+                    {busy ? (
+                        <>
+                            <span
+                                className="spinner-border spinner-border-sm me-2"
+                                role="status"
+                                aria-hidden="true"
+                            ></span>
+                            Submitting...
+                        </>
+                    ) : (
+                        'Next'
+                    )}
+                </Button>
+            </div>
+        </>
+    );
+}
+
 function StepBanking({
     value,
     onChange,
@@ -2203,6 +2561,52 @@ function StepConfirm({
                                 .replace('second', 'Second month')
                                 .replace('third', 'Third month') || '-'}
                         </div>
+                    </div>
+                </Col>
+                <Col lg={6}>
+                    <div className="card border-0 shadow-sm p-3" style={{ borderRadius: '12px' }}>
+                        <div className="fw-bold mb-2">Debit Order Agreement</div>
+                        <div>
+                            <b>Payment Date:</b>{' '}
+                            {data.debitOrderAgreement?.paymentDate
+                                ? `Day ${data.debitOrderAgreement.paymentDate} of each month`
+                                : '-'}
+                        </div>
+                        <div className="mt-2">
+                            <b>Agreements:</b>
+                        </div>
+                        <ul className="m-0 ps-3 mt-1">
+                            <li
+                                className={
+                                    data.debitOrderAgreement?.agreedToCreditCheck
+                                        ? 'text-success'
+                                        : 'text-muted'
+                                }
+                            >
+                                Credit check authorization{' '}
+                                {data.debitOrderAgreement?.agreedToCreditCheck ? '✓' : '✗'}
+                            </li>
+                            <li
+                                className={
+                                    data.debitOrderAgreement?.agreedToAttorneyAppointment
+                                        ? 'text-success'
+                                        : 'text-muted'
+                                }
+                            >
+                                Attorney appointment{' '}
+                                {data.debitOrderAgreement?.agreedToAttorneyAppointment ? '✓' : '✗'}
+                            </li>
+                            <li
+                                className={
+                                    data.debitOrderAgreement?.agreedToAcceptance
+                                        ? 'text-success'
+                                        : 'text-muted'
+                                }
+                            >
+                                Terms and conditions acceptance{' '}
+                                {data.debitOrderAgreement?.agreedToAcceptance ? '✓' : '✗'}
+                            </li>
+                        </ul>
                     </div>
                 </Col>
             </Row>

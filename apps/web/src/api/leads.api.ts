@@ -301,6 +301,52 @@ export const getLeadStats = async () => {
     return unwrapApiResponse(response.data);
 };
 
+/**
+ * Bulk allocate leads to an agent
+ * @param agentId - Agent user ID
+ * @param agentName - Agent full name
+ * @param count - Number of leads to allocate
+ * @returns Number of leads allocated
+ */
+export const bulkAllocateLeads = async (
+    agentId: string,
+    agentName: string,
+    count: number
+): Promise<{ success: boolean; allocated: number; agentName: string }> => {
+    const response = await apiClient.post(
+        '/leads/bulk-allocate',
+        { agentId, agentName, count },
+        {
+            headers: getAuthHeaders(),
+        }
+    );
+
+    return response.data;
+};
+
+/**
+ * Bulk unallocate leads from an agent
+ * @param agentId - Agent user ID
+ * @param agentName - Agent full name
+ * @param count - Number of leads to unallocate
+ * @returns Number of leads unallocated
+ */
+export const bulkUnallocateLeads = async (
+    agentId: string,
+    agentName: string,
+    count: number
+): Promise<{ success: boolean; unallocated: number; agentName: string }> => {
+    const response = await apiClient.post(
+        '/leads/bulk-unallocate',
+        { agentId, agentName, count },
+        {
+            headers: getAuthHeaders(),
+        }
+    );
+
+    return response.data;
+};
+
 // ============================================================================
 // Utility Functions
 // ============================================================================

@@ -1,12 +1,13 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Lead } from '@/entities/lead.entity';
+import { User } from '@/entities/user.entity';
 import { LeadsController } from './leads.controller';
 import { LeadsService } from './leads.service';
 import { AuditModule } from '@/modules/audit/audit.module';
 
 @Module({
-    imports: [TypeOrmModule.forFeature([Lead]), AuditModule],
+    imports: [TypeOrmModule.forFeature([Lead, User]), AuditModule],
     controllers: [LeadsController],
     providers: [LeadsService],
 })
