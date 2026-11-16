@@ -11,6 +11,7 @@ services:
         environment:
             - CHOKIDAR_USEPOLLING=true
             - CHOKIDAR_INTERVAL=300
+            - WHATSAPP_ENABLED=true
         volumes:
             - ./apps/api:/app/apps/api
             - api_data:/app/apps/api/data
@@ -33,6 +34,7 @@ services:
         environment:
             - CHOKIDAR_USEPOLLING=true
             - CHOKIDAR_INTERVAL=300
+            - WHATSAPP_ENABLED=false
         volumes:
             - ./apps/api:/app/apps/api
             - api_node_modules:/app/apps/api/node_modules

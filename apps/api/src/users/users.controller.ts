@@ -37,6 +37,14 @@ import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { AuthenticatedUser } from '../auth/auth.types';
+import { AGENT_ROLES, EXECUTIVE_ROLES, MANAGER_ROLES, SUPPORT_ROLES } from '../auth/role.utils';
+
+const AUTHENTICATED_USER_ROLES = [
+    ...AGENT_ROLES,
+    ...MANAGER_ROLES,
+    ...EXECUTIVE_ROLES,
+    ...SUPPORT_ROLES,
+];
 
 @ApiTags('Users')
 @Controller('users')
@@ -257,7 +265,7 @@ export class UsersController {
     }
 
     @Get(':id')
-    @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.VIEWER)
+    @Roles(...AUTHENTICATED_USER_ROLES)
     @ApiOperation({
         summary: 'Get user by ID',
         description:
@@ -282,7 +290,7 @@ export class UsersController {
     }
 
     @Put(':id')
-    @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.VIEWER)
+    @Roles(...AUTHENTICATED_USER_ROLES)
     @ApiOperation({
         summary: 'Update user',
         description:
@@ -343,7 +351,7 @@ export class UsersController {
     }
 
     @Put(':id/change-password')
-    @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.VIEWER)
+    @Roles(...AUTHENTICATED_USER_ROLES)
     @ApiOperation({
         summary: 'Change user password',
         description: 'Change password for a user. Users can change their own password',

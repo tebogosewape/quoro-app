@@ -423,7 +423,20 @@ describe('ClientflowDashboard', () => {
                     },
                 });
             }
-            return Promise.resolve({ data: { data: [{ status: 'completed' }] } });
+            if (url === '/tasks') {
+                return Promise.resolve({
+                    data: {
+                        data: {
+                            tasks: [{ status: 'completed' }, { status: 'in_progress' }],
+                            total: 2,
+                            page: 1,
+                            limit: 1000,
+                            totalPages: 1,
+                        },
+                    },
+                });
+            }
+            return Promise.resolve({ data: { data: {} } });
         });
 
         await renderDashboard();
@@ -432,6 +445,9 @@ describe('ClientflowDashboard', () => {
         expect(container.querySelector('.dashboard-screen--executive')).not.toBeNull();
         expect(container.textContent).toContain('Total Clients');
         expect(container.textContent).toContain('SMS Credits');
+        expect(container.textContent).toContain('Total Tasks');
+        expect(container.textContent).toContain('Incomplete');
+        expect(container.querySelectorAll('.executive-dashboard__metrics')).toHaveLength(3);
         expect(apiGetMock).toHaveBeenCalledWith(
             '/clients/stats',
             expect.objectContaining({ headers: { Authorization: 'Bearer test-token' } })

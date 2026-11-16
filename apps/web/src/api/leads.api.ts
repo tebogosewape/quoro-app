@@ -66,7 +66,7 @@ export const leadSearchQuerySchema = z.object({
     search: z.string().optional(),
     franchise: z.string().optional(),
     affiliate: z.string().optional(),
-    allocatedTo: z.string().optional(),
+    allocatedTo: z.string().nullable().optional(),
     leadOutcome: z.string().optional(),
     startDate: z.string().optional(), // YYYY-MM-DD
     endDate: z.string().optional(), // YYYY-MM-DD

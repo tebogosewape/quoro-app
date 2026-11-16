@@ -1,8 +1,12 @@
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { AppModule } from './app.module';
 
 async function bootstrap() {
+    // The worker imports the full application module for shared queue providers, but it must not
+    // become a second owner of the persisted WhatsApp Chromium profile.
+    process.env.WHATSAPP_ENABLED = 'false';
+    const { AppModule } = await import('./app.module');
+
     const appContext = await NestFactory.createApplicationContext(AppModule, {
         logger: ['error', 'warn', 'log'],
     });

@@ -23,6 +23,7 @@ export class WhatsappService implements OnModuleInit, OnModuleDestroy {
     private isReady = false;
     private readonly sessionPath: string;
     private session: WhatsAppSession | null = null;
+    private readonly isEnabled: boolean;
 
     constructor(
         @InjectRepository(WhatsAppMessage)
@@ -34,12 +35,18 @@ export class WhatsappService implements OnModuleInit, OnModuleDestroy {
     ) {
         // Store session data in apps/api/storage/whatsapp-session
         this.sessionPath = path.join(process.cwd(), 'storage', 'whatsapp-session');
+        this.isEnabled = process.env.WHATSAPP_ENABLED?.trim().toLowerCase() !== 'false';
         if (!fs.existsSync(this.sessionPath)) {
             fs.mkdirSync(this.sessionPath, { recursive: true });
         }
     }
 
     async onModuleInit() {
+        if (!this.isEnabled) {
+            this.logger.log('WhatsApp runtime is disabled for this process.');
+            return;
+        }
+
         this.logger.log('Initializing WhatsApp service...');
         await this.initializeSession();
         // WhatsApp Web may take minutes to launch Chromium or wait for authentication.
@@ -48,6 +55,10 @@ export class WhatsappService implements OnModuleInit, OnModuleDestroy {
     }
 
     async onModuleDestroy() {
+        if (!this.isEnabled) {
+            return;
+        }
+
         this.logger.log('Destroying WhatsApp client...');
         if (this.client) {
             await this.client.destroy();
@@ -55,6 +66,28 @@ export class WhatsappService implements OnModuleInit, OnModuleDestroy {
     }
 
     private cleanupLockFiles() {
+        // Chromium uses symlinks for these locks. A stale/broken symlink can make existsSync
+        // return false, so unlink each known lock directly and ignore only missing files.
+        for (const profilePath of [
+            this.sessionPath,
+            path.join(this.sessionPath, 'session-default'),
+            path.join(this.sessionPath, 'Default'),
+        ]) {
+            for (const lockName of ['SingletonLock', 'SingletonSocket', 'SingletonCookie']) {
+                const lockPath = path.join(profilePath, lockName);
+                try {
+                    fs.unlinkSync(lockPath);
+                    this.logger.log(`Removed stale Chromium lock: ${lockPath}`);
+                } catch (error: any) {
+                    if (error?.code !== 'ENOENT') {
+                        this.logger.warn(
+                            `Failed to remove Chromium lock ${lockPath}: ${error?.message}`
+                        );
+                    }
+                }
+            }
+        }
+
         try {
             this.logger.log(`🧹 [CLEANUP] Checking for lock files in: ${this.sessionPath}`);
 
@@ -181,9 +214,6 @@ export class WhatsappService implements OnModuleInit, OnModuleDestroy {
                         '--disable-crash-reporter',
                         // Critical flags for Docker container
                         '--disable-features=VizDisplayCompositor',
-                        '--user-data-dir=' + this.sessionPath,
-                        // Use a unique remote debugging port
-                        '--remote-debugging-port=9222',
                     ],
                 },
             });
@@ -475,6 +505,10 @@ export class WhatsappService implements OnModuleInit, OnModuleDestroy {
     }
 
     async resetSession(): Promise<void> {
+        if (!this.isEnabled) {
+            throw new Error('WhatsApp runtime is disabled for this process');
+        }
+
         this.logger.log('Resetting WhatsApp session...');
 
         if (this.client) {

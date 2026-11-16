@@ -1,667 +1,446 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-    fetchRoles,
     fetchPermissions,
     fetchRolePermissions,
+    fetchRoles,
     updateRolePermissions,
-    type RoleDto,
     type PermissionDto,
+    type RoleDto,
 } from '@/api/roles';
-import { Button, Form, Spinner, Alert, Badge, Card } from 'react-bootstrap';
+import './ManageRoles.css';
 
 type State = 'idle' | 'loading' | 'saving' | 'error' | 'success';
 
+const getErrorMessage = (error: unknown, fallback: string) =>
+    error instanceof Error && error.message ? error.message : fallback;
+
+const normalisePermissionKeys = (keys: string[] | Record<string, string>): string[] =>
+    Array.isArray(keys) ? keys : Object.values(keys);
+
+const formatGroupName = (value: string) =>
+    value
+        .split(/[-_]/)
+        .filter(Boolean)
+        .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+        .join(' ');
+
 export default function ManageRoles() {
     const [roles, setRoles] = useState<RoleDto[]>([]);
-    const [perms, setPerms] = useState<PermissionDto[]>([]);
+    const [permissions, setPermissions] = useState<PermissionDto[]>([]);
     const [selectedRole, setSelectedRole] = useState<RoleDto | null>(null);
-    const [rolePermKeys, setRolePermKeys] = useState<string[]>([]);
+    const [rolePermissionKeys, setRolePermissionKeys] = useState<string[]>([]);
     const [originalKeys, setOriginalKeys] = useState<string[]>([]);
     const [status, setStatus] = useState<State>('loading');
     const [error, setError] = useState<string | null>(null);
+    const [permissionSearch, setPermissionSearch] = useState('');
 
-    // Load roles + permissions on mount
     useEffect(() => {
+        let cancelled = false;
+
         (async () => {
             try {
                 setStatus('loading');
-                const [r, p] = await Promise.all([fetchRoles(), fetchPermissions()]);
-                setRoles(r);
-                setPerms(p);
-                setStatus('idle');
-                if (r.length) {
-                    setSelectedRole(r[0]);
-                }
-            } catch (e: any) {
-                setError(e?.message ?? 'Failed to load roles/permissions');
+                setError(null);
+                const [loadedRoles, loadedPermissions] = await Promise.all([
+                    fetchRoles(),
+                    fetchPermissions(),
+                ]);
+                if (cancelled) return;
+                setRoles(loadedRoles);
+                setPermissions(loadedPermissions);
+                setSelectedRole(loadedRoles[0] ?? null);
+                if (!loadedRoles.length) setStatus('idle');
+            } catch (caughtError: unknown) {
+                if (cancelled) return;
+                setError(getErrorMessage(caughtError, 'Failed to load roles and permissions.'));
                 setStatus('error');
             }
         })();
+
+        return () => {
+            cancelled = true;
+        };
     }, []);
 
-    // When selected role changes, load its permissions using role.slug
     useEffect(() => {
         if (!selectedRole) return;
+        let cancelled = false;
+
         (async () => {
             try {
                 setStatus('loading');
-                // Use slug instead of id for the endpoint
+                setError(null);
                 const keys = await fetchRolePermissions(selectedRole.slug);
-                const permKeys = Array.isArray(keys) ? keys : Object.values(keys);
-                setRolePermKeys(permKeys as string[]);
-                setOriginalKeys(permKeys as string[]);
+                if (cancelled) return;
+                const permissionKeys = normalisePermissionKeys(keys);
+                setRolePermissionKeys(permissionKeys);
+                setOriginalKeys(permissionKeys);
                 setStatus('idle');
-            } catch (e: any) {
-                setError(e?.message ?? 'Failed to load role permissions');
+            } catch (caughtError: unknown) {
+                if (cancelled) return;
+                setError(getErrorMessage(caughtError, 'Failed to load role permissions.'));
                 setStatus('error');
             }
         })();
-    }, [selectedRole?.id]);
+
+        return () => {
+            cancelled = true;
+        };
+    }, [selectedRole]);
 
     const dirty = useMemo(() => {
-        const a = new Set(rolePermKeys);
-        const b = new Set(originalKeys);
-        if (a.size !== b.size) return true;
-        for (const k of a) if (!b.has(k)) return true;
-        return false;
-    }, [rolePermKeys, originalKeys]);
+        const current = new Set(rolePermissionKeys);
+        const original = new Set(originalKeys);
+        if (current.size !== original.size) return true;
+        return Array.from(current).some((key) => !original.has(key));
+    }, [rolePermissionKeys, originalKeys]);
 
-    const toggleKey = (k: string) => {
-        setRolePermKeys((prev) => (prev.includes(k) ? prev.filter((x) => x !== k) : [...prev, k]));
+    const groups = useMemo(() => {
+        const grouped: Record<string, PermissionDto[]> = {};
+        for (const permission of permissions) {
+            const prefix = permission.key.includes('.') ? permission.key.split('.')[0] : 'general';
+            if (!grouped[prefix]) grouped[prefix] = [];
+            grouped[prefix].push(permission);
+        }
+        return grouped;
+    }, [permissions]);
+
+    const visibleGroups = useMemo(() => {
+        const query = permissionSearch.trim().toLowerCase();
+        if (!query) return groups;
+
+        return Object.fromEntries(
+            Object.entries(groups)
+                .map(([group, groupPermissions]) => [
+                    group,
+                    groupPermissions.filter((permission) =>
+                        [permission.key, permission.name, permission.description]
+                            .filter(Boolean)
+                            .some((value) => value!.toLowerCase().includes(query))
+                    ),
+                ])
+                .filter(([, groupPermissions]) => groupPermissions.length > 0)
+        ) as Record<string, PermissionDto[]>;
+    }, [groups, permissionSearch]);
+
+    const toggleKey = (key: string) => {
+        setRolePermissionKeys((current) =>
+            current.includes(key) ? current.filter((value) => value !== key) : [...current, key]
+        );
+        setStatus('idle');
+    };
+
+    const updateGroup = (groupPermissions: PermissionDto[], shouldSelect: boolean) => {
+        const groupKeys = new Set(groupPermissions.map((permission) => permission.key));
+        setRolePermissionKeys((current) => {
+            if (shouldSelect) return Array.from(new Set([...current, ...groupKeys]));
+            return current.filter((key) => !groupKeys.has(key));
+        });
+        setStatus('idle');
     };
 
     const save = async () => {
         if (!selectedRole) return;
         try {
             setStatus('saving');
-            // Use slug for update endpoint
-            await updateRolePermissions(selectedRole.slug, rolePermKeys);
-            setOriginalKeys(rolePermKeys);
+            setError(null);
+            await updateRolePermissions(selectedRole.slug, rolePermissionKeys);
+            setOriginalKeys([...rolePermissionKeys]);
             setStatus('success');
-            setTimeout(() => setStatus('idle'), 1500);
-        } catch (e: any) {
-            setError(e?.message ?? 'Failed to update role permissions');
+            window.setTimeout(() => setStatus('idle'), 1500);
+        } catch (caughtError: unknown) {
+            setError(getErrorMessage(caughtError, 'Failed to update role permissions.'));
             setStatus('error');
         }
     };
 
     const selectAll = () => {
-        setRolePermKeys(perms.map((p) => p.key));
+        setRolePermissionKeys(permissions.map((permission) => permission.key));
+        setStatus('idle');
     };
 
-    const groups = useMemo(() => {
-        // Optional groupings by prefix to make UI nicer
-        const map: Record<string, PermissionDto[]> = {};
-        for (const p of perms) {
-            const prefix = p.key.includes('.') ? p.key.split('.')[0] : 'general';
-            if (!map[prefix]) map[prefix] = [];
-            map[prefix].push(p);
-        }
-        return map;
-    }, [perms]);
-
-    const getRoleBadgeColor = (slug: string): string => {
-        const roleColors: Record<string, string> = {
-            ceo: 'danger',
-            'operations-manager': 'warning',
-            'team-leader': 'info',
-            manager: 'primary',
-            agent: 'success',
-            viewer: 'secondary',
-        };
-        return roleColors[slug] || 'secondary';
+    const clearAll = () => {
+        setRolePermissionKeys([]);
+        setStatus('idle');
     };
+
+    const isLoadingCatalogue = status === 'loading' && roles.length === 0;
+    const isLoadingRole = status === 'loading' && roles.length > 0;
+    const isSaving = status === 'saving';
+    const visiblePermissionCount = Object.values(visibleGroups).reduce(
+        (total, groupPermissions) => total + groupPermissions.length,
+        0
+    );
 
     return (
-        <div className="container-fluid px-4 py-4">
-            {/* Modern Header Card with Gradient */}
-            <div
-                className="card border-0 shadow-sm mb-4"
-                style={{
-                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                    borderRadius: '16px',
-                }}
-            >
-                <div className="card-body p-4">
-                    <div className="row align-items-center">
-                        <div className="col-md-6">
-                            <div className="d-flex align-items-center">
-                                <div
-                                    className="bg-white bg-opacity-25 rounded-3 p-3 me-3"
-                                    style={{ backdropFilter: 'blur(10px)' }}
-                                >
-                                    <svg
-                                        width="32"
-                                        height="32"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="white"
-                                        strokeWidth="2"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                    >
-                                        <rect
-                                            x="3"
-                                            y="3"
-                                            width="18"
-                                            height="18"
-                                            rx="2"
-                                            ry="2"
-                                        ></rect>
-                                        <line x1="9" y1="9" x2="15" y2="9"></line>
-                                        <line x1="9" y1="15" x2="15" y2="15"></line>
-                                        <line x1="12" y1="9" x2="12" y2="15"></line>
-                                    </svg>
-                                </div>
-                                <div>
-                                    <h2 className="text-white mb-1 fw-bold">Roles & Permissions</h2>
-                                    <p className="text-white text-opacity-75 mb-0">
-                                        Manage role-based access control and permissions
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
-                        <div className="col-md-6">
-                            <div className="row g-3 text-white">
-                                <div className="col-4">
-                                    <div className="text-center">
-                                        <div className="fs-3 fw-bold">{roles.length}</div>
-                                        <div className="small opacity-75">System Roles</div>
-                                    </div>
-                                </div>
-                                <div className="col-4">
-                                    <div className="text-center">
-                                        <div className="fs-3 fw-bold">{perms.length}</div>
-                                        <div className="small opacity-75">Permissions</div>
-                                    </div>
-                                </div>
-                                <div className="col-4">
-                                    <div className="text-center">
-                                        <div className="fs-3 fw-bold">{rolePermKeys.length}</div>
-                                        <div className="small opacity-75">Active Perms</div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+        <main className="role-admin" aria-labelledby="role-admin-title">
+            <header className="role-admin__header">
+                <div>
+                    <p className="role-admin__eyebrow">Access administration</p>
+                    <h1 id="role-admin-title">Roles &amp; permissions</h1>
+                    <p>Control application access by assigning permissions to each system role.</p>
                 </div>
-            </div>
-
-            {/* Status Messages */}
-            {status === 'error' && error && (
-                <Alert
-                    variant="danger"
-                    dismissible
-                    onClose={() => setError(null)}
-                    className="mb-4 shadow-sm"
-                    style={{ borderRadius: '12px', border: 'none' }}
-                >
-                    <div className="d-flex align-items-center">
-                        <svg
-                            width="20"
-                            height="20"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            className="me-2"
-                        >
-                            <circle cx="12" cy="12" r="10"></circle>
-                            <line x1="15" y1="9" x2="9" y2="15"></line>
-                            <line x1="9" y1="9" x2="15" y2="15"></line>
-                        </svg>
-                        {error}
+                <dl className="role-admin__summary" aria-label="Role management summary">
+                    <div>
+                        <dt>Roles</dt>
+                        <dd>{roles.length}</dd>
                     </div>
-                </Alert>
-            )}
+                    <div>
+                        <dt>Permissions</dt>
+                        <dd>{permissions.length}</dd>
+                    </div>
+                    <div>
+                        <dt>Assigned</dt>
+                        <dd>{rolePermissionKeys.length}</dd>
+                    </div>
+                </dl>
+            </header>
 
+            {error && (
+                <div className="role-admin__notice role-admin__notice--error" role="alert">
+                    <span>{error}</span>
+                    <button type="button" onClick={() => setError(null)} aria-label="Dismiss error">
+                        Dismiss
+                    </button>
+                </div>
+            )}
             {status === 'success' && (
-                <Alert
-                    variant="success"
-                    className="mb-4 shadow-sm"
-                    style={{ borderRadius: '12px', border: 'none' }}
-                >
-                    <div className="d-flex align-items-center">
-                        <svg
-                            width="20"
-                            height="20"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            className="me-2"
-                        >
-                            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-                            <polyline points="22 4 12 14.01 9 11.01"></polyline>
-                        </svg>
-                        Permissions saved successfully!
-                    </div>
-                </Alert>
+                <div className="role-admin__notice role-admin__notice--success" role="status">
+                    Permissions saved successfully.
+                </div>
             )}
 
-            <div className="row">
-                {/* Roles List Card */}
-                <div className="col-12 col-lg-4 mb-4">
-                    <div className="card border-0 shadow-sm h-100" style={{ borderRadius: '12px' }}>
-                        <div
-                            className="card-header bg-white border-0 py-3"
-                            style={{ borderRadius: '12px 12px 0 0' }}
-                        >
-                            <h5 className="mb-0 fw-semibold">System Roles</h5>
-                            <p className="text-muted small mb-0 mt-1">
-                                Select a role to manage permissions
-                            </p>
+            <div className="role-admin__workspace">
+                <aside className="role-admin__roles" aria-labelledby="system-roles-title">
+                    <div className="role-admin__panel-heading">
+                        <div>
+                            <h2 id="system-roles-title">System roles</h2>
+                            <p>Select a role to manage</p>
                         </div>
-                        <div className="card-body p-0">
-                            {status === 'loading' && !roles.length ? (
-                                <div className="text-center py-5">
-                                    <Spinner
-                                        animation="border"
-                                        style={{ width: '2rem', height: '2rem', color: '#667eea' }}
-                                    />
-                                    <p className="text-muted mt-3 mb-0 small">Loading roles...</p>
-                                </div>
-                            ) : (
-                                <div className="list-group list-group-flush">
-                                    {roles.map((r) => {
-                                        const isActive = selectedRole?.id === r.id;
-                                        return (
-                                            <button
-                                                key={r.id}
-                                                className={`list-group-item list-group-item-action border-0 ${
-                                                    isActive ? 'active' : ''
-                                                }`}
-                                                onClick={() => setSelectedRole(r)}
-                                                style={{
-                                                    cursor: 'pointer',
-                                                    transition: 'all 0.2s ease',
-                                                    background: isActive
-                                                        ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
-                                                        : 'transparent',
-                                                    borderLeft: isActive
-                                                        ? '4px solid #667eea'
-                                                        : '4px solid transparent',
-                                                }}
-                                            >
-                                                <div className="d-flex align-items-center justify-content-between">
-                                                    <div>
-                                                        <div
-                                                            className={`fw-semibold ${
-                                                                isActive ? 'text-white' : ''
-                                                            }`}
-                                                        >
-                                                            {r.name}
-                                                        </div>
-                                                        <div
-                                                            className={`small ${
-                                                                isActive
-                                                                    ? 'text-white text-opacity-75'
-                                                                    : 'text-muted'
-                                                            }`}
-                                                        >
-                                                            <code
-                                                                className={
-                                                                    isActive
-                                                                        ? 'text-white bg-white bg-opacity-25'
-                                                                        : 'bg-light'
-                                                                }
-                                                                style={{
-                                                                    padding: '2px 6px',
-                                                                    borderRadius: '4px',
-                                                                    fontSize: '0.75rem',
-                                                                }}
-                                                            >
-                                                                {r.slug}
-                                                            </code>
-                                                        </div>
-                                                        {r.description && (
-                                                            <div
-                                                                className={`small mt-1 ${
-                                                                    isActive
-                                                                        ? 'text-white text-opacity-75'
-                                                                        : 'text-muted'
-                                                                }`}
-                                                            >
-                                                                {r.description}
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                    {isActive && (
-                                                        <Badge
-                                                            bg="light"
-                                                            text="primary"
-                                                            className="ms-2"
-                                                        >
-                                                            {rolePermKeys.length}
-                                                        </Badge>
-                                                    )}
-                                                </div>
-                                            </button>
-                                        );
-                                    })}
-                                    {!roles.length && (
-                                        <div className="p-4 text-center text-muted">
-                                            No roles found
-                                        </div>
-                                    )}
-                                </div>
-                            )}
+                        <span>{roles.length}</span>
+                    </div>
+                    {isLoadingCatalogue ? (
+                        <div className="role-admin__state" role="status">
+                            <span className="role-admin__spinner" aria-hidden="true" />
+                            Loading roles…
+                        </div>
+                    ) : roles.length ? (
+                        <nav className="role-admin__role-list" aria-label="System roles">
+                            {roles.map((role) => {
+                                const active = selectedRole?.id === role.id;
+                                return (
+                                    <button
+                                        key={role.id}
+                                        type="button"
+                                        className={active ? 'is-active' : undefined}
+                                        aria-current={active ? 'true' : undefined}
+                                        onClick={() => {
+                                            setSelectedRole(role);
+                                            setPermissionSearch('');
+                                        }}
+                                        disabled={isSaving}
+                                    >
+                                        <span className="role-admin__role-mark" aria-hidden="true">
+                                            {role.name.charAt(0).toUpperCase()}
+                                        </span>
+                                        <span className="role-admin__role-copy">
+                                            <strong>{role.name}</strong>
+                                            <small>{role.slug}</small>
+                                            {role.description && <em>{role.description}</em>}
+                                        </span>
+                                        {active && (
+                                            <span className="role-admin__role-count">
+                                                {rolePermissionKeys.length}
+                                            </span>
+                                        )}
+                                    </button>
+                                );
+                            })}
+                        </nav>
+                    ) : (
+                        <div className="role-admin__state">No roles are available.</div>
+                    )}
+                </aside>
+
+                <section className="role-admin__permissions" aria-labelledby="permissions-title">
+                    <div className="role-admin__permission-header">
+                        <div className="role-admin__permission-title">
+                            <div>
+                                <h2 id="permissions-title">Permissions</h2>
+                                <p>
+                                    {selectedRole
+                                        ? `Configuring ${selectedRole.name}`
+                                        : 'Select a role to continue'}
+                                </p>
+                            </div>
+                            {selectedRole && <span>{selectedRole.name}</span>}
+                        </div>
+                        <div className="role-admin__toolbar">
+                            <label className="role-admin__search">
+                                <span className="visually-hidden">Search permissions</span>
+                                <svg viewBox="0 0 24 24" aria-hidden="true">
+                                    <circle cx="11" cy="11" r="7" />
+                                    <path d="m20 20-4-4" />
+                                </svg>
+                                <input
+                                    type="search"
+                                    value={permissionSearch}
+                                    onChange={(event) => setPermissionSearch(event.target.value)}
+                                    placeholder="Search permissions"
+                                    disabled={!selectedRole || isSaving}
+                                />
+                            </label>
+                            <button
+                                type="button"
+                                className="role-admin__button role-admin__button--secondary"
+                                onClick={selectAll}
+                                disabled={!selectedRole || isSaving}
+                            >
+                                Select all
+                            </button>
+                            <button
+                                type="button"
+                                className="role-admin__button role-admin__button--secondary"
+                                onClick={clearAll}
+                                disabled={!selectedRole || isSaving}
+                            >
+                                Clear
+                            </button>
                         </div>
                     </div>
-                </div>
 
-                {/* Permissions Grid Card */}
-                <div className="col-12 col-lg-8 mb-4">
-                    <div className="card border-0 shadow-sm h-100" style={{ borderRadius: '12px' }}>
-                        <div
-                            className="card-header bg-white border-0 py-3"
-                            style={{ borderRadius: '12px 12px 0 0' }}
-                        >
-                            <div className="d-flex align-items-center justify-content-between flex-wrap gap-2">
-                                <div className="d-flex align-items-center gap-2">
-                                    <h5 className="mb-0 fw-semibold">Permissions</h5>
-                                    {selectedRole && (
-                                        <Badge
-                                            bg={getRoleBadgeColor(selectedRole.slug)}
-                                            className="px-3 py-2"
-                                        >
-                                            {selectedRole.name}
-                                        </Badge>
-                                    )}
-                                </div>
-                                <div className="d-flex gap-2">
-                                    <Button
-                                        variant="outline-secondary"
-                                        size="sm"
-                                        onClick={selectAll}
-                                        disabled={!selectedRole || status === 'saving'}
-                                        style={{ borderRadius: '8px' }}
-                                    >
-                                        <svg
-                                            width="16"
-                                            height="16"
-                                            viewBox="0 0 24 24"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            strokeWidth="2"
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                            className="me-1"
-                                            style={{ marginTop: '-2px' }}
-                                        >
-                                            <polyline points="9 11 12 14 22 4"></polyline>
-                                            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
-                                        </svg>
-                                        Select All
-                                    </Button>
-                                    <Button
-                                        variant="outline-secondary"
-                                        size="sm"
-                                        onClick={() => setRolePermKeys([])}
-                                        disabled={!selectedRole || status === 'saving'}
-                                        style={{ borderRadius: '8px' }}
-                                    >
-                                        <svg
-                                            width="16"
-                                            height="16"
-                                            viewBox="0 0 24 24"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            strokeWidth="2"
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                            className="me-1"
-                                            style={{ marginTop: '-2px' }}
-                                        >
-                                            <polyline points="3 6 5 6 21 6"></polyline>
-                                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                                        </svg>
-                                        Clear All
-                                    </Button>
-                                    <Button
-                                        variant="primary"
-                                        size="sm"
-                                        disabled={!dirty || status === 'saving' || !selectedRole}
-                                        onClick={save}
-                                        style={{
-                                            borderRadius: '8px',
-                                            background: dirty
-                                                ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
-                                                : undefined,
-                                            border: 'none',
-                                        }}
-                                    >
-                                        {status === 'saving' ? (
-                                            <>
-                                                <Spinner
-                                                    size="sm"
-                                                    animation="border"
-                                                    className="me-2"
-                                                />
-                                                Saving…
-                                            </>
-                                        ) : (
-                                            <>
-                                                <svg
-                                                    width="16"
-                                                    height="16"
-                                                    viewBox="0 0 24 24"
-                                                    fill="none"
-                                                    stroke="currentColor"
-                                                    strokeWidth="2"
-                                                    strokeLinecap="round"
-                                                    strokeLinejoin="round"
-                                                    className="me-1"
-                                                    style={{ marginTop: '-2px' }}
-                                                >
-                                                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
-                                                    <polyline points="17 21 17 13 7 13 7 21"></polyline>
-                                                    <polyline points="7 3 7 8 15 8"></polyline>
-                                                </svg>
-                                                Save Changes
-                                            </>
-                                        )}
-                                    </Button>
-                                </div>
+                    <div className="role-admin__permission-body">
+                        {isLoadingRole ? (
+                            <div className="role-admin__state" role="status">
+                                <span className="role-admin__spinner" aria-hidden="true" />
+                                Loading permissions…
                             </div>
-                            {dirty && (
-                                <div className="mt-2">
-                                    <Badge bg="warning" text="dark" className="px-2 py-1">
-                                        <svg
-                                            width="14"
-                                            height="14"
-                                            viewBox="0 0 24 24"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            strokeWidth="2"
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                            className="me-1"
-                                            style={{ marginTop: '-2px' }}
-                                        >
-                                            <circle cx="12" cy="12" r="10"></circle>
-                                            <line x1="12" y1="8" x2="12" y2="12"></line>
-                                            <line x1="12" y1="16" x2="12.01" y2="16"></line>
-                                        </svg>
-                                        Unsaved changes
-                                    </Badge>
-                                </div>
-                            )}
-                        </div>
-
-                        <div className="card-body" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
-                            {status === 'loading' && !perms.length ? (
-                                <div className="text-center py-5">
-                                    <Spinner
-                                        animation="border"
-                                        style={{ width: '2rem', height: '2rem', color: '#667eea' }}
-                                    />
-                                    <p className="text-muted mt-3 mb-0 small">
-                                        Loading permissions...
-                                    </p>
-                                </div>
-                            ) : selectedRole ? (
-                                Object.keys(groups)
-                                    .sort()
-                                    .map((group) => (
-                                        <Card
-                                            key={group}
-                                            className="mb-3 border-0 shadow-sm"
-                                            style={{ borderRadius: '8px' }}
-                                        >
-                                            <Card.Header
-                                                className="bg-light border-0 py-2"
-                                                style={{ borderRadius: '8px 8px 0 0' }}
+                        ) : !selectedRole ? (
+                            <div className="role-admin__empty">
+                                <strong>No role selected</strong>
+                                <span>Choose a system role to review its access.</span>
+                            </div>
+                        ) : permissions.length === 0 ? (
+                            <div className="role-admin__empty">
+                                <strong>No permissions available</strong>
+                                <span>The permission catalogue is currently empty.</span>
+                            </div>
+                        ) : visiblePermissionCount === 0 ? (
+                            <div className="role-admin__empty">
+                                <strong>No matching permissions</strong>
+                                <span>Try a different key, name or description.</span>
+                            </div>
+                        ) : (
+                            <div className="role-admin__groups">
+                                {Object.entries(visibleGroups)
+                                    .sort(([left], [right]) => left.localeCompare(right))
+                                    .map(([group, groupPermissions]) => {
+                                        const selectedCount = groupPermissions.filter(
+                                            (permission) =>
+                                                rolePermissionKeys.includes(permission.key)
+                                        ).length;
+                                        const allSelected =
+                                            selectedCount === groupPermissions.length &&
+                                            groupPermissions.length > 0;
+                                        return (
+                                            <section
+                                                className="role-admin__group"
+                                                key={group}
+                                                aria-labelledby={`permission-group-${group}`}
                                             >
-                                                <div className="d-flex align-items-center justify-content-between">
-                                                    <h6 className="text-uppercase text-primary mb-0 fw-semibold">
-                                                        <svg
-                                                            width="16"
-                                                            height="16"
-                                                            viewBox="0 0 24 24"
-                                                            fill="none"
-                                                            stroke="currentColor"
-                                                            strokeWidth="2"
-                                                            strokeLinecap="round"
-                                                            strokeLinejoin="round"
-                                                            className="me-2"
-                                                            style={{ marginTop: '-2px' }}
-                                                        >
-                                                            <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
-                                                            <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
-                                                        </svg>
-                                                        {group}
-                                                    </h6>
-                                                    <Badge bg="secondary" className="px-2">
-                                                        {
-                                                            groups[group].filter((p) =>
-                                                                rolePermKeys.includes(p.key)
-                                                            ).length
+                                                <div className="role-admin__group-heading">
+                                                    <div>
+                                                        <h3 id={`permission-group-${group}`}>
+                                                            {formatGroupName(group)}
+                                                        </h3>
+                                                        <span>
+                                                            {selectedCount} of{' '}
+                                                            {groupPermissions.length} selected
+                                                        </span>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            updateGroup(
+                                                                groupPermissions,
+                                                                !allSelected
+                                                            )
                                                         }
-                                                        /{groups[group].length}
-                                                    </Badge>
+                                                        disabled={isSaving}
+                                                    >
+                                                        {allSelected
+                                                            ? 'Clear group'
+                                                            : 'Select group'}
+                                                    </button>
                                                 </div>
-                                            </Card.Header>
-                                            <Card.Body className="p-3">
-                                                <div className="row g-3">
-                                                    {groups[group]
-                                                        .sort((a, b) => a.key.localeCompare(b.key))
-                                                        .map((p) => {
-                                                            const checked = rolePermKeys.includes(
-                                                                p.key
-                                                            );
+                                                <div className="role-admin__permission-grid">
+                                                    {[...groupPermissions]
+                                                        .sort((left, right) =>
+                                                            left.key.localeCompare(right.key)
+                                                        )
+                                                        .map((permission) => {
+                                                            const checked =
+                                                                rolePermissionKeys.includes(
+                                                                    permission.key
+                                                                );
                                                             return (
-                                                                <div
-                                                                    className="col-12 col-md-6"
-                                                                    key={p.id}
+                                                                <label
+                                                                    className={`role-admin__permission ${checked ? 'is-selected' : ''}`}
+                                                                    key={permission.id}
                                                                 >
-                                                                    <div
-                                                                        className={`p-3 rounded ${
-                                                                            checked
-                                                                                ? 'bg-primary bg-opacity-10 border-primary'
-                                                                                : 'bg-light'
-                                                                        }`}
-                                                                        style={{
-                                                                            border: checked
-                                                                                ? '2px solid'
-                                                                                : '2px solid transparent',
-                                                                            transition:
-                                                                                'all 0.2s ease',
-                                                                            cursor: 'pointer',
-                                                                        }}
-                                                                        onClick={() =>
-                                                                            toggleKey(p.key)
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={checked}
+                                                                        onChange={() =>
+                                                                            toggleKey(
+                                                                                permission.key
+                                                                            )
                                                                         }
-                                                                    >
-                                                                        <Form.Check
-                                                                            type="checkbox"
-                                                                            id={`perm-${p.id}`}
-                                                                            checked={checked}
-                                                                            onChange={() =>
-                                                                                toggleKey(p.key)
-                                                                            }
-                                                                            label={
-                                                                                <div>
-                                                                                    <code
-                                                                                        className={`fw-semibold ${
-                                                                                            checked
-                                                                                                ? 'text-primary'
-                                                                                                : ''
-                                                                                        }`}
-                                                                                        style={{
-                                                                                            fontSize:
-                                                                                                '0.85rem',
-                                                                                        }}
-                                                                                    >
-                                                                                        {p.key}
-                                                                                    </code>
-                                                                                    {p.description && (
-                                                                                        <div className="small text-muted mt-1">
-                                                                                            {
-                                                                                                p.description
-                                                                                            }
-                                                                                        </div>
-                                                                                    )}
-                                                                                </div>
-                                                                            }
-                                                                            style={{
-                                                                                cursor: 'pointer',
-                                                                            }}
-                                                                        />
-                                                                    </div>
-                                                                </div>
+                                                                        disabled={isSaving}
+                                                                    />
+                                                                    <span>
+                                                                        <code>
+                                                                            {permission.key}
+                                                                        </code>
+                                                                        <strong>
+                                                                            {permission.name ||
+                                                                                permission.key}
+                                                                        </strong>
+                                                                        {permission.description && (
+                                                                            <small>
+                                                                                {
+                                                                                    permission.description
+                                                                                }
+                                                                            </small>
+                                                                        )}
+                                                                    </span>
+                                                                </label>
                                                             );
                                                         })}
                                                 </div>
-                                            </Card.Body>
-                                        </Card>
-                                    ))
-                            ) : (
-                                <div className="text-center py-5">
-                                    <svg
-                                        width="64"
-                                        height="64"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        strokeWidth="1"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        opacity="0.3"
-                                        className="mb-3"
-                                    >
-                                        <rect
-                                            x="3"
-                                            y="11"
-                                            width="18"
-                                            height="11"
-                                            rx="2"
-                                            ry="2"
-                                        ></rect>
-                                        <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
-                                    </svg>
-                                    <div className="text-muted">
-                                        <div className="fw-semibold mb-1">No role selected</div>
-                                        <div className="small">
-                                            Select a role from the list to manage permissions
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-
-                            {perms.length === 0 && selectedRole && (
-                                <div className="text-center py-5">
-                                    <div className="text-muted">No permissions available</div>
-                                </div>
-                            )}
-                        </div>
+                                            </section>
+                                        );
+                                    })}
+                            </div>
+                        )}
                     </div>
-                </div>
+
+                    <footer className="role-admin__footer">
+                        <div aria-live="polite">
+                            <strong>{rolePermissionKeys.length}</strong> permissions assigned
+                            {dirty && <span>Unsaved changes</span>}
+                        </div>
+                        <button
+                            type="button"
+                            className="role-admin__button role-admin__button--primary"
+                            disabled={!dirty || isSaving || !selectedRole}
+                            onClick={save}
+                        >
+                            {isSaving ? 'Saving…' : 'Save changes'}
+                        </button>
+                    </footer>
+                </section>
             </div>
-        </div>
+        </main>
     );
 }

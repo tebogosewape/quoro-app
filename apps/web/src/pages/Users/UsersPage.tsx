@@ -1,366 +1,143 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Form, InputGroup, Pagination, Spinner } from 'react-bootstrap';
-import { listUsers, createUser, updateUser, deleteUser, type UserDto } from '@/api/users';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+    createUser,
+    deleteUser,
+    listUsers,
+    updateUser,
+    type CreateUserDto,
+    type UpdateUserDto,
+    type UserDto,
+    type UserRole,
+    type UserStatus,
+} from '@/api/users';
 import UserFormModal from '@/components/users/UserFormModal';
 import UserTable from '@/components/users/UserTable';
+import './UsersPage.css';
 
 function useDebounced<T>(value: T, delay = 400) {
-    const [v, setV] = useState(value);
+    const [debounced, setDebounced] = useState(value);
     useEffect(() => {
-        const t = setTimeout(() => setV(value), delay);
-        return () => clearTimeout(t);
+        const timer = window.setTimeout(() => setDebounced(value), delay);
+        return () => window.clearTimeout(timer);
     }, [value, delay]);
-    return v;
+    return debounced;
 }
 
+const roleOptions: UserRole[] = [
+    'admin', 'admin_manager', 'manager', 'team_leader', 'operations_manager', 'agent',
+    'sales_agent', 'debt_review_specialist', 'lead_provider', 'chief_executive_officer', 'viewer',
+];
+const statusOptions: UserStatus[] = ['active', 'inactive', 'suspended', 'pending'];
+const formatOption = (value: string) => value.split(/[_-]/).map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+const getErrorMessage = (error: unknown, fallback: string) => error instanceof Error && error.message ? error.message : fallback;
+
 export default function UsersPage() {
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(true);
     const [users, setUsers] = useState<UserDto[]>([]);
     const [total, setTotal] = useState(0);
     const [page, setPage] = useState(1);
     const [limit, setLimit] = useState(10);
     const [search, setSearch] = useState('');
-    const debouncedSearch = useDebounced(search, 500);
-
+    const [role, setRole] = useState<UserRole | ''>('');
+    const [status, setStatus] = useState<UserStatus | ''>('');
+    const [error, setError] = useState<string | null>(null);
+    const [notice, setNotice] = useState<string | null>(null);
+    const debouncedSearch = useDebounced(search);
     const [sortBy, setSortBy] = useState<keyof UserDto | null>(null);
     const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
-
     const [showModal, setShowModal] = useState(false);
     const [mode, setMode] = useState<'create' | 'edit'>('create');
     const [selected, setSelected] = useState<UserDto | null>(null);
     const [busyRow, setBusyRow] = useState<string | null>(null);
-    const mounted = useRef(false);
 
-    async function fetchData() {
+    const fetchData = useCallback(async () => {
         setLoading(true);
+        setError(null);
         try {
-            const resp = await listUsers({ page, limit, search: debouncedSearch || undefined });
-            setUsers(resp.users);
-            setTotal(resp.total);
-        } catch (e) {
-            console.error(e);
+            const response = await listUsers({ page, limit, search: debouncedSearch || undefined, role: role || undefined, status: status || undefined });
+            setUsers(response.users);
+            setTotal(response.total);
+        } catch (caughtError: unknown) {
+            setError(getErrorMessage(caughtError, 'Failed to load users.'));
         } finally {
             setLoading(false);
         }
-    }
+    }, [page, limit, debouncedSearch, role, status]);
 
-    useEffect(() => {
-        if (!mounted.current) {
-            mounted.current = true;
-        }
-        fetchData();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [page, limit, debouncedSearch]);
+    useEffect(() => { void fetchData(); }, [fetchData]);
 
-    const sorted = useMemo(() => {
+    const sortedUsers = useMemo(() => {
         if (!sortBy) return users;
-        const copy = [...users];
-        copy.sort((a: any, b: any) => {
-            const av = a[sortBy];
-            const bv = b[sortBy];
-            if (av == null && bv == null) return 0;
-            if (av == null) return sortDir === 'asc' ? -1 : 1;
-            if (bv == null) return sortDir === 'asc' ? 1 : -1;
-            // string/number/date friendly compare
-            const as = typeof av === 'string' ? av.toLowerCase() : String(av);
-            const bs = typeof bv === 'string' ? bv.toLowerCase() : String(bv);
-            if (as < bs) return sortDir === 'asc' ? -1 : 1;
-            if (as > bs) return sortDir === 'asc' ? 1 : -1;
-            return 0;
+        return [...users].sort((a, b) => {
+            const first = a[sortBy];
+            const second = b[sortBy];
+            if (first == null && second == null) return 0;
+            if (first == null) return sortDir === 'asc' ? -1 : 1;
+            if (second == null) return sortDir === 'asc' ? 1 : -1;
+            return String(first).toLocaleLowerCase().localeCompare(String(second).toLocaleLowerCase()) * (sortDir === 'asc' ? 1 : -1);
         });
-        return copy;
     }, [users, sortBy, sortDir]);
 
-    function onSort(key: keyof UserDto) {
-        if (sortBy === key) {
-            setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
-        } else {
-            setSortBy(key);
-            setSortDir('asc');
-        }
-    }
-
-    function openCreate() {
-        setMode('create');
-        setSelected(null);
-        setShowModal(true);
-    }
-
-    function openEdit(u: UserDto) {
-        setMode('edit');
-        setSelected(u);
-        setShowModal(true);
-    }
-
-    async function handleSubmit(payload: any) {
-        try {
-            if (mode === 'create') {
-                await createUser(payload);
-            } else if (mode === 'edit' && selected) {
-                setBusyRow(selected.id);
-                await updateUser(selected.id, payload);
-                setBusyRow(null);
-            }
-            setShowModal(false);
-            await fetchData();
-        } catch (e: any) {
-            console.error(e);
-            alert(e?.message || 'Failed to save user');
-        }
-    }
-
-    async function handleDelete(u: UserDto) {
-        if (!confirm(`Delete user ${u.firstName} ${u.lastName}?`)) return;
-        try {
-            setBusyRow(u.id);
-            await deleteUser(u.id);
-            setBusyRow(null);
-            await fetchData();
-        } catch (e: any) {
-            console.error(e);
-            alert(e?.message || 'Failed to delete user');
-        }
-    }
-
     const totalPages = Math.max(1, Math.ceil(total / limit));
-    const canPrev = page > 1;
-    const canNext = page < totalPages;
+    const firstResult = total === 0 ? 0 : (page - 1) * limit + 1;
+    const lastResult = Math.min(page * limit, total);
 
-    // Calculate stats
-    const activeUsers = users.filter((u) => u.status === 'active').length;
-    const totalActiveUsers = Math.round((activeUsers / Math.max(users.length, 1)) * 100);
+    const handleSort = (key: keyof UserDto) => {
+        if (sortBy === key) { setSortDir((direction) => direction === 'asc' ? 'desc' : 'asc'); return; }
+        setSortBy(key);
+        setSortDir('asc');
+    };
+    const openCreate = () => { setMode('create'); setSelected(null); setShowModal(true); };
+    const openEdit = (user: UserDto) => { setMode('edit'); setSelected(user); setShowModal(true); };
+
+    const handleSubmit = async (payload: CreateUserDto | UpdateUserDto) => {
+        if (mode === 'create') {
+            await createUser(payload as CreateUserDto);
+            setNotice('User created successfully.');
+        } else if (selected) {
+            setBusyRow(selected.id);
+            try { await updateUser(selected.id, payload as UpdateUserDto); setNotice('User updated successfully.'); }
+            finally { setBusyRow(null); }
+        }
+        setShowModal(false);
+        await fetchData();
+    };
+
+    const handleDelete = async (user: UserDto) => {
+        if (!window.confirm(`Delete ${user.firstName} ${user.lastName}? This cannot be undone.`)) return;
+        setBusyRow(user.id);
+        setError(null);
+        try { await deleteUser(user.id); setNotice('User deleted successfully.'); await fetchData(); }
+        catch (caughtError: unknown) { setError(getErrorMessage(caughtError, 'Failed to delete user.')); }
+        finally { setBusyRow(null); }
+    };
+
+    const resetFilters = () => { setSearch(''); setRole(''); setStatus(''); setPage(1); };
 
     return (
-        <div className="container-fluid px-4 py-4">
-            {/* Modern Header Card with Gradient */}
-            <div
-                className="card border-0 shadow-sm mb-4"
-                style={{
-                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                    borderRadius: '16px',
-                }}
-            >
-                <div className="card-body p-4">
-                    <div className="row align-items-center">
-                        <div className="col-md-6">
-                            <div className="d-flex align-items-center">
-                                <div
-                                    className="bg-white bg-opacity-25 rounded-3 p-3 me-3"
-                                    style={{ backdropFilter: 'blur(10px)' }}
-                                >
-                                    <svg
-                                        width="32"
-                                        height="32"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="white"
-                                        strokeWidth="2"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                    >
-                                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-                                        <circle cx="9" cy="7" r="4"></circle>
-                                        <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-                                        <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-                                    </svg>
-                                </div>
-                                <div>
-                                    <h2 className="text-white mb-1 fw-bold">User Management</h2>
-                                    <p className="text-white text-opacity-75 mb-0">
-                                        Manage system users, roles, and permissions
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
-                        <div className="col-md-6">
-                            <div className="row g-3 text-white">
-                                <div className="col-4">
-                                    <div className="text-center">
-                                        <div className="fs-3 fw-bold">{total}</div>
-                                        <div className="small opacity-75">Total Users</div>
-                                    </div>
-                                </div>
-                                <div className="col-4">
-                                    <div className="text-center">
-                                        <div className="fs-3 fw-bold">{activeUsers}</div>
-                                        <div className="small opacity-75">Active</div>
-                                    </div>
-                                </div>
-                                <div className="col-4">
-                                    <div className="text-center">
-                                        <div className="fs-3 fw-bold">{totalActiveUsers}%</div>
-                                        <div className="small opacity-75">Active Rate</div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+        <main className="users-page" aria-labelledby="users-page-title">
+            <header className="users-page__header">
+                <div><p className="users-page__eyebrow">Access administration</p><h1 id="users-page-title">User management</h1><p>Manage user identities, access roles and account status.</p></div>
+                <div className="users-page__header-actions"><span className="users-page__count">{total} users</span><button type="button" className="users-page__primary" onClick={openCreate}><span aria-hidden="true">+</span> Add user</button></div>
+            </header>
+
+            {error && <div className="users-page__alert users-page__alert--error" role="alert"><span>{error}</span><button type="button" onClick={() => setError(null)}>Dismiss</button></div>}
+            {notice && <div className="users-page__alert users-page__alert--success" role="status"><span>{notice}</span><button type="button" onClick={() => setNotice(null)}>Dismiss</button></div>}
+
+            <section className="users-page__panel" aria-label="User directory">
+                <div className="users-page__toolbar">
+                    <label className="users-page__search"><span className="visually-hidden">Search users</span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></svg><input type="search" value={search} placeholder="Search name, email or employee number" onChange={(event) => { setSearch(event.target.value); setPage(1); }} /></label>
+                    <label><span className="visually-hidden">Filter by role</span><select value={role} onChange={(event) => { setRole(event.target.value as UserRole | ''); setPage(1); }}><option value="">All roles</option>{roleOptions.map((option) => <option key={option} value={option}>{formatOption(option)}</option>)}</select></label>
+                    <label><span className="visually-hidden">Filter by status</span><select value={status} onChange={(event) => { setStatus(event.target.value as UserStatus | ''); setPage(1); }}><option value="">All statuses</option>{statusOptions.map((option) => <option key={option} value={option}>{formatOption(option)}</option>)}</select></label>
+                    <label className="users-page__page-size"><span>Rows</span><select value={limit} onChange={(event) => { setLimit(Number(event.target.value)); setPage(1); }}>{[10, 20, 50, 100].map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
+                    {(search || role || status) && <button type="button" className="users-page__clear" onClick={resetFilters}>Clear</button>}
                 </div>
-            </div>
 
-            {/* Controls Bar */}
-            <div className="card border-0 shadow-sm mb-4" style={{ borderRadius: '12px' }}>
-                <div className="card-body p-3">
-                    <div className="row align-items-center g-3">
-                        <div className="col-md-5">
-                            <InputGroup className="shadow-sm">
-                                <InputGroup.Text
-                                    className="bg-white border-end-0"
-                                    style={{ borderRadius: '8px 0 0 8px' }}
-                                >
-                                    <svg
-                                        width="18"
-                                        height="18"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        strokeWidth="2"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                    >
-                                        <circle cx="11" cy="11" r="8"></circle>
-                                        <path d="m21 21-4.35-4.35"></path>
-                                    </svg>
-                                </InputGroup.Text>
-                                <Form.Control
-                                    placeholder="Search by name, email, or employee number..."
-                                    className="border-start-0 ps-0"
-                                    style={{ borderRadius: '0 8px 8px 0' }}
-                                    value={search}
-                                    onChange={(e) => {
-                                        setPage(1);
-                                        setSearch(e.target.value);
-                                    }}
-                                />
-                            </InputGroup>
-                        </div>
-                        <div className="col-md-3">
-                            <Form.Select
-                                className="shadow-sm"
-                                style={{ borderRadius: '8px' }}
-                                value={limit}
-                                onChange={(e) => {
-                                    setPage(1);
-                                    setLimit(Number(e.target.value));
-                                }}
-                            >
-                                <option value={10}>10 per page</option>
-                                <option value={20}>20 per page</option>
-                                <option value={50}>50 per page</option>
-                                <option value={100}>100 per page</option>
-                            </Form.Select>
-                        </div>
-                        <div className="col-md-4 text-end">
-                            <Button
-                                variant="primary"
-                                className="shadow-sm px-4"
-                                style={{
-                                    borderRadius: '8px',
-                                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                                    border: 'none',
-                                }}
-                                onClick={openCreate}
-                            >
-                                <svg
-                                    width="18"
-                                    height="18"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="2"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    className="me-2"
-                                    style={{ marginTop: '-3px' }}
-                                >
-                                    <circle cx="12" cy="12" r="10"></circle>
-                                    <line x1="12" y1="8" x2="12" y2="16"></line>
-                                    <line x1="8" y1="12" x2="16" y2="12"></line>
-                                </svg>
-                                Add New User
-                            </Button>
-                        </div>
-                    </div>
-                </div>
-            </div>
+                {loading ? <div className="users-page__state" role="status"><span className="users-page__spinner" />Loading users…</div> : error && users.length === 0 ? <div className="users-page__state"><strong>Users could not be loaded.</strong><button type="button" onClick={() => void fetchData()}>Retry</button></div> : <UserTable users={sortedUsers} sortBy={sortBy} sortDir={sortDir} onSort={handleSort} onEdit={openEdit} onDelete={(user) => void handleDelete(user)} busyRow={busyRow} />}
 
-            {/* Main Table Card */}
-            <div className="card border-0 shadow-sm" style={{ borderRadius: '12px' }}>
-                <div className="card-body p-0">
-                    {loading ? (
-                        <div className="text-center py-5">
-                            <Spinner
-                                animation="border"
-                                style={{ width: '3rem', height: '3rem', color: '#667eea' }}
-                            />
-                            <p className="text-muted mt-3 mb-0">Loading users...</p>
-                        </div>
-                    ) : (
-                        <>
-                            <div style={{ overflowX: 'auto' }}>
-                                <UserTable
-                                    users={sorted}
-                                    sortBy={sortBy}
-                                    sortDir={sortDir}
-                                    onSort={onSort}
-                                    onEdit={(u) => (busyRow === u.id ? undefined : openEdit(u))}
-                                    onDelete={(u) =>
-                                        busyRow === u.id ? undefined : handleDelete(u)
-                                    }
-                                    busyRow={busyRow}
-                                />
-                            </div>
-
-                            {/* Pagination Footer */}
-                            <div
-                                className="d-flex justify-content-between align-items-center px-4 py-3"
-                                style={{
-                                    borderTop: '1px solid #e9ecef',
-                                    background: '#f8f9fa',
-                                    borderRadius: '0 0 12px 12px',
-                                }}
-                            >
-                                <div className="text-muted">
-                                    <span className="fw-semibold">
-                                        {total === 0 ? 0 : (page - 1) * limit + 1}–
-                                        {Math.min(page * limit, total)}
-                                    </span>{' '}
-                                    of <span className="fw-semibold">{total}</span> users
-                                </div>
-                                <Pagination className="mb-0" size="sm">
-                                    <Pagination.First
-                                        disabled={!canPrev}
-                                        onClick={() => setPage(1)}
-                                    />
-                                    <Pagination.Prev
-                                        disabled={!canPrev}
-                                        onClick={() => setPage((p) => Math.max(1, p - 1))}
-                                    />
-                                    <Pagination.Item active>
-                                        {page} / {totalPages}
-                                    </Pagination.Item>
-                                    <Pagination.Next
-                                        disabled={!canNext}
-                                        onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                                    />
-                                    <Pagination.Last
-                                        disabled={!canNext}
-                                        onClick={() => setPage(totalPages)}
-                                    />
-                                </Pagination>
-                            </div>
-                        </>
-                    )}
-                </div>
-            </div>
-
-            <UserFormModal
-                show={showModal}
-                mode={mode}
-                initial={selected ?? undefined}
-                onClose={() => setShowModal(false)}
-                onSubmit={handleSubmit}
-            />
-        </div>
+                <footer className="users-page__footer"><span>Showing <strong>{firstResult}-{lastResult}</strong> of <strong>{total}</strong></span><div className="users-page__pagination" aria-label="User pagination"><button type="button" disabled={page === 1} onClick={() => setPage(1)} aria-label="First page">«</button><button type="button" disabled={page === 1} onClick={() => setPage((value) => value - 1)}>Previous</button><span>Page {page} of {totalPages}</span><button type="button" disabled={page >= totalPages} onClick={() => setPage((value) => value + 1)}>Next</button><button type="button" disabled={page >= totalPages} onClick={() => setPage(totalPages)} aria-label="Last page">»</button></div></footer>
+            </section>
+            <UserFormModal show={showModal} mode={mode} initial={selected ?? undefined} onClose={() => setShowModal(false)} onSubmit={handleSubmit} />
+        </main>
     );
 }

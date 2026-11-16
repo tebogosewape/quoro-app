@@ -19,18 +19,21 @@ This register supplements [`THEME_MIGRATION_TODO.md`](THEME_MIGRATION_TODO.md). 
 
 ## Status summary
 
-| Screen                            | Route                  | Status           | Ready since      | Approved on      |
-| --------------------------------- | ---------------------- | ---------------- | ---------------- | ---------------- |
-| Shared authenticated shell        | All logged-in routes   | Approved         | 15 November 2026 | 15 November 2026 |
-| Screen 4 - Dashboard              | `/dashboard`           | Approved         | 16 November 2026 | 16 November 2026 |
-| Screen 5 - Clients Overview       | `/clients`             | Approved         | 15 November 2026 | 16 November 2026 |
-| Screen 6 - New Client Onboarding  | `/clients/new`         | Approved         | 15 November 2026 | 16 November 2026 |
-| Screen 7 - Client Details         | `/clients/:id`         | Approved         | 16 November 2026 | 16 November 2026 |
-| Screen 8 - Leads Overview         | `/leads`               | Approved         | 16 November 2026 | 16 November 2026 |
-| Screen 9 - Leads Import           | `/leads/import`        | Approved         | 16 November 2026 | 16 November 2026 |
-| Screen 10 - Bulk Lead Allocation  | `/leads/bulk-allocate` | Approved         | 16 November 2026 | 16 November 2026 |
-| Screen 11 - Lead Allocation Admin | `/leads/allocation`    | Approved         | 16 November 2026 | 16 November 2026 |
-| Screen 12 - Team Lead Dashboard   | `/team/dashboard`      | In progress      | -                | -                |
+| Screen                            | Route                  | Status                  | Ready since      | Approved on      |
+| --------------------------------- | ---------------------- | ----------------------- | ---------------- | ---------------- |
+| Shared authenticated shell        | All logged-in routes   | Approved                | 15 November 2026 | 15 November 2026 |
+| Screen 4 - Dashboard              | `/dashboard`           | Ready for retest        | 16 November 2026 | -                |
+| Screen 5 - Clients Overview       | `/clients`             | Approved                | 15 November 2026 | 16 November 2026 |
+| Screen 6 - New Client Onboarding  | `/clients/new`         | Approved                | 15 November 2026 | 16 November 2026 |
+| Screen 7 - Client Details         | `/clients/:id`         | Approved                | 16 November 2026 | 16 November 2026 |
+| Screen 8 - Leads Overview         | `/leads`               | Approved                | 16 November 2026 | 16 November 2026 |
+| Screen 9 - Leads Import           | `/leads/import`        | Approved                | 16 November 2026 | 16 November 2026 |
+| Screen 10 - Bulk Lead Allocation  | `/leads/bulk-allocate` | Approved                | 16 November 2026 | 16 November 2026 |
+| Screen 11 - Lead Allocation Admin | `/leads/allocation`    | Approved                | 16 November 2026 | 16 November 2026 |
+| Screen 12 - Team Lead Dashboard   | `/team/dashboard`      | Approved                | 16 November 2026 | 16 November 2026 |
+| Screen 13 - Account Profile       | `/account/profile`     | Approved                | 16 November 2026 | 16 November 2026 |
+| Screen 14 - Role Management       | `/admin/roles`         | Approved                | 16 November 2026 | 16 November 2026 |
+| Screen 15 - WhatsApp Admin        | `/admin/whatsapp`      | Ready for visual review | 16 November 2026 | -                |
 
 ## Shared authenticated shell
 
@@ -66,7 +69,7 @@ This register supplements [`THEME_MIGRATION_TODO.md`](THEME_MIGRATION_TODO.md). 
 
 ## Screen 4 — Dashboard
 
-**Status:** Approved
+**Status:** Ready for retest after CEO Dashboard correction
 **Route:** `/dashboard`  
 **Implementation authority:** [`THEME_MIGRATION_TODO.md`](THEME_MIGRATION_TODO.md#screen-4---dashboard)  
 **Test accounts:** Use the role-specific accounts in [`TEST_USERS.md`](TEST_USERS.md); do not duplicate credentials here.
@@ -100,6 +103,10 @@ This register supplements [`THEME_MIGRATION_TODO.md`](THEME_MIGRATION_TODO.md). 
 - [x] Replaced the non-functional View all button with an accurate showing-count footer.
 - [x] Added semantic button behaviour and a solid non-glowing focus indicator for actionable task rows.
 - [x] Revised My Tasks panel visually accepted by Tebogo.
+- [x] Replaced the untouched CEO Bootstrap branch with the compact executive metric workspace.
+- [x] Restored the visible SMS Credits label and added partial-query error/retry handling.
+- [x] Corrected task-stat parsing for the real paginated `{ tasks, total }` API response.
+- [x] Eleven focused Dashboard tests, scoped lint, web type-check and production build pass after the CEO correction.
 
 ### Tests Tebogo must complete at the machine
 
@@ -135,10 +142,11 @@ This register supplements [`THEME_MIGRATION_TODO.md`](THEME_MIGRATION_TODO.md). 
 
 - [x] Revised Recent Messages panel accepted.
 - [x] Revised My Tasks panel accepted.
-- [x] Manual re-acceptance recorded in the master TODO.
+- [ ] Revised CEO Dashboard accepted.
+- [ ] Manual re-acceptance recorded in the master TODO after the CEO correction.
 
 **Issues found:** During the batch review, the Agent screen failed with `Cannot GET /api/dashboard/agent?timeRange=month`. The missing Dashboard API route was repaired and authenticated metrics now load. WhatsApp initialization was also decoupled from API bootstrap. The first revised metric-card pass exposed missing icon-font glyphs; built-in SVG icons now render reliably. The IMAP credentials were corrected and inbox data now loads. On 16 November the generic Recent Messages and My Tasks presentations were replaced with compact production panels and accepted. A later Agent review exposed that allocated leads were absent from Thabang's task-only dashboard. Assigned leads and assigned clients are now reported separately, allocated leads are merged into My Work Queue, and persisted lead tasks are deduplicated by lead ID. The initial functional queue used oversized rows and lacked discovery controls; it was refined into a compact five-row dashboard widget with search, result counts and pagination. Live desktop/mobile verification confirmed 54 px/70-71 px rows, 34 px search, no document overflow and working search/page navigation.
-**Acceptance wording:** `I'm happy with the dashboard we can move on`, recorded 16 November 2026.
+**Acceptance wording:** Prior Agent Dashboard acceptance was `I'm happy with the dashboard we can move on`, recorded 16 November 2026. CEO Dashboard re-acceptance is pending after the reported oversized and broken presentation was corrected.
 
 ## Screen 5 - Clients Overview
 
@@ -495,6 +503,177 @@ This register supplements [`THEME_MIGRATION_TODO.md`](THEME_MIGRATION_TODO.md). 
 **Issues found:** Thabang's 33 assigned leads were split by the old 20-row page limit; the page size is now 50 so the full filtered assignment fits on one page. No live mutation was submitted during browser verification. Production-build evidence remains open because of the telemetry safety block.
 **Acceptance wording:** `I'm happy with screen 11 and also changes we made to the dashboard to pull real information. Please proceed to screen 12`, recorded 16 November 2026.
 
+## Screen 12 - Team Lead Dashboard
+
+**Status:** Approved
+**Route:** `/team/dashboard`
+**Implementation authority:** [`THEME_MIGRATION_TODO.md`](THEME_MIGRATION_TODO.md#screen-12---team-lead-dashboard)
+**Test accounts:** Use the Team Leader account in [`TEST_USERS.md`](TEST_USERS.md); do not duplicate credentials here.
+
+### Automated and browser evidence completed
+
+- [x] Replaced the legacy Bootstrap cards and wide bordered table with compact QFinance operational components.
+- [x] Preserved the Team Leader role gate, agent query, 30-second refresh and leave-status mutation.
+- [x] Added a slim KPI strip for total agents, active agents, agents on leave and assigned leads.
+- [x] Added a dense desktop performance table and dedicated mobile agent cards.
+- [x] Replaced generic badges and the loose Bootstrap switch with restrained role/rate badges and an accessible leave toggle.
+- [x] Added compact permission, loading, empty, API-error and retry states.
+- [x] Live Team Leader verification loaded 4 agents, 3 active, 1 on leave and 26 assigned leads.
+- [x] Verified mobile cards, tablet containment and desktop table presentation at 320, 375, 768, 1024 and 1440 targets.
+- [x] Corrected the 1024 target so the wide table no longer expands the document; cards take over below 992 CSS pixels.
+- [x] Verified 36 px refresh action, contained table scrolling, no document overflow and solid non-glow leave-control focus.
+- [x] Six focused tests, scoped lint and web type-check passed.
+- [ ] Production build verification remains open because of the existing telemetry safety block. No compiler failure was reported.
+
+### Tests Tebogo must complete at the machine
+
+- [ ] Confirm the KPI strip, agent table and mobile cards look professional and compact.
+- [ ] Confirm all team totals and per-agent lead/outcome values match current operational data.
+- [ ] Use Refresh and confirm the values reload without shifting the layout.
+- [ ] Safely change one test agent to On leave and confirm the status, summary and allocation protection update correctly.
+- [ ] Return that test agent to Active and confirm normal allocation eligibility is restored.
+- [ ] Confirm the leave control disables and shows Updating while a mutation is in progress.
+- [ ] Safely reproduce a failed leave update if practical and confirm the prior state remains visible with a clear error.
+- [ ] Check the screen at mobile, tablet and desktop widths and verify table/card switching and keyboard focus.
+
+### Review outcome
+
+- [x] All user-side checks passed.
+- [x] Manual acceptance recorded in the master TODO.
+
+**Issues found:** No leave-status mutation was submitted during live verification. Production-build evidence remains open because of the telemetry safety block.
+**Acceptance wording:** `I'm happy with Screen 12, please let's move on to the next task`, recorded 16 November 2026.
+
+## Screen 13 - Account Profile
+
+**Status:** Approved; API restart still required before mutation testing
+**Route:** `/account/profile`
+**Implementation authority:** [`THEME_MIGRATION_TODO.md`](THEME_MIGRATION_TODO.md#screen-13---account-profile)
+**Test accounts:** Use any role-specific account in [`TEST_USERS.md`](TEST_USERS.md); do not duplicate credentials here.
+
+### Automated evidence completed
+
+- [x] Replaced the static Bootstrap profile and disabled security form with compact QFinance account panels.
+- [x] Connected profile changes to the existing `PUT /users/:id` endpoint and refreshes the stored session identity after success.
+- [x] Connected password changes to the existing `PUT /users/:id/change-password` endpoint.
+- [x] Added required-field, password-length and confirmation validation with inline success/error feedback.
+- [x] Preserved live identity, role and permission presentation.
+- [x] Expanded the profile/password endpoint role metadata to every authenticated application role while retaining ownership checks.
+- [x] Added loading and API error handling without decorative glow.
+- [x] Six focused web tests and three API role-metadata tests pass.
+- [x] Scoped API/web lint and both type-checks pass.
+- [ ] Live responsive and keyboard verification was blocked when Windows denied browser-control access.
+- [ ] The running API container must be rebuilt before live Team Leader save/password testing; Docker Desktop pipe access was denied to the current environment.
+- [ ] Production-build verification remains open.
+
+### Tests Tebogo must complete at the machine
+
+- [ ] Refresh `/account/profile` and confirm the account, security and access panels look professional and compact.
+- [ ] Confirm the live name, email, username, role, department, phone and permissions are correct.
+- [ ] Check the screen at 320, 375, 768, 1024 and 1440 widths for form stacking, clipping and page overflow.
+- [ ] Verify keyboard focus across every input and action.
+- [ ] Rebuild/restart the API container so the expanded authenticated-role metadata is active.
+- [ ] Change one harmless profile value, save it and confirm the header/session identity updates; then restore the original value.
+- [ ] Confirm Cancel restores the currently saved profile values.
+- [ ] Verify required-field and invalid-email errors remain clear and no request is submitted.
+- [ ] Test password mismatch locally without submitting a change.
+- [ ] Only if intentionally changing a test account password, confirm current-password errors and successful password change/re-login behaviour.
+
+### Review outcome
+
+- [x] Look-and-feel review passed.
+- [x] Manual acceptance recorded in the master TODO.
+
+**Blockers:** Browser-control access and Docker Desktop pipe access were denied by Windows. No profile or password mutation was submitted.
+**Acceptance wording:** `Screen 13 look and feel look proper, let's move o to the next task`, recorded 16 November 2026. Live mutation and responsive/keyboard evidence remain separately open and are not represented as completed by this visual approval.
+
+## Screen 14 - Role Management
+
+**Status:** Approved
+**Route:** `/admin/roles`
+**Implementation authority:** [`THEME_MIGRATION_TODO.md`](THEME_MIGRATION_TODO.md#screen-14---role-management)
+**Test accounts:** Use the Admin account in [`TEST_USERS.md`](TEST_USERS.md); do not duplicate credentials here.
+
+### Automated evidence completed
+
+- [x] Replaced the purple gradient and oversized Bootstrap cards with a compact QFinance access workspace.
+- [x] Preserved role slugs, permission keys, prefix grouping and the existing role-permission endpoints.
+- [x] Added compact permission search, global select/clear and per-group selection controls.
+- [x] Added clear loading, empty, API-error, success and unsaved-change states.
+- [x] Removed the nested card/checkbox event path that could toggle one permission twice.
+- [x] Added a dense role rail, two-column desktop permission grid and one-column narrow layout.
+- [x] Added solid non-glow focus rules and removed gradients, blur, glow and hover movement.
+- [x] Six focused Role Management tests pass.
+- [x] Scoped lint, web type-check and the production build pass.
+- [x] Removed the nested permission scrollbar and aligned both desktop panels to the same workspace height; stacked layouts use natural heights below 992 px.
+- [ ] Live breakpoint, overflow and keyboard verification was blocked when Windows denied browser-control access.
+
+### Tests Tebogo must complete at the machine
+
+- [ ] Open `/admin/roles` as an Admin and confirm the role rail, summary and permission workspace look professional and compact.
+- [ ] Select several roles and confirm each role loads its own assigned permission count and checked keys.
+- [ ] Search by a permission key, display name and description and confirm only matching permissions remain.
+- [ ] Toggle one permission and confirm it changes once and displays the unsaved-change state.
+- [ ] Test Select all, Clear and one group-level selection action without saving unintended changes.
+- [ ] Save a deliberate safe permission change and confirm success, refresh persistence and the correct role behaviour; restore it afterward if necessary.
+- [ ] Safely reproduce an API failure if practical and confirm the existing assignments remain visible with a clear error.
+- [ ] Check the screen at 320, 375, 768, 1024 and 1440 widths for role-list stacking, permission density, clipping and page overflow.
+- [ ] Navigate roles, search, bulk actions, checkboxes and Save by keyboard and confirm solid visible focus.
+
+### Review outcome
+
+- [x] Look-and-feel and equal-height refinement accepted.
+- [x] Manual acceptance recorded in the master TODO.
+
+**Issues found:** The first review exposed a nested permission scrollbar and unequal-feeling desktop panels. The internal height cap was removed, both desktop panels now share the workspace height, and responsive stacked layouts use natural heights. Browser-control access was denied by Windows, so final responsive and keyboard checks remain open. No live role permission was changed during automated verification.
+**Acceptance wording:** `I'm happy with Screen 13 lets continue to the next screen`, recorded 16 November 2026 against the current Screen 14 review context because Screen 13 was already approved. Browser-driven breakpoint evidence remains separately open.
+
+## Screen 15 - WhatsApp Administration
+
+**Status:** Visually approved; functionality deferred to final regression
+**Route:** `/admin/whatsapp`
+**Implementation authority:** [`THEME_MIGRATION_TODO.md`](THEME_MIGRATION_TODO.md#screen-15---whatsapp-administration)
+**Test accounts:** Use the Chief Executive Officer account from [`TEST_USERS.md`](TEST_USERS.md); do not duplicate credentials here.
+
+### Automated evidence completed
+
+- [x] Replaced the gradient and oversized Bootstrap presentation with compact QFinance operational panels.
+- [x] Preserved five-second polling, session/QR queries, reset confirmation and delayed refresh behaviour.
+- [x] Prevented overlapping polling requests and cleanly cancels the reset refresh timer on unmount.
+- [x] Generates QR data locally with `qrcode.react` instead of sending the private session token to a public QR service.
+- [x] Corrected the security guidance to match the backend's Chief Executive Officer restriction for session linking and reset.
+- [x] Aligned the frontend route with the CEO-only sidebar and backend endpoints; non-CEO role managers no longer enter a guaranteed 403 state.
+- [x] Prevented the API and email worker from launching Chromium against the same persisted profile.
+- [x] Removed the conflicting manual Chromium profile override and fixed debugging port; `LocalAuth` now owns `session-default`.
+- [x] Added stale singleton-link cleanup for the former root profile and the LocalAuth profile.
+- [x] Added connected, connecting, waiting-for-QR, disconnected, failed, loading and API-error states.
+- [x] Added compact 34 px reset controls, solid non-glow focus and restrained status colours.
+- [x] Six focused WhatsApp Administration tests pass.
+- [x] Scoped lint, web type-check and the production build pass.
+- [ ] Live breakpoint, QR sizing, overflow and keyboard verification remain open because Windows denied browser-control access.
+
+### Tests Tebogo must complete at the machine
+
+- [ ] Open `/admin/whatsapp` with an authorised account and confirm the header and two operational panels look professional and compact.
+- [ ] Confirm the displayed session name, phone number, status and timestamps match the live WhatsApp service.
+- [ ] If disconnected, confirm the QR code is crisp, contained and scannable without leaving the application.
+- [ ] If connected, confirm the connected state replaces the QR code clearly.
+- [ ] Observe at least one polling cycle and confirm status refresh does not shift or duplicate the layout.
+- [ ] Cancel Reset session and confirm no reset occurs.
+- [ ] Only when a reconnect is intentionally required, confirm reset, new QR generation and reconnection behaviour.
+- [ ] Safely reproduce an API failure if practical and confirm the error is readable without losing the existing panel structure.
+- [ ] Check the screen at 320, 375, 768, 1024 and 1440 widths for panel stacking, QR sizing, clipping and page overflow.
+- [ ] Navigate Dismiss and Reset by keyboard and confirm solid visible focus.
+
+### Review outcome
+
+- [x] Professional look-and-feel approved from the live desktop screen.
+- [x] Manual visual acceptance recorded in the master TODO.
+- [ ] WhatsApp connection and messaging functionality passed. Deferred to the final rebranding regression.
+
+**Blocker:** The Chromium profile-lock error disappeared, but the session remains at Connecting/Awaiting QR scan and Client Details reports that WhatsApp is not ready. Functional diagnosis is parked until the end of rebranding at Tebogo's request.
+**Acceptance wording:** `I have review Screen 15 looks professional, now let's move on to the next screen`, recorded 16 November 2026 as visual approval only.
+
 ## Completed reviews
 
 Move an entry to this section only after its status is `Approved`. Keep the checklist and recorded acceptance as the audit trail.
@@ -507,3 +686,7 @@ Move an entry to this section only after its status is `Approved`. Keep the chec
 - Screen 9 - Leads Import (`/leads/import`) was approved 16 November 2026 after the compact dual-workflow review.
 - Screen 10 - Bulk Lead Allocation (`/leads/bulk-allocate`) was approved 16 November 2026 after the compact allocation-table review.
 - Screen 11 - Lead Allocation Administration (`/leads/allocation`) was approved 16 November 2026 after the compact allocation workspace and real-data Agent dashboard corrections.
+- Screen 12 - Team Lead Dashboard (`/team/dashboard`) was approved 16 November 2026 after the compact team-performance workspace review.
+- Screen 13 - Account Profile (`/account/profile`) was approved 16 November 2026 after the compact account workspace review.
+- Screen 14 - Role Management (`/admin/roles`) was approved 16 November 2026 after the equal-height compact permission workspace refinement.
+- Screen 15 - WhatsApp Administration (`/admin/whatsapp`) was visually approved 16 November 2026; WhatsApp connection and messaging remain a mandatory final-regression item.

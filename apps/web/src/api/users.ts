@@ -134,6 +134,23 @@ export async function updateUser(id: string, payload: UpdateUserDto): Promise<Us
     throw new Error(resp.errorMessage || 'Failed to update user');
 }
 
+export async function changeUserPassword(
+    id: string,
+    payload: { currentPassword: string; newPassword: string }
+): Promise<void> {
+    const token = getBearer();
+    const resp = await http.request<Envelope<{ message: string }>>(
+        'USER_CHANGE_PASSWORD',
+        `/users/${id}/change-password`,
+        'PUT',
+        payload,
+        false,
+        token
+    );
+    if (resp.statusCode >= 200 && resp.statusCode < 300 && resp.data?.success) return;
+    throw new Error(resp.errorMessage || 'Failed to change password');
+}
+
 export async function deleteUser(id: string): Promise<void> {
     const token = getBearer();
     const resp = await http.request<Envelope<{ message: string }>>(

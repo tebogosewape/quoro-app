@@ -1,6 +1,6 @@
 # QMAPI Theme Migration Master TODO
 
-**Status:** Screens 1-11 accepted; Screen 12 is in progress
+**Status:** Screens 1-15 accepted; Screen 16 is in progress
 **Visual reference:** `C:\Projects\ViteRect\quora-web-app`  
 **Functional authority:** `C:\Projects\ViteRect\qmapi`  
 **Last updated:** 16 November 2026
@@ -251,9 +251,9 @@ Every screen below has its own copy of this gate. A screen is implementation-rea
 - [x] Keyboard/focus check passed.
 - [x] Loading/empty/error states passed.
 - [x] Role, query and navigation regression passed.
-- [x] Theme look-and-feel review passed after Recent Messages and My Tasks revisions.
+- [ ] Theme look-and-feel review passed after CEO branch revision.
 - [x] Automated checks/build passed.
-- [x] Manual re-acceptance recorded after Dashboard widget revisions; Screen 4 complete.
+- [ ] Manual re-acceptance recorded after CEO Dashboard revision; Screen 4 reopened for review.
 
 **Runtime review note (15 November 2026):** Agent testing exposed a missing
 `GET /api/dashboard/agent` backend route. The route is now registered through a focused
@@ -313,6 +313,16 @@ five results per page, matching/result-range feedback and Previous/Next paginati
 covers lead/client names, phone numbers and ID numbers. Live checks confirmed working
 search and page navigation, no document overflow, and solid non-glow focus; 11 focused
 dashboard tests, scoped lint and web type-check pass.
+
+**CEO Dashboard correction (16 November 2026):** CEO testing exposed an untouched legacy
+branch with an oversized dark header, large one-off Bootstrap cards and an SMS Credits
+card whose white content became invisible when its background token did not resolve. The
+branch now uses the accepted compact dashboard header and reusable metric cards for the
+client portfolio, monthly SMS performance and organisation-wide tasks. SMS Credits has a
+visible label and restrained violet treatment. The task query now reads the real paginated
+`{ tasks, total }` response instead of treating it as an empty array, and partial query
+failures keep available metrics visible with a retry action. Eleven focused Dashboard tests,
+scoped lint, web type-check and the production build pass. Visual re-acceptance is open.
 
 ## Screen 5 - Clients Overview
 
@@ -593,7 +603,7 @@ not represented as a successful build.
 - [x] Keyboard/focus and bulk-selection checks passed.
 - [x] Loading/empty/error states passed.
 - [x] Full allocation and permission regression passed.
-- [ ] Theme look-and-feel review passed.
+- [x] Theme look-and-feel review passed.
 - [ ] Automated checks/build passed. Six focused tests, scoped lint and type-check pass; the production build remains unverified because of the existing telemetry safety block.
 - [x] Manual acceptance recorded; Screen 11 complete.
 
@@ -622,8 +632,6 @@ the related real-data Agent dashboard correction with the wording `I'm happy wit
 screen 12`. Screen 11 is complete; the production-build evidence remains separately open
 because of the existing telemetry safety block.
 
-- [ ] Manual acceptance recorded; Screen 11 complete.
-
 ## Screen 12 - Team Lead Dashboard
 
 **Route:** `/team/dashboard`  
@@ -640,20 +648,37 @@ because of the existing telemetry safety block.
 
 ### TODO
 
-- [ ] Apply the accepted dashboard/table theme.
-- [ ] Preserve team-leader role checks and leave-status behaviour.
-- [ ] Remove all decorative glow.
-- [ ] Compact-control check passed.
-- [ ] Mobile 320/375 check passed.
-- [ ] Tablet 768 check passed.
-- [ ] Desktop 1024/1440 check passed.
-- [ ] Overflow/table usability check passed.
-- [ ] Keyboard/focus check passed.
-- [ ] Loading/empty/error states passed.
-- [ ] Role and functional regression passed.
-- [ ] Theme look-and-feel review passed.
-- [ ] Automated checks/build passed.
-- [ ] Manual acceptance recorded; Screen 12 complete.
+- [x] Apply the accepted dashboard/table theme.
+- [x] Preserve team-leader role checks and leave-status behaviour.
+- [x] Remove all decorative glow.
+- [x] Compact-control check passed.
+- [x] Mobile 320/375 check passed.
+- [x] Tablet 768 check passed.
+- [x] Desktop 1024/1440 check passed.
+- [x] Overflow/table usability check passed.
+- [x] Keyboard/focus check passed.
+- [x] Loading/empty/error states passed.
+- [x] Role and functional regression passed.
+- [x] Theme look-and-feel review passed.
+- [ ] Automated checks/build passed. Six focused tests, scoped lint and web type-check pass; production-build verification remains open because of the existing telemetry safety block.
+- [x] Manual acceptance recorded; Screen 12 complete.
+
+**Implementation ready for review (16 November 2026):** Replaced the oversized Bootstrap
+cards, generic badges, ten-column bordered table and loose leave switch with a compact
+QFinance team workspace. Live Team Leader data shows 4 agents, 3 active, 1 on leave and
+26 assigned leads. The page now uses a slim four-part KPI strip, dense agent performance
+table, dedicated mobile cards and a clear 36 px refresh action. The existing team-leader
+role gate, 30-second refresh, agent statistics and leave-status mutation are preserved;
+the leave toggle now exposes a solid focus outline and a restrained active/on-leave state.
+Browser checks at 320, 375, 768, 1024 and 1440 confirmed responsive table/card switching,
+contained table scrolling and no document overflow. No leave status was changed during
+live verification. Six focused tests, scoped lint and web type-check pass. Theme acceptance
+and production-build evidence remain open.
+
+**Final Team Lead Dashboard acceptance (16 November 2026):** Tebogo approved Screen 12
+with the wording `I'm happy with Screen 12, please let's move on to the next task`. Screen
+12 is complete; production-build evidence remains separately open because of the existing
+telemetry safety block.
 
 ## Screen 13 - Account Profile
 
@@ -671,20 +696,40 @@ because of the existing telemetry safety block.
 
 ### TODO
 
-- [ ] Apply the accepted form theme.
-- [ ] Preserve profile loading and update behaviour.
-- [ ] Remove all decorative glow.
-- [ ] Compact-control check passed.
+- [x] Apply the accepted form theme.
+- [x] Preserve profile loading and update behaviour.
+- [x] Remove all decorative glow.
+- [x] Compact-control check passed.
 - [ ] Mobile 320/375 check passed.
 - [ ] Tablet 768 check passed.
 - [ ] Desktop 1024/1440 check passed.
 - [ ] Overflow and form-width check passed.
 - [ ] Keyboard/focus check passed.
-- [ ] Loading/success/error/validation states passed.
-- [ ] Functional regression passed.
-- [ ] Theme look-and-feel review passed.
-- [ ] Automated checks/build passed.
-- [ ] Manual acceptance recorded; Screen 13 complete.
+- [x] Loading/success/error/validation states passed.
+- [x] Functional regression passed.
+- [x] Theme look-and-feel review passed.
+- [ ] Automated checks/build passed. Six focused web tests, three API role-metadata tests, scoped lint and both type-checks pass; production-build verification remains open.
+- [x] Manual acceptance recorded; Screen 13 complete.
+
+**Implementation ready for visual review (16 November 2026):** Replaced the static
+Bootstrap information card and permanently disabled password form with a compact QFinance
+account workspace. Users can now edit first name, last name, email, username, phone and
+department through the existing user-update API; successful changes refresh the stored
+session identity. The security panel now validates and submits the existing password-change
+API, with compact 36 px inputs, 34 px actions and inline success/error feedback. The access
+panel presents the live role and permissions without oversized badges. A backend permission
+gap was also repaired so Team Leader, Sales Agent, Operations Manager, specialist, provider
+and executive roles can update their own profile/password while the existing ownership
+checks still block changes to other users. Six focused web tests and three API role tests,
+scoped lint and both type-checks pass. No live profile or password mutation was submitted.
+Responsive and keyboard browser checks remain open because Windows denied browser-control
+access, and the running API container still needs a rebuild because Docker Desktop pipe
+access was denied to this environment.
+
+**Final Account Profile acceptance (16 November 2026):** Tebogo approved Screen 13 after
+reviewing the compact account, security and access presentation with the wording `Screen
+13 look and feel look proper, let's move o to the next task`. Screen 13 is complete; the
+separately documented live mutation and production-build evidence remains open.
 
 ## Screen 14 - Role Management
 
@@ -704,20 +749,47 @@ because of the existing telemetry safety block.
 
 ### TODO
 
-- [ ] Apply the accepted administration theme.
-- [ ] Preserve permission keys, grouping and save behaviour.
-- [ ] Remove glow from role cards, badges and selected states.
-- [ ] Compact-control check passed.
+- [x] Apply the accepted administration theme.
+- [x] Preserve permission keys, grouping and save behaviour.
+- [x] Remove glow from role cards, badges and selected states.
+- [x] Compact-control check passed.
 - [ ] Mobile 320/375 check passed.
 - [ ] Tablet 768 check passed.
 - [ ] Desktop 1024/1440 check passed.
 - [ ] Overflow and permission-density check passed.
 - [ ] Keyboard/focus and checkbox navigation passed.
-- [ ] Loading/error/dirty states passed.
-- [ ] Permission and functional regression passed.
-- [ ] Theme look-and-feel review passed.
-- [ ] Automated checks/build passed.
-- [ ] Manual acceptance recorded; Screen 14 complete.
+- [x] Loading/error/dirty states passed.
+- [x] Permission and functional regression passed.
+- [x] Theme look-and-feel review passed.
+- [x] Automated checks/build passed.
+- [x] Manual acceptance recorded; Screen 14 complete.
+
+**Implementation ready for visual review (16 November 2026):** Replaced the legacy
+purple gradient, blur treatment, oversized cards and nested Bootstrap presentation with
+a compact QFinance access-administration workspace. The page now uses a dense role rail,
+permission search, grouped permission grids, per-group selection, compact global actions
+and a persistent save footer with an explicit dirty state. Existing role slugs, permission
+keys, group prefixes and role-permission API endpoints are preserved. The permission-card
+event handling defect that could toggle a checkbox twice was removed by giving the native
+checkbox a single change path. Six focused regression tests, scoped lint, web type-check
+and the production build pass. The build also exposed and corrected the previously approved
+Lead Allocation query type so its existing nullable allocation filter matches the shared
+lead model. Browser breakpoint, overflow and keyboard checks remain open because Windows
+denied browser-control access.
+
+**Equal-height workspace refinement (16 November 2026):** User review found that the
+permissions body introduced a nested vertical scrollbar and did not feel aligned with
+the System Roles panel. The internal viewport-height cap and scrollbar were removed.
+Desktop panels now stretch to the same workspace height and use the page's normal scroll;
+below 992 px they stack at their natural content heights for responsive use. Focused tests
+and web type-check continue to pass.
+
+**Final Role Management acceptance (16 November 2026):** After the equal-height workspace
+refinement, Tebogo approved the currently reviewed Role Management screen and asked to
+continue. The wording referred to Screen 13, which was already approved; it was recorded
+against the current Screen 14 context as `I'm happy with Screen 13 lets continue to the
+next screen`. Screen 14 is complete; browser-driven breakpoint evidence remains separately
+open because Windows denied automation access.
 
 ## Screen 15 - WhatsApp Administration
 
@@ -736,20 +808,51 @@ because of the existing telemetry safety block.
 
 ### TODO
 
-- [ ] Apply the accepted administration/status theme.
-- [ ] Preserve polling, QR-code, reset and connection behaviour.
-- [ ] Remove glow from QR container, status and actions.
-- [ ] Compact-control check passed.
+- [x] Apply the accepted administration/status theme.
+- [x] Preserve polling, QR-code, reset and connection behaviour.
+- [x] Remove glow from QR container, status and actions.
+- [x] Compact-control check passed.
 - [ ] Mobile 320/375 check passed.
 - [ ] Tablet 768 check passed.
 - [ ] Desktop 1024/1440 check passed.
 - [ ] Overflow and QR sizing check passed.
 - [ ] Keyboard/focus check passed.
-- [ ] Loading/disconnected/error states passed.
-- [ ] Permission and functional regression passed.
-- [ ] Theme look-and-feel review passed.
-- [ ] Automated checks/build passed.
-- [ ] Manual acceptance recorded; Screen 15 complete.
+- [x] Loading/disconnected/error states passed.
+- [x] Permission and functional regression passed.
+- [x] Theme look-and-feel review passed.
+- [x] Automated checks/build passed.
+- [x] Manual acceptance recorded; Screen 15 complete.
+
+**Implementation ready for visual review (16 November 2026):** Replaced the WhatsApp
+green gradient, oversized icon header, Bootstrap cards and large alerts with a compact
+QFinance operations screen. Session information and device connection use equal-height
+desktop panels, compact status indicators, a restrained reset action and natural stacked
+layouts below 768 px. Five-second polling, session/QR queries, reset confirmation and the
+delayed status refresh are preserved; overlapping poll requests are now prevented and the
+reset refresh timer is cleaned up on unmount. The QR session token is no longer sent to
+the public `api.qrserver.com` service: the existing `qrcode.react` dependency renders it
+locally in the browser. The security note now accurately states that the backend restricts
+session linking and reset operations to the Chief Executive Officer role. Six focused tests, scoped lint, web type-check and the
+production build pass. Live breakpoint and keyboard checks remain open because Windows
+browser-control access is unavailable.
+
+**Chromium session repair (16 November 2026):** The API and email worker both imported the
+full application module and attempted to launch Chromium against the same persisted WhatsApp
+profile. WhatsApp runtime ownership is now limited to the API process, the worker explicitly
+disables it, and both development and production Compose files declare that ownership. The
+conflicting manual `--user-data-dir` and fixed remote-debugging port were removed so
+`LocalAuth` exclusively manages `session-default`. Startup cleanup now removes stale Chromium
+singleton links from both the former root profile and the LocalAuth profile, including broken
+symlinks that `existsSync` cannot detect. A focused backend regression test covers the disabled
+worker path. The frontend route now uses the same Chief Executive Officer role restriction as
+the sidebar and backend endpoints, preventing non-CEO users with `roles.manage` from opening a
+screen whose session calls the API must reject.
+
+**Visual acceptance with functional deferral (16 November 2026):** Tebogo confirmed that
+Screen 15 looks professional and approved moving to the next screen. The Chromium profile-lock
+error has disappeared, but WhatsApp remains unable to complete the connection and messaging
+flow. That integration defect is deliberately parked until the end-of-rebranding regression;
+visual approval must not be represented as functional WhatsApp approval.
 
 ## Screen 16 - User Management
 
@@ -864,6 +967,7 @@ because of the existing telemetry safety block.
 - [ ] Client search, onboarding, edit and profile actions pass.
 - [ ] Experian request/view/download behaviour remains intact.
 - [ ] SMS, email and WhatsApp behaviour remains intact.
+- [ ] Return to the parked WhatsApp defect: complete QR linking, reach `Connected`, send one safe test message from Client Details, receive/record it correctly, and document the root cause if any step still fails.
 - [ ] Lead import, allocation and bulk allocation pass.
 - [ ] User, role, product and commission management pass.
 - [ ] Responsive review passes at 320, 375, 768, 1024 and 1440 widths.

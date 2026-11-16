@@ -11,6 +11,7 @@ import DashboardMetricCard, {
 } from './widgets/DashboardMetricCard';
 import DashboardMessagesPanel, { type DashboardEmail } from './widgets/DashboardMessagesPanel';
 import DashboardTasksPanel from './widgets/DashboardTasksPanel';
+import ExecutiveDashboard from './ExecutiveDashboard';
 
 // Mock data for admin dashboard placeholder
 const adminStats = [
@@ -171,11 +172,14 @@ export default function ClientflowDashboard() {
                 params: { limit: 1000 },
                 headers: { Authorization: `Bearer ${token}` },
             });
-            const responseTasks = response.data?.data || response.data || [];
-            const taskItems: Array<{ status?: string }> = Array.isArray(responseTasks)
-                ? responseTasks
-                : [];
-            const total = taskItems.length;
+            const responsePayload = response.data?.data || response.data || {};
+            let taskItems: Array<{ status?: string }> = [];
+            if (Array.isArray(responsePayload)) taskItems = responsePayload;
+            else if (Array.isArray(responsePayload.tasks)) taskItems = responsePayload.tasks;
+            const total =
+                typeof responsePayload.total === 'number'
+                    ? responsePayload.total
+                    : taskItems.length;
             const completed = taskItems.filter((task) => task.status === 'completed').length;
             return { total, completed, incomplete: total - completed };
         },
@@ -583,435 +587,41 @@ export default function ClientflowDashboard() {
         const clientStats = clientStatsQuery.data || {};
         const smsStats = smsStatsQuery.data || {};
         const taskStats = taskStatsQuery.data || { total: 0, completed: 0, incomplete: 0 };
-
-        // Extract SMS statistics from nested structure
         const smsTotal = smsStats.grandTotal || smsStats.total || {};
-        const smsDelivered = smsTotal.delivered || 0;
-        const smsSent = smsTotal.sent || 0;
-        const smsFailed = smsTotal.failed || 0;
-
-        // Extract credit balance from user data
         const smsUsers = smsStats.users || [];
         const creditBalance = smsUsers.length > 0 ? smsUsers[0]?.user?.creditBalance || 0 : 0;
 
         return (
-            <div className="dashboard-screen dashboard-screen--executive">
-                {/* Modern Gradient Header */}
-                <div className="mb-4 p-4 text-white dashboard-executive-header">
-                    <div className="d-flex justify-content-between align-items-center">
-                        <div>
-                            <h2 className="mb-1">CEO Dashboard</h2>
-                            <p className="mb-0 opacity-75">
-                                Executive overview and business intelligence
-                            </p>
-                        </div>
-                        <div className="text-end">
-                            <div className="fs-5 fw-bold">
-                                {today.toLocaleDateString('en-ZA', {
-                                    weekday: 'long',
-                                    year: 'numeric',
-                                    month: 'long',
-                                    day: 'numeric',
-                                })}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Client Statistics */}
-                <div className="mb-4">
-                    <h5 className="mb-3">Client Statistics</h5>
-                    <div className="row">
-                        <div className="col-md-4 mb-3">
-                            <div
-                                className="card border-0 h-100"
-                                style={{
-                                    borderRadius: '12px',
-                                }}
-                            >
-                                <div className="card-body d-flex align-items-center">
-                                    <svg
-                                        width="48"
-                                        height="48"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="#667eea"
-                                        strokeWidth="2"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        className="me-3"
-                                    >
-                                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                                        <circle cx="9" cy="7" r="4" />
-                                        <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-                                        <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-                                    </svg>
-                                    <div>
-                                        <div className="h3 mb-0">
-                                            {clientStatsQuery.isLoading
-                                                ? '...'
-                                                : clientStats.total || 0}
-                                        </div>
-                                        <div className="text-muted small">Total Clients</div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="col-md-4 mb-3">
-                            <div
-                                className="card border-0 h-100"
-                                style={{
-                                    borderRadius: '12px',
-                                }}
-                            >
-                                <div className="card-body d-flex align-items-center">
-                                    <svg
-                                        width="48"
-                                        height="48"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="#10b981"
-                                        strokeWidth="2"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        className="me-3"
-                                    >
-                                        <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                                        <circle cx="8.5" cy="7" r="4" />
-                                        <polyline points="17 11 19 13 23 9" />
-                                    </svg>
-                                    <div>
-                                        <div className="h3 mb-0">
-                                            {clientStatsQuery.isLoading
-                                                ? '...'
-                                                : clientStats.byStatus?.active || 0}
-                                        </div>
-                                        <div className="text-muted small">Active Clients</div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="col-md-4 mb-3">
-                            <div
-                                className="card border-0 h-100"
-                                style={{
-                                    borderRadius: '12px',
-                                }}
-                            >
-                                <div className="card-body d-flex align-items-center">
-                                    <svg
-                                        width="48"
-                                        height="48"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="#f59e0b"
-                                        strokeWidth="2"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        className="me-3"
-                                    >
-                                        <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                                        <circle cx="8.5" cy="7" r="4" />
-                                        <line x1="23" y1="11" x2="17" y2="11" />
-                                    </svg>
-                                    <div>
-                                        <div className="h3 mb-0">
-                                            {clientStatsQuery.isLoading
-                                                ? '...'
-                                                : clientStats.byStatus?.lead || 0}
-                                        </div>
-                                        <div className="text-muted small">New Leads</div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                {/* SMS Statistics */}
-                <div className="mb-4">
-                    <h5 className="mb-3">SMS Statistics (This Month)</h5>
-                    <div className="row">
-                        <div className="col-md-3 mb-3">
-                            <div
-                                className="card border-0 h-100"
-                                style={{
-                                    borderRadius: '12px',
-                                }}
-                            >
-                                <div className="card-body d-flex align-items-center">
-                                    <svg
-                                        width="48"
-                                        height="48"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="#10b981"
-                                        strokeWidth="2"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        className="me-3"
-                                    >
-                                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                                        <polyline points="9 10 12 13 16 9" />
-                                    </svg>
-                                    <div>
-                                        <div className="h3 mb-0">
-                                            {smsStatsQuery.isLoading ? '...' : smsDelivered}
-                                        </div>
-                                        <div className="text-muted small">Delivered</div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="col-md-3 mb-3">
-                            <div
-                                className="card border-0 h-100"
-                                style={{
-                                    borderRadius: '12px',
-                                }}
-                            >
-                                <div className="card-body d-flex align-items-center">
-                                    <svg
-                                        width="48"
-                                        height="48"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="#3b82f6"
-                                        strokeWidth="2"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        className="me-3"
-                                    >
-                                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                                        <path d="M8 10h.01M12 10h.01M16 10h.01" />
-                                    </svg>
-                                    <div>
-                                        <div className="h3 mb-0">
-                                            {smsStatsQuery.isLoading ? '...' : smsSent}
-                                        </div>
-                                        <div className="text-muted small">Sent</div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="col-md-3 mb-3">
-                            <div
-                                className="card border-0 h-100"
-                                style={{
-                                    borderRadius: '12px',
-                                }}
-                            >
-                                <div className="card-body d-flex align-items-center">
-                                    <svg
-                                        width="48"
-                                        height="48"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="#ef4444"
-                                        strokeWidth="2"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        className="me-3"
-                                    >
-                                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                                        <line x1="9" y1="9" x2="15" y2="15" />
-                                        <line x1="15" y1="9" x2="9" y2="15" />
-                                    </svg>
-                                    <div>
-                                        <div className="h3 mb-0">
-                                            {smsStatsQuery.isLoading ? '...' : smsFailed}
-                                        </div>
-                                        <div className="text-muted small">Failed</div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="col-md-3 mb-3">
-                            <div
-                                className="card border-0 h-100"
-                                style={{
-                                    borderRadius: '12px',
-                                    background: 'var(--color-brand-teal)',
-                                }}
-                            >
-                                <div className="card-body d-flex align-items-center text-white">
-                                    <svg
-                                        width="48"
-                                        height="48"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="white"
-                                        strokeWidth="2"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        className="me-3"
-                                    >
-                                        <text
-                                            x="12"
-                                            y="18"
-                                            fontSize="18"
-                                            fontWeight="bold"
-                                            textAnchor="middle"
-                                            fill="white"
-                                        >
-                                            R
-                                        </text>
-                                    </svg>
-                                    <div>
-                                        <div className="h3 mb-0">
-                                            {smsStatsQuery.isLoading ? '...' : creditBalance}
-                                        </div>
-                                        <div className="opacity-75 small">SMS Credits</div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Task Management */}
-                <div className="row">
-                    <div className="col-12 mb-4">
-                        <h5 className="mb-3">Task Management</h5>
-                        <div className="row">
-                            <div className="col-md-4 mb-3">
-                                <div
-                                    className="card border-0 h-100"
-                                    style={{
-                                        borderRadius: '12px',
-                                    }}
-                                >
-                                    <div className="card-body text-center">
-                                        <svg
-                                            width="32"
-                                            height="32"
-                                            viewBox="0 0 24 24"
-                                            fill="none"
-                                            stroke="#667eea"
-                                            strokeWidth="2"
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                            className="mx-auto mb-2"
-                                        >
-                                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                                            <polyline points="14 2 14 8 20 8" />
-                                            <line x1="9" y1="15" x2="15" y2="15" />
-                                        </svg>
-                                        <div className="h4 mb-0">
-                                            {taskStatsQuery.isLoading ? '...' : taskStats.total}
-                                        </div>
-                                        <div className="text-muted small">Total</div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="col-md-4 mb-3">
-                                <div
-                                    className="card border-0 h-100"
-                                    style={{
-                                        borderRadius: '12px',
-                                    }}
-                                >
-                                    <div className="card-body text-center">
-                                        <svg
-                                            width="32"
-                                            height="32"
-                                            viewBox="0 0 24 24"
-                                            fill="none"
-                                            stroke="#10b981"
-                                            strokeWidth="2"
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                            className="mx-auto mb-2"
-                                        >
-                                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                                            <polyline points="14 2 14 8 20 8" />
-                                            <polyline points="9 15 11 17 15 13" />
-                                        </svg>
-                                        <div className="h4 mb-0">
-                                            {taskStatsQuery.isLoading ? '...' : taskStats.completed}
-                                        </div>
-                                        <div className="text-muted small">Complete</div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="col-md-4 mb-3">
-                                <div
-                                    className="card border-0 h-100"
-                                    style={{
-                                        borderRadius: '12px',
-                                    }}
-                                >
-                                    <div className="card-body text-center">
-                                        <svg
-                                            width="32"
-                                            height="32"
-                                            viewBox="0 0 24 24"
-                                            fill="none"
-                                            stroke="#f59e0b"
-                                            strokeWidth="2"
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                            className="mx-auto mb-2"
-                                        >
-                                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                                            <polyline points="14 2 14 8 20 8" />
-                                            <circle cx="12" cy="15" r="1" />
-                                        </svg>
-                                        <div className="h4 mb-0">
-                                            {taskStatsQuery.isLoading
-                                                ? '...'
-                                                : taskStats.incomplete}
-                                        </div>
-                                        <div className="text-muted small">Incomplete</div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Quick Info */}
-                <div className="row">
-                    <div className="col-12">
-                        <div className="alert alert-info border-0 dashboard-info-panel">
-                            <div className="d-flex align-items-start">
-                                <svg
-                                    width="24"
-                                    height="24"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="2"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    className="me-3 mt-1"
-                                >
-                                    <circle cx="12" cy="12" r="10" />
-                                    <line x1="12" y1="16" x2="12" y2="12" />
-                                    <line x1="12" y1="8" x2="12.01" y2="8" />
-                                </svg>
-                                <div>
-                                    <h6 className="mb-2">Executive Dashboard</h6>
-                                    <p className="mb-0 small">
-                                        This dashboard provides a comprehensive overview of business
-                                        operations including client statistics, SMS communication
-                                        metrics, commission settings, and task management. All data
-                                        is updated in real-time and reflects current business
-                                        performance.
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
+            <ExecutiveDashboard
+                date={today}
+                clients={{
+                    total: clientStats.total || 0,
+                    active: clientStats.byStatus?.active || 0,
+                    leads: clientStats.byStatus?.lead || 0,
+                    loading: clientStatsQuery.isLoading,
+                }}
+                sms={{
+                    delivered: smsTotal.delivered || 0,
+                    sent: smsTotal.sent || 0,
+                    failed: smsTotal.failed || 0,
+                    credits: creditBalance,
+                    loading: smsStatsQuery.isLoading,
+                }}
+                tasks={{
+                    total: taskStats.total,
+                    completed: taskStats.completed,
+                    incomplete: taskStats.incomplete,
+                    loading: taskStatsQuery.isLoading,
+                }}
+                hasError={
+                    clientStatsQuery.isError || smsStatsQuery.isError || taskStatsQuery.isError
+                }
+                onRetry={() => {
+                    void clientStatsQuery.refetch();
+                    void smsStatsQuery.refetch();
+                    void taskStatsQuery.refetch();
+                }}
+            />
         );
     }
 

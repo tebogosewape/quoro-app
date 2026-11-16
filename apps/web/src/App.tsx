@@ -135,7 +135,7 @@ const App = () => {
                     <Route
                         path="/admin/whatsapp"
                         element={
-                            <PrivateRoute permission="roles.manage">
+                            <PrivateRoute role="chief_executive_officer">
                                 <ManageWhatsApp />
                             </PrivateRoute>
                         }

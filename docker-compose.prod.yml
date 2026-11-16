@@ -7,6 +7,8 @@ services:
             dockerfile: Dockerfile.prod
         env_file:
             - ./apps/api/.env.production
+        environment:
+            WHATSAPP_ENABLED: 'true'
         ports:
             - '2200:2200'
         volumes:
@@ -25,6 +27,8 @@ services:
         command: node dist/worker
         env_file:
             - ./apps/api/.env.production
+        environment:
+            WHATSAPP_ENABLED: 'false'
         depends_on:
             - redis
             - mysql
