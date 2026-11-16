@@ -44,11 +44,15 @@ type Personal = {
 
 type Product = {
     id: string;
+    code: string;
     name: string;
     desc: string;
     selected?: boolean;
     paymentOptions?: PaymentOption[];
 };
+
+const requiresCreditAccountHistory = (product: Product) =>
+    product.code.toUpperCase() === 'CAR' || product.id === 'cir';
 
 type PaymentOption = {
     id: string;
@@ -261,6 +265,7 @@ export default function OnboardingWizard() {
 
                     return {
                         id: p.id,
+                        code: p.code,
                         name: p.name,
                         desc: p.description || '',
                         paymentOptions:
@@ -363,8 +368,10 @@ export default function OnboardingWizard() {
             return state.products.some((p) => p.selected);
         }
         if (step === 'product-info') {
-            const hasCIR = state.products.some((p) => p.id === 'cir' && p.selected);
-            if (!hasCIR) return true; // Skip validation if CIR not selected
+            const needsCreditAccounts = state.products.some(
+                (p) => p.selected && requiresCreditAccountHistory(p)
+            );
+            if (!needsCreditAccounts) return true;
             return (state.productInfo?.cirAccounts?.length ?? 0) >= 3;
         }
         if (step === 'banking') {
@@ -498,7 +505,9 @@ export default function OnboardingWizard() {
                     .map((p) => ({
                         productId: p.id,
                         paymentOptionId: state.payment?.selectedPaymentOptions?.[p.id] || '',
-                        cirAccounts: state.productInfo?.cirAccounts || undefined,
+                        cirAccounts: requiresCreditAccountHistory(p)
+                            ? state.productInfo?.cirAccounts
+                            : undefined,
                     })),
                 // Add payment information
                 paymentInfo: {
@@ -1377,10 +1386,17 @@ function StepProducts({
         });
     };
 
+    const getPricingSummary = (product: Product) => {
+        const options = product.paymentOptions ?? [];
+        if (options.length === 0) return 'Pricing confirmed during consultation';
+        if (options.length === 1) return options[0]?.label;
+        return `${options[0]?.label} + ${options.length - 1} more option${options.length > 2 ? 's' : ''}`;
+    };
+
     return (
         <>
             <h5 className="mb-3">Step 3: Select a product</h5>
-            <p className="text-muted mb-4">
+            <p className="text-muted mb-3">
                 Please select <strong>one product</strong> for this client. You can add additional
                 products after the initial onboarding.
             </p>
@@ -1419,69 +1435,44 @@ function StepProducts({
                 </div>
             )}
 
-            <Row className="g-3">
+            <Row
+                className="g-2 wizard-product-grid"
+                role="radiogroup"
+                aria-label="Available products"
+            >
                 {products.map((p) => (
-                    <Col md={12} key={p.id}>
-                        <div
-                            className={`cf-prod card h-100 ${p.selected ? 'border-primary' : ''}`}
-                            onClick={() => !loading && handleSelect(p.id)}
+                    <Col lg={6} key={p.id}>
+                        <label
+                            className={`cf-prod wizard-product-option ${p.selected ? 'border-primary' : ''}`}
                         >
-                            <div className="card-body">
-                                <div className="d-flex align-items-start gap-3">
-                                    <Form.Check
-                                        type="radio"
-                                        name="productSelection"
-                                        checked={!!p.selected}
-                                        onChange={() => handleSelect(p.id)}
-                                        disabled={loading}
-                                        onClick={(e) => e.stopPropagation()}
-                                    />
-                                    <div className="flex-grow-1">
-                                        <div className="fw-bold mb-1">{p.name}</div>
-                                        <div className="text-muted" style={{ fontSize: 13 }}>
-                                            {p.desc}
-                                        </div>
-                                        {/* Display pricing options */}
-                                        {p.paymentOptions && p.paymentOptions.length > 0 && (
-                                            <div
-                                                className="mt-2 text-muted"
-                                                style={{ fontSize: 12 }}
-                                            >
-                                                <strong>Payment options:</strong>{' '}
-                                                {p.paymentOptions
-                                                    .map((opt) => opt.label)
-                                                    .join(', ')}
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
+                            <input
+                                className="form-check-input"
+                                type="radio"
+                                name="productSelection"
+                                checked={!!p.selected}
+                                onChange={() => handleSelect(p.id)}
+                                disabled={loading}
+                            />
+                            <span className="wizard-product-copy">
+                                <span className="wizard-product-heading">
+                                    <span className="wizard-product-name">{p.name}</span>
+                                    <span className="wizard-product-code">{p.code}</span>
+                                </span>
+                                {p.desc && (
+                                    <span className="wizard-product-description">{p.desc}</span>
+                                )}
+                                <span className="wizard-product-price">{getPricingSummary(p)}</span>
+                            </span>
+                        </label>
                     </Col>
                 ))}
             </Row>
 
             <div className="d-flex justify-content-between mt-4">
-                <Button
-                    variant="outline-secondary"
-                    onClick={onBack}
-                    type="button"
-                    style={{ borderRadius: '8px' }}
-                >
+                <Button variant="outline-secondary" onClick={onBack} type="button">
                     Back
                 </Button>
-                <Button
-                    disabled={busy || loading}
-                    onClick={onNext}
-                    type="button"
-                    style={{
-                        background: 'var(--color-brand-teal)',
-                        border: 'none',
-                        color: 'white',
-                        borderRadius: '8px',
-                        fontWeight: 500,
-                    }}
-                >
+                <Button disabled={busy || loading} onClick={onNext} type="button" variant="primary">
                     {busy ? 'Saving…' : 'Confirm'}
                 </Button>
             </div>
@@ -1509,13 +1500,13 @@ function StepProductInfo({
     showValidation: boolean;
 }) {
     const selectedProducts = products.filter((p) => p.selected);
-    const hasCIR = selectedProducts.some((p) => p.id === 'cir');
+    const needsCreditAccounts = selectedProducts.some(requiresCreditAccountHistory);
 
     return (
         <>
             <h5 className="mb-3">Step 4: Product-Specific Information</h5>
 
-            {hasCIR && (
+            {needsCreditAccounts && (
                 <div className="mb-4">
                     {showValidation && !canContinue && (
                         <div className="alert alert-danger mb-3" role="alert">
@@ -1524,7 +1515,7 @@ function StepProductInfo({
                         </div>
                     )}
                     <div className="wizard-section-card p-3">
-                        <div className="fw-bold mb-3">Credit Interpretation Report (Experian)</div>
+                        <div className="fw-bold mb-3">Credit Assessment and Report</div>
                         <Form.Label>
                             Name 3 accounts that you are currently paying?
                             <span className="text-danger">*</span>
@@ -1547,7 +1538,7 @@ function StepProductInfo({
                 </div>
             )}
 
-            {!hasCIR && (
+            {!needsCreditAccounts && (
                 <div className="wizard-section-card p-3">
                     <div className="text-muted">
                         No product-specific information required for the selected product(s).
@@ -2323,13 +2314,11 @@ function StepConfirm({
                 </Col>
             </Row>
 
-            {chosen.some((p) => p.id === 'cir') && (
+            {chosen.some(requiresCreditAccountHistory) && (
                 <Row className="g-3 mt-2">
                     <Col lg={6}>
                         <div className="wizard-section-card p-3">
-                            <div className="fw-bold mb-2">
-                                Credit Interpretation Report (Experian)
-                            </div>
+                            <div className="fw-bold mb-2">Credit Assessment and Report</div>
                             <div>
                                 <b>Accounts Currently Paying:</b>
                             </div>

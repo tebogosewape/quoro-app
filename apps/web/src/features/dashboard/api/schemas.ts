@@ -197,6 +197,7 @@ export const clientQuickSearchResponseSchema = z.object({
 export const agentDashboardSchema = z.object({
     commissionSummary: commissionSummarySchema,
     assignedClients: safeNumber,
+    assignedLeads: safeNumber.default(0),
     newClientsThisMonth: safeNumber,
     activeTasks: safeNumber,
     overdueTasks: safeNumber,
@@ -206,6 +207,23 @@ export const agentDashboardSchema = z.object({
     targetAchievement: safeNumber,
     recentTasks: z.array(taskBoardItemSchema),
     recentClients: z.array(clientQuickSearchResultSchema),
+    recentAssignedLeads: z
+        .array(
+            z.object({
+                id: z.string(),
+                name: z.string().nullish(),
+                cell: z.string(),
+                idNumber: z.string().nullish(),
+                franchise: z.string().nullish(),
+                affiliate: z.string().nullish(),
+                message: z.string().nullish(),
+                leadOutcome: z.string().nullish(),
+                timeReceived: z.string().or(z.date()),
+                createdAt: z.string().or(z.date()),
+                updatedAt: z.string().or(z.date()),
+            })
+        )
+        .default([]),
 });
 
 export type TimeRange = z.infer<typeof timeRangeSchema>;

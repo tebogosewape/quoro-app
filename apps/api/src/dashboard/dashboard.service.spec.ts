@@ -12,6 +12,12 @@ describe('DashboardService', () => {
     const taskRepository = {
         find: jest.fn(),
     };
+    const leadRepository = {
+        findAndCount: jest.fn(),
+    };
+    const userRepository = {
+        findOne: jest.fn(),
+    };
     const queryBuilder = {
         select: jest.fn(),
         where: jest.fn(),
@@ -34,7 +40,18 @@ describe('DashboardService', () => {
         queryBuilder.select.mockReturnValue(queryBuilder);
         queryBuilder.where.mockReturnValue(queryBuilder);
         clientRepository.createQueryBuilder.mockReturnValue(queryBuilder);
-        service = new DashboardService(clientRepository as never, taskRepository as never);
+        userRepository.findOne.mockResolvedValue({
+            id: agent.id,
+            firstName: agent.firstName,
+            lastName: agent.lastName,
+        });
+        leadRepository.findAndCount.mockResolvedValue([[], 0]);
+        service = new DashboardService(
+            clientRepository as never,
+            leadRepository as never,
+            taskRepository as never,
+            userRepository as never
+        );
     });
 
     it('returns live client and task metrics using the signed-in agent scope', async () => {
@@ -74,6 +91,24 @@ describe('DashboardService', () => {
             },
         ]);
         queryBuilder.getRawOne.mockResolvedValue({ total: '12500.50' });
+        leadRepository.findAndCount.mockResolvedValue([
+            [
+                {
+                    id: 'lead-1',
+                    name: 'Lead One',
+                    cell: '0820000001',
+                    idNumber: null,
+                    franchise: 'QFinance',
+                    affiliate: null,
+                    message: null,
+                    leadOutcome: 'Not Processed',
+                    timeReceived: new Date('2026-11-06T08:00:00Z'),
+                    createdAt: new Date('2026-11-06T08:00:00Z'),
+                    updatedAt: new Date('2026-11-06T08:00:00Z'),
+                },
+            ],
+            33,
+        ]);
 
         const result = await service.getAgentDashboard(
             { agentId: 'f4c9da83-1304-4c2c-bf42-16e8578a73cf' },
@@ -85,6 +120,7 @@ describe('DashboardService', () => {
         });
         expect(result).toMatchObject({
             assignedClients: 3,
+            assignedLeads: 33,
             newClientsThisMonth: 1,
             activeTasks: 1,
             overdueTasks: 0,
@@ -100,6 +136,16 @@ describe('DashboardService', () => {
         expect(result.recentClients[0]).toMatchObject({
             fullName: 'Jane Doe',
             totalDebt: 12500.5,
+        });
+        expect(result.recentAssignedLeads[0]).toMatchObject({
+            id: 'lead-1',
+            name: 'Lead One',
+            leadOutcome: 'Not Processed',
+        });
+        expect(leadRepository.findAndCount).toHaveBeenCalledWith({
+            where: { allocatedTo: 'Test Agent' },
+            order: { timeReceived: 'DESC' },
+            take: 50,
         });
     });
 

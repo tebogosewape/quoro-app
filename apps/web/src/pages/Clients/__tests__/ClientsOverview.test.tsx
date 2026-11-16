@@ -39,6 +39,7 @@ let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
 const client = {
     id: 'b5a51cf3-aae8-4187-99b6-5e7b134df34e',
+    fileReference: 'QFN000003',
     firstName: 'Naledi',
     lastName: 'Mokoena',
     phoneNumber: '0821234567',
@@ -100,6 +101,8 @@ describe('ClientsOverview', () => {
         await vi.waitFor(() => expect(container.textContent).toContain('Naledi Mokoena'));
         expect(container.textContent).toContain('Debt counselling');
         expect(container.textContent).toContain('Lindiwe Dlamini');
+        expect(container.textContent).toContain('QFN000003');
+        expect(container.textContent).not.toContain(client.id);
         expect(container.textContent).toContain('12 500');
         expect(getClientsMock).toHaveBeenCalledWith({
             page: 1,

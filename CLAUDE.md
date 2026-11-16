@@ -50,3 +50,12 @@ Read [`docs/TEST_USERS.md`](docs/TEST_USERS.md) before testing any logged-in or 
 - Test role visibility, route protection and API authorization; an Admin-only pass is insufficient.
 - Treat the shared password as local-development data and never expose it externally.
 - Respect the documented seed-reproducibility gap. Do not claim a clean database contains every account without verification.
+
+## Experian UAT blocker
+
+Read [`docs/EXPERIAN_UAT_FOLLOW_UP.md`](docs/EXPERIAN_UAT_FOLLOW_UP.md) before changing or
+retrying the Experian integration.
+
+- Do not retry a real enquiry while error `-103` is unresolved.
+- Do not inject subscriber code into the SOAP payload; Normal Search V2.17 has no such parameter.
+- Require Experian confirmation of the UAT account before the next explicitly authorised enquiry.

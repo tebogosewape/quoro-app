@@ -35,8 +35,16 @@ export const envValidationSchema = Joi.object({
     SMS_PASSWORD: Joi.string().allow(''),
     EXPERIAN_ENV: Joi.string().valid('uat', 'mock', 'qa', 'production').default('mock'),
     EXPERIAN_BASE_URL: Joi.string().uri().default('http://localhost:8080'),
+    EXPERIAN_API_URL: Joi.string().uri().allow(''),
+    EXPERIAN_WSDL: Joi.string().uri().allow(''),
     EXPERIAN_USERNAME: Joi.string().allow(''),
     EXPERIAN_PASSWORD: Joi.string().allow(''),
+    EXPERIAN_ORIGIN: Joi.string().max(5).allow(''),
+    EXPERIAN_ORIGIN_VERSION: Joi.string().max(4).default('1'),
+    EXPERIAN_WSSECURITY: Joi.boolean().default(false),
+    EXPERIAN_ENQUIRER_NAME: Joi.string().max(50).allow(''),
+    EXPERIAN_ENQUIRER_TEL: Joi.string().max(20).allow(''),
+    EXPERIAN_DATA_RETENTION_DAYS: Joi.number().integer().min(1).default(365),
     TRACE_HEADER_NAME: Joi.string().default('X-Trace-Id'),
     REDIS_URL: Joi.string()
         .uri({ scheme: ['redis', 'rediss'] })

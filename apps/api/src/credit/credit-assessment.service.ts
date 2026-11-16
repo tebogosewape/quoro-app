@@ -1,430 +1,359 @@
-/* eslint-disable indent */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import {
+    BadGatewayException,
+    BadRequestException,
     Injectable,
     Logger,
-    BadRequestException,
-    UnauthorizedException,
-    InternalServerErrorException,
+    ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import axios from 'axios';
+import AdmZip from 'adm-zip';
+import * as soap from 'soap';
 import { CreditAssessmentRequestDto } from './dto/credit-assessment.dto';
 
-type PdfResult = { filename: string; mime: string; buf: Buffer };
+export interface ExperianCreditReportResult {
+    filename: string;
+    mime: 'application/pdf';
+    pdf: Buffer;
+    sourceXml?: string;
+    clientReference: string;
+    environment: string;
+}
 
 @Injectable()
 export class CreditAssessmentService {
     private readonly logger = new Logger(CreditAssessmentService.name);
-
-    // Config/autodiscovery
-    private endpoint = '';
-    private targetNs = '';
-    private typeNs = '';
-    private soapAction: string | null = null;
-    private readonly wsdlUrl?: string;
-
-    private readonly user: string;
-    private readonly pass: string;
+    private readonly wsdlUrl: string;
+    private readonly endpoint?: string;
+    private readonly username: string;
+    private readonly password: string;
     private readonly origin: string;
     private readonly originVersion: string;
-    private readonly useWsSec: boolean;
+    private readonly environment: string;
+    private readonly useWsSecurity: boolean;
 
-    private initDone = false;
-    private initPromise: Promise<void> | null = null;
-
-    constructor(private readonly cfg: ConfigService) {
-        this.wsdlUrl = this.cfg.get<string>('EXPERIAN_WSDL') ?? undefined;
-        this.endpoint = this.cfg.get<string>('EXPERIAN_ENDPOINT') ?? '';
-        this.targetNs = this.cfg.get<string>('EXPERIAN_TARGET_NS') ?? '';
-        this.typeNs = this.cfg.get<string>('EXPERIAN_TYPE_NS') ?? '';
-        this.soapAction = this.cfg.get<string>('EXPERIAN_SOAP_ACTION') ?? null;
-
-        this.user = this.cfg.get<string>('EXPERIAN_USERNAME') ?? '';
-        this.pass = this.cfg.get<string>('EXPERIAN_PASSWORD') ?? '';
-        this.origin = this.cfg.get<string>('EXPERIAN_ORIGIN') ?? 'QAPP';
-        this.originVersion = this.cfg.get<string>('EXPERIAN_ORIGIN_VERSION') ?? '1';
-        this.useWsSec = (this.cfg.get('EXPERIAN_WSSECURITY') ?? 'false').toLowerCase() === 'true';
-
-        if (!this.user || !this.pass) {
-            throw new UnauthorizedException('Experian credentials missing: USERNAME/PASSWORD');
-        }
-        if ((!this.endpoint || !this.targetNs || !this.typeNs) && !this.wsdlUrl) {
-            throw new UnauthorizedException(
-                'Experian config missing: provide ENDPOINT/TARGET_NS/TYPE_NS or WSDL URL'
-            );
-        }
+    constructor(private readonly config: ConfigService) {
+        this.wsdlUrl = this.config.get<string>('EXPERIAN_WSDL') || '';
+        this.endpoint = this.config.get<string>('EXPERIAN_API_URL') || undefined;
+        this.username = this.config.get<string>('EXPERIAN_USERNAME') || '';
+        this.password = this.config.get<string>('EXPERIAN_PASSWORD') || '';
+        this.origin = this.config.get<string>('EXPERIAN_ORIGIN') || '';
+        this.originVersion = this.config.get<string>('EXPERIAN_ORIGIN_VERSION') || '1';
+        this.environment = this.config.get<string>('EXPERIAN_ENV') || 'unknown';
+        this.useWsSecurity =
+            String(this.config.get<string>('EXPERIAN_WSSECURITY') || 'false').toLowerCase() ===
+            'true';
     }
 
-    // ---------- WSDL autodiscovery ----------
-    private async ensureInit(): Promise<void> {
-        if (this.initDone) return;
-        if (this.initPromise) return this.initPromise;
+    async getCreditAssessmentReport(
+        request: CreditAssessmentRequestDto
+    ): Promise<ExperianCreditReportResult> {
+        this.assertConfiguration();
+        this.assertRequest(request);
 
-        this.initPromise = (async () => {
-            if (this.endpoint && this.targetNs && this.typeNs) {
-                this.initDone = true;
-                return;
-            }
-            if (!this.wsdlUrl) {
-                throw new UnauthorizedException(
-                    'Missing EXPERIAN_WSDL and incomplete ENDPOINT/TARGET_NS/TYPE_NS.'
+        const transactionXml = this.buildTransactionXml(request);
+        const client = await this.createSoapClient();
+        const operation = this.findOperation(client);
+        const args = this.buildOperationArguments(operation.input, transactionXml);
+
+        this.logger.log(
+            `Submitting one Experian ${this.environment} enquiry with client reference ${request.clientRef}`
+        );
+
+        let result: unknown;
+        try {
+            const response = await operation.invoke(args);
+            result = Array.isArray(response) ? response[0] : response;
+        } catch (error) {
+            const message = this.safeSoapError(error);
+            this.logger.error(`Experian enquiry transport failure: ${message}`);
+            throw new BadGatewayException(`Experian enquiry failed: ${message}`);
+        }
+
+        const completed = this.findValue(result, [
+            'pTransactionCompleted',
+            'transactionCompleted',
+            'TransactionCompleted',
+        ]);
+        const errorCode = this.findValue(result, ['errorCode', 'ErrorCode']);
+        const errorMessage = this.findValue(result, ['errorString', 'ErrorString']);
+
+        if (!this.asBoolean(completed)) {
+            if (String(errorCode) === '-103') {
+                throw new BadRequestException(
+                    `Experian rejected the enquiry: -103 - ${this.environment.toUpperCase()} credentials are not valid for the configured Normal Search account. Verify that EXPERIAN_USERNAME and EXPERIAN_PASSWORD are the UAT credentials linked to the subscriber account. Normal Search V2.17 does not accept a separate subscriber-code request field.`
                 );
             }
-
-            this.logger.log(`Fetching WSDL for autodiscovery: ${this.wsdlUrl}`);
-            const { data: wsdlXml } = await axios.get<string>(this.wsdlUrl, {
-                responseType: 'text',
-            });
-
-            const defsTargetNs =
-                this.matchAttr(wsdlXml, /<wsdl:definitions[^>]*?targetNamespace="([^"]+)"/i) ||
-                this.matchAttr(wsdlXml, /<definitions[^>]*?targetNamespace="([^"]+)"/i);
-
-            const addr12 = this.matchAttr(wsdlXml, /<soap12:address[^>]*?location="([^"]+)"/i);
-            const addr11 = this.matchAttr(wsdlXml, /<soap:address[^>]*?location="([^"]+)"/i);
-            const endpoint = (addr12 || addr11 || '').replace(/\?wsdl.*/i, '');
-
-            // Find schema that defines NormalEnqRequestParams → type namespace
-            let typeNs = '';
-            const schemaRegex =
-                /<xs:schema[\s\S]*?<\/xs:schema>|<xsd:schema[\s\S]*?<\/xsd:schema>|<schema[\s\S]*?<\/schema>/gi;
-            const schemas = wsdlXml.match(schemaRegex) || [];
-            for (const schemaXml of schemas) {
-                if (/NormalEnqRequestParams/.test(schemaXml)) {
-                    typeNs =
-                        this.matchAttr(schemaXml, /targetNamespace="([^"]+)"/i) ||
-                        this.matchAttr(schemaXml, /xmlns="([^"]+)"/i) ||
-                        '';
-                    if (typeNs) break;
-                }
-            }
-            if (!typeNs && defsTargetNs) typeNs = defsTargetNs;
-
-            // SOAPAction for SOAP 1.1
-            const actionMatch =
-                wsdlXml.match(/<soap:operation[^>]*soapAction="([^"]*DoNormalEnquiry[^"]*)"/i) ||
-                wsdlXml.match(/soapAction="([^"]*DoNormalEnquiry[^"]*)"/i);
-            this.soapAction =
-                this.soapAction ??
-                (actionMatch ? actionMatch[1] : `${defsTargetNs}/DoNormalEnquiry`) ??
-                null;
-
-            if (!endpoint || !defsTargetNs || !typeNs) {
-                throw new UnauthorizedException('Could not autodiscover Experian WSDL namespaces.');
-            }
-
-            if (!this.endpoint) this.endpoint = endpoint;
-            if (!this.targetNs) this.targetNs = defsTargetNs;
-            if (!this.typeNs) this.typeNs = typeNs;
-
-            this.logger.log(`Autodiscovered:
-  ENDPOINT   = ${this.endpoint}
-  TARGET_NS  = ${this.targetNs}
-  TYPE_NS    = ${this.typeNs}
-  SOAPAction = ${this.soapAction}`);
-
-            this.initDone = true;
-        })();
-
-        return this.initPromise;
-    }
-
-    private matchAttr(xml: string, re: RegExp): string | null {
-        const m = xml.match(re);
-        return m && typeof m[1] === 'string' ? m[1] : null;
-    }
-
-    // ---------- Enquiry XML (goes into pTransaction CDATA) ----------
-    private txXml(dto: CreditAssessmentRequestDto): string {
-        // Per docs: pTransaction holds the Enquiry block, submitted via CDATA. :contentReference[oaicite:3]{index=3}
-        const resultType = dto.resultType ?? 'PDF4'; // Valid values include PDF4. :contentReference[oaicite:4]{index=4}
-        const postal = dto.postalCode ?? '00000';
-        const gender = dto.gender ?? 'M';
-        const passportFlag = dto.passportFlag ?? 'N';
-
-        const CS_Data = 'Y';
-        const CPA_Plus_NLR_Data = 'Y';
-        const Deeds_Data = 'N';
-        const Directors_Data = 'N';
-        const RunCodix = 'N';
-        const Run_CompuScore = 'Y';
-        const ClientConsent = 'Y';
-        const Adrs_Mandatory = 'Y';
-        const Enq_Purpose = 12;
-
-        return `
-<Transactions>
-  <Search_Criteria>
-    <CS_Data>${CS_Data}</CS_Data>
-    <CPA_Plus_NLR_Data>${CPA_Plus_NLR_Data}</CPA_Plus_NLR_Data>
-    <Deeds_Data>${Deeds_Data}</Deeds_Data>
-    <Directors_Data>${Directors_Data}</Directors_Data>
-    <Identity_number>${dto.identityNumber}</Identity_number>
-    <Surname>${dto.surname}</Surname>
-    <Forename>${dto.forename}</Forename>
-    <Gender>${gender}</Gender>
-    <Passport_flag>${passportFlag}</Passport_flag>
-    <DateOfBirth>${dto.dateOfBirth}</DateOfBirth>
-    <Address1>${dto.address1}</Address1>
-    <Address2>${dto.address2}</Address2>
-    ${dto.address3 ? `<Address3>${dto.address3}</Address3>` : ''}
-    ${dto.address4 ? `<Address4>${dto.address4}</Address4>` : ''}
-    <PostalCode>${postal}</PostalCode>
-    <CellTelNo>${dto.cellTelNo ?? ''}</CellTelNo>
-    <ResultType>${resultType}</ResultType>
-    <RunCodix>${RunCodix}</RunCodix>
-    <Adrs_Mandatory>${Adrs_Mandatory}</Adrs_Mandatory>
-    <Enq_Purpose>${Enq_Purpose}</Enq_Purpose>
-    <Run_CompuScore>${Run_CompuScore}</Run_CompuScore>
-    <ClientConsent>${ClientConsent}</ClientConsent>
-    <ClientRef>${dto.clientRef ?? 'NA'}</ClientRef>
-    <Enquirer>
-      <EnquirerName>${dto.enquirerName}</EnquirerName>
-      <EnquirerContact>${dto.enquirerContact}</EnquirerContact>
-      <EnquirerTel>${dto.enquirerTel}</EnquirerTel>
-    </Enquirer>
-  </Search_Criteria>
-</Transactions>`.trim();
-    }
-
-    // ---------- WS-Security header (optional) ----------
-    private wsseHeader(): string {
-        return `
-<soap:Header xmlns:wsse="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd">
-  <wsse:Security>
-    <wsse:UsernameToken>
-      <wsse:Username>${this.user}</wsse:Username>
-      <wsse:Password>${this.pass}</wsse:Password>
-    </wsse:UsernameToken>
-  </wsse:Security>
-</soap:Header>`.trim();
-    }
-
-    // ---------- SOAP Envelope builders ----------
-    private soap11Envelope(innerXml: string) {
-        const header = this.useWsSec ? this.wsseHeader() : '<soap:Header/>';
-        return `<?xml version="1.0" encoding="UTF-8"?>
-<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:tns="${this.targetNs}">
-  ${header}
-  <soap:Body>
-    <tns:DoNormalEnquiry>
-      ${innerXml}
-    </tns:DoNormalEnquiry>
-  </soap:Body>
-</soap:Envelope>`;
-    }
-
-    private soap12Envelope(innerXml: string) {
-        const header = this.useWsSec
-            ? this.wsseHeader().replaceAll('<soap:', '<soap12:').replaceAll('</soap:', '</soap12:')
-            : '<soap12:Header/>';
-        return `<?xml version="1.0" encoding="UTF-8"?>
-<soap12:Envelope xmlns:soap12="http://www.w3.org/2003/05/soap-envelope" xmlns:tns="${this.targetNs}">
-  ${header}
-  <soap12:Body>
-    <tns:DoNormalEnquiry>
-      ${innerXml}
-    </tns:DoNormalEnquiry>
-  </soap12:Body>
-</soap12:Envelope>`;
-    }
-
-    // ---------- Request variants ----------
-    // C: pRequest + ALL children in OP NS (tns) with UpperCamel names (Username/Password/.../Transaction)
-    private buildVariantC_AllInOpNs_UpperCamel(transactionXml: string) {
-        return `
-<tns:pRequest>
-  <tns:Username>${this.user}</tns:Username>
-  <tns:Password>${this.pass}</tns:Password>
-  <tns:Version>1.0</tns:Version>
-  <tns:Origin>${this.origin}</tns:Origin>
-  <tns:Origin_Version>${this.originVersion}</tns:Origin_Version>
-  <tns:Input_Format>XML</tns:Input_Format>
-  <tns:Transaction><![CDATA[${transactionXml}]]></tns:Transaction>
-</tns:pRequest>`.trim();
-    }
-
-    // D: pRequest + ALL children in OP NS (tns) with legacy short names (pUsrnme/pPasswrd/.../pTransaction)
-    private buildVariantD_AllInOpNs_LegacyShort(transactionXml: string) {
-        return `
-<tns:pRequest>
-  <tns:pUsrnme>${this.user}</tns:pUsrnme>
-  <tns:pPasswrd>${this.pass}</tns:pPasswrd>
-  <tns:pVersion>1.0</tns:pVersion>
-  <tns:pOrigin>${this.origin}</tns:pOrigin>
-  <tns:pOrigin_Version>${this.originVersion}</tns:pOrigin_Version>
-  <tns:pInput_Format>XML</tns:pInput_Format>
-  <tns:pTransaction><![CDATA[${transactionXml}]]></tns:pTransaction>
-</tns:pRequest>`.trim();
-    }
-
-    // A: pRequest in OP NS, children in TYPE NS with xsi:type (POJO-style)
-    private buildVariantATyped(transactionXml: string) {
-        return `
-<tns:pRequest xmlns:nsType="${this.typeNs}" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="nsType:NormalEnqRequestParams">
-  <nsType:username>${this.user}</nsType:username>
-  <nsType:password>${this.pass}</nsType:password>
-  <nsType:version>1.0</nsType:version>
-  <nsType:origin>${this.origin}</nsType:origin>
-  <nsType:origin_Version>${this.originVersion}</nsType:origin_Version>
-  <nsType:input_Format>XML</nsType:input_Format>
-  <nsType:transaction><![CDATA[${transactionXml}]]></nsType:transaction>
-</tns:pRequest>`.trim();
-    }
-
-    // B: pRequest in OP NS, children in TYPE NS (no xsi:type)
-    private buildVariantBNoType(transactionXml: string) {
-        return `
-<tns:pRequest xmlns:nsType="${this.typeNs}">
-  <nsType:username>${this.user}</nsType:username>
-  <nsType:password>${this.pass}</nsType:password>
-  <nsType:version>1.0</nsType:version>
-  <nsType:origin>${this.origin}</nsType:origin>
-  <nsType:origin_Version>${this.originVersion}</nsType:origin_Version>
-  <nsType:input_Format>XML</nsType:input_Format>
-  <nsType:transaction><![CDATA[${transactionXml}]]></nsType:transaction>
-</tns:pRequest>`.trim();
-    }
-
-    // ---------- SOAP transport ----------
-    private async postSoap(version: '1.2' | '1.1', innerXml: string): Promise<string> {
-        const envelope =
-            version === '1.2' ? this.soap12Envelope(innerXml) : this.soap11Envelope(innerXml);
-        const headers: Record<string, string> =
-            version === '1.2'
-                ? { 'Content-Type': 'application/soap+xml; charset=utf-8' }
-                : {
-                      'Content-Type': 'text/xml; charset=utf-8',
-                      ...(this.soapAction ? { SOAPAction: this.soapAction } : {}),
-                  };
-
-        this.logger.debug(`SOAP ${version} REQUEST:\n${envelope.substring(0, 1500)}\n---`);
-        try {
-            const { data } = await axios.post(this.endpoint, envelope, { headers, timeout: 30000 });
-            return String(data ?? '');
-        } catch (err: any) {
-            const body = err?.response?.data ? String(err.response.data) : '';
-            this.logger.warn(
-                `HTTP ${err?.response?.status || ''} ${version} fault:\n${body.substring(0, 2000)}\n---`
+            const detail = [errorCode, errorMessage].filter(Boolean).join(' - ');
+            throw new BadRequestException(
+                `Experian rejected the enquiry${detail ? `: ${detail}` : ''}`
             );
-            throw new InternalServerErrorException(body || err?.message || 'SOAP call failed');
+        }
+
+        const retData = this.findValue(result, ['retData', 'RetData']);
+        if (typeof retData !== 'string' || !retData.trim()) {
+            throw new BadGatewayException(
+                'Experian completed the enquiry but did not return a report payload'
+            );
+        }
+
+        return this.extractReportArchive(retData, request.clientRef!);
+    }
+
+    async getCreditAssessmentPdf(
+        request: CreditAssessmentRequestDto
+    ): Promise<{ filename: string; mime: string; buf: Buffer }> {
+        const report = await this.getCreditAssessmentReport(request);
+        return { filename: report.filename, mime: report.mime, buf: report.pdf };
+    }
+
+    private assertConfiguration(): void {
+        const missing = [
+            ['EXPERIAN_WSDL', this.wsdlUrl],
+            ['EXPERIAN_USERNAME', this.username],
+            ['EXPERIAN_PASSWORD', this.password],
+            ['EXPERIAN_ORIGIN', this.origin],
+        ]
+            .filter(([, value]) => !value)
+            .map(([name]) => name);
+
+        if (missing.length) {
+            throw new ServiceUnavailableException(
+                `Experian integration is not configured: ${missing.join(', ')}`
+            );
+        }
+
+        if (this.environment === 'mock') {
+            throw new ServiceUnavailableException(
+                'Mock Experian reports are disabled on the client credit-report route'
+            );
         }
     }
 
-    // ---------- Response parsing ----------
-    private parseCompleted(xml: string): boolean {
-        const m =
-            xml.match(/<pTransactionCompleted>(.*?)<\/pTransactionCompleted>/i) ||
-            xml.match(/<TransactionCompleted>(.*?)<\/TransactionCompleted>/i);
-        return m ? String(m[1]).toLowerCase() === 'true' : false;
+    private assertRequest(request: CreditAssessmentRequestDto): void {
+        if (request.clientConsent !== true) {
+            throw new BadRequestException('Explicit client consent is required');
+        }
+        if (!request.clientRef || request.clientRef.length > 20) {
+            throw new BadRequestException(
+                'A client reference of at most 20 characters is required'
+            );
+        }
+        if (!request.address1 || !request.address2 || !request.postalCode) {
+            throw new BadRequestException(
+                'Experian requires address line 1, address line 2 and a postal code'
+            );
+        }
+        if (!request.enquirerName || !request.enquirerContact || !request.enquirerTel) {
+            throw new BadRequestException(
+                'Experian requires the enquirer name, contact person and telephone number'
+            );
+        }
+        if (request.runCompuScore && request.includeCpaNlrData !== true) {
+            throw new BadRequestException('CompuScore requires CPA Plus NLR data to be included');
+        }
     }
 
-    private parseRetData(xml: string): string | null {
-        const m =
-            xml.match(/<retData>([\s\S]*?)<\/retData>/i) ||
-            xml.match(/<RetData>([\s\S]*?)<\/RetData>/i);
-        return m ? (m[1]?.trim() ?? null) : null;
+    private async createSoapClient(): Promise<any> {
+        try {
+            const client = await soap.createClientAsync(this.wsdlUrl, { disableCache: false });
+            if (this.endpoint) client.setEndpoint(this.endpoint.replace(/\?wsdl.*$/i, ''));
+            if (this.useWsSecurity) {
+                client.setSecurity(new soap.WSSecurity(this.username, this.password));
+            }
+            return client;
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Unknown WSDL error';
+            throw new ServiceUnavailableException(
+                `Unable to initialise the Experian SOAP client: ${message}`
+            );
+        }
     }
 
-    private parseFault(xml: string): string | null {
-        const m =
-            xml.match(/<faultstring>([\s\S]*?)<\/faultstring>/i) ||
-            xml.match(/<soap:Fault>([\s\S]*?)<\/soap:Fault>/i);
-        return m ? (m[1]?.trim() ?? null) : null;
+    private findOperation(client: any): { input: unknown; invoke: (args: any) => Promise<any> } {
+        const description = client.describe?.() || {};
+        for (const service of Object.values(description) as any[]) {
+            for (const port of Object.values(service || {}) as any[]) {
+                const operation = port?.DoNormalEnquiry;
+                if (operation && typeof client.DoNormalEnquiryAsync === 'function') {
+                    return {
+                        input: operation.input,
+                        invoke: (args) => client.DoNormalEnquiryAsync(args),
+                    };
+                }
+            }
+        }
+        throw new ServiceUnavailableException('The Experian WSDL does not expose DoNormalEnquiry');
     }
 
-    // ---------- Public API ----------
-    async getCreditAssessmentPdf(dto: CreditAssessmentRequestDto): Promise<PdfResult> {
-        await this.ensureInit();
-        const tx = this.txXml(dto);
+    private buildOperationArguments(input: unknown, transactionXml: string): Record<string, any> {
+        const values = {
+            username: this.username,
+            usrnme: this.username,
+            password: this.password,
+            passwrd: this.password,
+            version: '1.0',
+            origin: this.origin,
+            originversion: this.originVersion,
+            inputformat: 'XML',
+            transaction: transactionXml,
+        };
 
-        // Try the shapes most Java servers expect first (all in tns), then type-ns variants.
-        const attempts: Array<{ label: string; version: '1.2' | '1.1'; body: string }> = [
-            {
-                label: 'SOAP12 + all-tns UpperCamel',
-                version: '1.2',
-                body: this.buildVariantC_AllInOpNs_UpperCamel(tx),
-            },
-            {
-                label: 'SOAP11 + all-tns UpperCamel',
-                version: '1.1',
-                body: this.buildVariantC_AllInOpNs_UpperCamel(tx),
-            },
-            {
-                label: 'SOAP12 + all-tns legacyShort',
-                version: '1.2',
-                body: this.buildVariantD_AllInOpNs_LegacyShort(tx),
-            },
-            {
-                label: 'SOAP11 + all-tns legacyShort',
-                version: '1.1',
-                body: this.buildVariantD_AllInOpNs_LegacyShort(tx),
-            },
-            {
-                label: 'SOAP12 + typed (children in typeNs)',
-                version: '1.2',
-                body: this.buildVariantATyped(tx),
-            },
-            {
-                label: 'SOAP12 + noType (children in typeNs)',
-                version: '1.2',
-                body: this.buildVariantBNoType(tx),
-            },
-            {
-                label: 'SOAP11 + typed (children in typeNs)',
-                version: '1.1',
-                body: this.buildVariantATyped(tx),
-            },
-            {
-                label: 'SOAP11 + noType (children in typeNs)',
-                version: '1.1',
-                body: this.buildVariantBNoType(tx),
-            },
-        ];
-
-        let lastErr: any = null;
-        for (const a of attempts) {
-            try {
-                this.logger.log(`DoNormalEnquiry → ${a.label}`);
-                const xml = await this.postSoap(a.version, a.body);
-
-                const fault = this.parseFault(xml);
-                if (fault) {
-                    this.logger.warn(`[${a.label}] Fault: ${fault}`);
-                    lastErr = new Error(fault);
+        const hydrate = (shape: unknown): unknown => {
+            if (!shape || typeof shape !== 'object' || Array.isArray(shape)) return undefined;
+            const output: Record<string, unknown> = {};
+            for (const [key, child] of Object.entries(shape as Record<string, unknown>)) {
+                const normalized = key.replace(/^p/i, '').replace(/_/g, '').toLowerCase();
+                if (normalized in values) {
+                    output[key] = values[normalized as keyof typeof values];
                     continue;
                 }
+                const nested = hydrate(child);
+                if (nested && Object.keys(nested as object).length) output[key] = nested;
+            }
+            return output;
+        };
 
-                if (!this.parseCompleted(xml)) {
-                    const code =
-                        xml.match(/<errorCode>(.*?)<\/errorCode>/i)?.[1] ??
-                        xml.match(/<ErrorCode>(.*?)<\/ErrorCode>/i)?.[1] ??
-                        '';
-                    const msg =
-                        xml.match(/<errorString>([\s\S]*?)<\/errorString>/i)?.[1] ??
-                        xml.match(/<ErrorString>([\s\S]*?)<\/ErrorString>/i)?.[1] ??
-                        'Unknown Experian error';
-                    throw new BadRequestException(`Experian service error ${code} ${msg}`.trim());
-                }
+        const discovered = hydrate(input) as Record<string, unknown> | undefined;
+        if (discovered && Object.keys(discovered).length) return discovered;
 
-                const base64 = this.parseRetData(xml);
-                if (!base64)
-                    throw new BadRequestException(
-                        'retData missing in successful Experian response.'
-                    );
+        return {
+            pRequest: {
+                username: this.username,
+                password: this.password,
+                version: '1.0',
+                origin: this.origin,
+                origin_Version: this.originVersion,
+                input_Format: 'XML',
+                transaction: transactionXml,
+            },
+        };
+    }
 
-                const buf = Buffer.from(base64, 'base64');
-                return {
-                    filename: `CreditAssessment_${dto.identityNumber}.pdf`,
-                    mime: 'application/pdf',
-                    buf,
-                };
-            } catch (e: any) {
-                this.logger.warn(`[Attempt failed] ${a.label}: ${e?.message || e}`);
-                lastErr = e;
+    private buildTransactionXml(request: CreditAssessmentRequestDto): string {
+        const field = (name: string, value: string | undefined = '') =>
+            `<${name}>${this.escapeXml(value)}</${name}>`;
+
+        return `<Transactions>
+  <Search_Criteria>
+    ${field('CS_Data', 'Y')}
+    ${field('CPA_Plus_NLR_Data', request.includeCpaNlrData === false ? 'N' : 'Y')}
+    ${field('Deeds_Data', 'N')}
+    ${field('Directors_Data', 'N')}
+    ${field('Identity_number', request.identityNumber)}
+    ${field('Surname', request.surname)}
+    ${field('Forename', request.forename)}
+    ${field('Forename2', request.forename2)}
+    ${field('Forename3', request.forename3)}
+    ${field('Gender', request.gender)}
+    ${field('Passport_flag', request.passportFlag || 'N')}
+    ${field('DateOfBirth', request.dateOfBirth)}
+    ${field('Address1', request.address1)}
+    ${field('Address2', request.address2)}
+    ${field('Address3', request.address3)}
+    ${field('Address4', request.address4)}
+    ${field('PostalCode', request.postalCode)}
+    ${field('HomeTelCode', request.homeTelCode)}
+    ${field('HomeTelNo', request.homeTelNo)}
+    ${field('WorkTelCode', request.workTelCode)}
+    ${field('WorkTelNo', request.workTelNo)}
+    ${field('CellTelNo', request.cellTelNo)}
+    ${field('ResultType', request.resultType || 'XPDF2')}
+    ${field('RunCodix', 'N')}
+    ${field('Adrs_Mandatory', 'Y')}
+    ${field('Enq_Purpose', String(request.enquiryPurpose))}
+    ${field('Run_CompuScore', request.runCompuScore === false ? 'N' : 'Y')}
+    ${field('ClientConsent', 'Y')}
+    ${field('ClientRef', request.clientRef)}
+    <Enquirer>
+      ${field('EnquirerName', request.enquirerName)}
+      ${field('EnquirerContact', request.enquirerContact)}
+      ${field('EnquirerTel', request.enquirerTel)}
+    </Enquirer>
+  </Search_Criteria>
+</Transactions>`;
+    }
+
+    private extractReportArchive(
+        base64: string,
+        clientReference: string
+    ): ExperianCreditReportResult {
+        const archiveBuffer = Buffer.from(base64.replace(/\s/g, ''), 'base64');
+        if (archiveBuffer.length < 5 || archiveBuffer.subarray(0, 2).toString('ascii') !== 'PK') {
+            throw new BadGatewayException(
+                'Experian returned an invalid report archive (expected a Base64-encoded ZIP)'
+            );
+        }
+
+        let zip: AdmZip;
+        try {
+            zip = new AdmZip(archiveBuffer);
+        } catch {
+            throw new BadGatewayException('Experian returned a ZIP archive that could not be read');
+        }
+
+        const entries = zip.getEntries().filter((entry) => !entry.isDirectory);
+        const pdfEntry = entries.find((entry) => entry.entryName.toLowerCase().endsWith('.pdf'));
+        const xmlEntry = entries.find((entry) => entry.entryName.toLowerCase().endsWith('.xml'));
+        if (!pdfEntry) {
+            throw new BadGatewayException('Experian report archive did not contain a PDF');
+        }
+
+        const pdf = pdfEntry.getData();
+        if (pdf.subarray(0, 5).toString('ascii') !== '%PDF-') {
+            throw new BadGatewayException('Experian report archive contained an invalid PDF');
+        }
+
+        return {
+            filename: this.safeFilename(pdfEntry.entryName, clientReference),
+            mime: 'application/pdf',
+            pdf,
+            sourceXml: xmlEntry?.getData().toString('utf8'),
+            clientReference,
+            environment: this.environment,
+        };
+    }
+
+    private findValue(value: unknown, keys: string[]): unknown {
+        if (!value || typeof value !== 'object') return undefined;
+        for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+            if (keys.some((candidate) => candidate.toLowerCase() === key.toLowerCase())) {
+                return child;
             }
         }
-        throw new InternalServerErrorException(lastErr?.message || 'DoNormalEnquiry failed');
+        for (const child of Object.values(value as Record<string, unknown>)) {
+            const found = this.findValue(child, keys);
+            if (found !== undefined) return found;
+        }
+        return undefined;
+    }
+
+    private asBoolean(value: unknown): boolean {
+        return value === true || String(value).toLowerCase() === 'true';
+    }
+
+    private safeSoapError(error: unknown): string {
+        const candidate = error as any;
+        const message =
+            candidate?.root?.Envelope?.Body?.Fault?.faultstring ||
+            candidate?.message ||
+            'Experian SOAP transport error';
+        return String(message)
+            .replace(this.username, '[redacted]')
+            .replace(this.password, '[redacted]');
+    }
+
+    private safeFilename(entryName: string, fallback: string): string {
+        const leaf = entryName.split(/[\\/]/).pop() || `${fallback}.pdf`;
+        return leaf.replace(/[^a-zA-Z0-9._-]/g, '_');
+    }
+
+    private escapeXml(value: string): string {
+        return String(value || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&apos;');
     }
 }

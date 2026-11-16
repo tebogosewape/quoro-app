@@ -1,10 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Button, Dropdown, Form, Nav, Tab, Modal, Spinner } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
     faPlus,
-    faEllipsisH,
     faCheckCircle,
     faClock,
     faTriangleExclamation,
@@ -21,7 +20,7 @@ import { getClientById, updateClient, type Client } from '../../api/clients.api'
 import { listTasks, createTask, updateTask } from '@/api/tasks.api';
 import { listInboxEmails } from '@/api/communications.api';
 import { listProducts } from '@/api/products';
-import type { WhatsAppMessage } from '@/api/whatsapp.api';
+import { whatsappApi, type WhatsAppMessage } from '@/api/whatsapp.api';
 import type { Product as BackendProduct } from '@/interfaces/Product';
 import type {
     ClientDetailPayload,
@@ -31,6 +30,7 @@ import type {
     Correspondence,
 } from '../../api/mockClientApi';
 import { useAuthStore } from '@/stores/auth.store';
+import './ClientDetails.css';
 
 // Narrow types for optional relations returned by the API when relations are loaded
 type Comm = {
@@ -80,6 +80,20 @@ type ClientProductLite = {
     customFields?: Record<string, string> | null;
     productName?: string;
     product?: { name?: string } | null;
+};
+
+type CommunicationLog = {
+    id: string;
+    createdAt: string;
+    metadata?: Record<string, unknown>;
+    communications?: {
+        email?: { sent: boolean; error?: string; subject?: string; html?: string };
+        sms?: { sent: boolean; error?: string; message?: string };
+        whatsapp?: { sent: boolean; error?: string; message?: string };
+    };
+    clientName?: string;
+    clientEmail?: string;
+    clientPhone?: string;
 };
 
 // -----------------------------------------------
@@ -161,8 +175,8 @@ async function mapClientToDetailPayload(client: Client): Promise<ClientDetailPay
         const actorName = a.actor?.firstName
             ? `${a.actor.firstName}${a.actor.lastName ? ' ' + a.actor.lastName : ''}`
             : a.actorId
-              ? 'User'
-              : 'System';
+                ? 'User'
+                : 'System';
         const actionLabel = String(a.action).replace(/_/g, ' ');
         const summary = `${actionLabel} on ${a.entityType}${a.entityId ? ` (${a.entityId})` : ''}`;
         systemLog.push({
@@ -269,12 +283,24 @@ async function mapClientToDetailPayload(client: Client): Promise<ClientDetailPay
             return [];
         })(),
         todos: [],
-        notes: (cClient.clientNotes || []).map((n) => ({
-            id: n.id,
-            time: n.createdAt,
-            by: n.createdByUser?.firstName || 'Agent',
-            text: n.title ? `${n.title}: ${n.content ?? ''}` : (n.content ?? ''),
-        })),
+        notes:
+            cClient.clientNotes && cClient.clientNotes.length > 0
+                ? cClient.clientNotes.map((n) => ({
+                    id: n.id,
+                    time: n.createdAt,
+                    by: n.createdByUser?.firstName || 'Agent',
+                    text: n.title ? `${n.title}: ${n.content ?? ''}` : (n.content ?? ''),
+                }))
+                : client.notes
+                    ? [
+                        {
+                            id: 'client-notes',
+                            time: client.updatedAt,
+                            by: 'Client record',
+                            text: client.notes,
+                        },
+                    ]
+                    : [],
         onboardingLocked: false,
         incomeExpense: {
             income: client.monthlyIncome
@@ -404,7 +430,7 @@ export default function ClientDetails() {
     };
 
     return (
-        <div className="container-fluid py-3">
+        <div className="container-fluid py-3 client-details-page">
             {/* Error Banner */}
             {error && (
                 <div className="alert alert-danger mb-3 d-flex justify-content-between align-items-center">
@@ -461,109 +487,38 @@ export default function ClientDetails() {
             )}
 
             {/* Identity Header */}
-            <HeaderBlock
-                data={data}
-                onEdit={() => navigate(`/clients/${data.id}/edit`)}
-                onRefetch={refetchClient}
-            />
+            <HeaderBlock data={data} onEdit={() => navigate(`/clients/${data.id}/edit`)} />
 
             <div className="row g-3">
                 {/* LEFT */}
                 <div className="col-12 col-lg-8">
-                    <div className="card border-0 shadow-sm" style={{ borderRadius: '12px' }}>
+                    <div className="client-workspace-card">
                         <Tab.Container defaultActiveKey="products">
-                            <Nav
-                                variant="tabs"
-                                className="px-3 pt-3"
-                                style={{ borderBottom: '2px solid #f0f0f0' }}
-                            >
+                            <Nav variant="tabs" className="client-primary-tabs">
                                 <Nav.Item>
-                                    <Nav.Link
-                                        eventKey="products"
-                                        style={{
-                                            borderRadius: '8px 8px 0 0',
-                                            fontWeight: 500,
-                                            border: 'none',
-                                        }}
-                                    >
-                                        Products
-                                    </Nav.Link>
+                                    <Nav.Link eventKey="products">Products</Nav.Link>
                                 </Nav.Item>
                                 <Nav.Item>
-                                    <Nav.Link
-                                        eventKey="client"
-                                        style={{
-                                            borderRadius: '8px 8px 0 0',
-                                            fontWeight: 500,
-                                            border: 'none',
-                                        }}
-                                    >
-                                        Client
-                                    </Nav.Link>
+                                    <Nav.Link eventKey="client">Client</Nav.Link>
                                 </Nav.Item>
                                 <Nav.Item>
-                                    <Nav.Link
-                                        eventKey="income"
-                                        style={{
-                                            borderRadius: '8px 8px 0 0',
-                                            fontWeight: 500,
-                                            border: 'none',
-                                        }}
-                                    >
-                                        Income/Expense
-                                    </Nav.Link>
+                                    <Nav.Link eventKey="income">Income/Expense</Nav.Link>
                                 </Nav.Item>
                                 <Nav.Item>
-                                    <Nav.Link
-                                        eventKey="creditors"
-                                        style={{
-                                            borderRadius: '8px 8px 0 0',
-                                            fontWeight: 500,
-                                            border: 'none',
-                                        }}
-                                    >
-                                        Creditors
-                                    </Nav.Link>
+                                    <Nav.Link eventKey="creditors">Creditors</Nav.Link>
                                 </Nav.Item>
                                 <Nav.Item>
-                                    <Nav.Link
-                                        eventKey="reports"
-                                        style={{
-                                            borderRadius: '8px 8px 0 0',
-                                            fontWeight: 500,
-                                            border: 'none',
-                                        }}
-                                    >
-                                        Credit Reports
-                                    </Nav.Link>
+                                    <Nav.Link eventKey="reports">Credit Reports</Nav.Link>
                                 </Nav.Item>
                                 <Nav.Item>
-                                    <Nav.Link
-                                        eventKey="corres"
-                                        style={{
-                                            borderRadius: '8px 8px 0 0',
-                                            fontWeight: 500,
-                                            border: 'none',
-                                        }}
-                                    >
-                                        Correspondence
-                                    </Nav.Link>
+                                    <Nav.Link eventKey="corres">Correspondence</Nav.Link>
                                 </Nav.Item>
                                 <Nav.Item>
-                                    <Nav.Link
-                                        eventKey="payments"
-                                        style={{
-                                            borderRadius: '8px 8px 0 0',
-                                            fontWeight: 500,
-                                            border: 'none',
-                                        }}
-                                    >
-                                        Payments
-                                    </Nav.Link>
+                                    <Nav.Link eventKey="payments">Payments</Nav.Link>
                                 </Nav.Item>
                             </Nav>
 
-                            <div className="p-3">
+                            <div className="client-tab-content">
                                 <Tab.Content>
                                     <Tab.Pane eventKey="products">
                                         <ProductsPanel
@@ -592,9 +547,9 @@ export default function ClientDetails() {
 
                                     <Tab.Pane eventKey="creditors">
                                         <Section title="Creditors">
-                                            <div className="panel glass p-2">
+                                            <div className="client-empty-state">
                                                 <i className="text-muted">
-                                                    Mock table — no entries.
+                                                    No creditor records are available.
                                                 </i>
                                             </div>
                                         </Section>
@@ -602,7 +557,11 @@ export default function ClientDetails() {
 
                                     <Tab.Pane eventKey="reports">
                                         <Section title="Credit Reports">
-                                            <CreditReportViewer clientId={cid} />
+                                            <CreditReportViewer
+                                                clientId={cid}
+                                                physicalAddress={data.physicalAddress}
+                                                postalAddress={data.postalAddress}
+                                            />
                                         </Section>
                                     </Tab.Pane>
 
@@ -612,8 +571,10 @@ export default function ClientDetails() {
 
                                     <Tab.Pane eventKey="payments">
                                         <Section title="Payment History">
-                                            <div className="panel glass p-2">
-                                                <i className="text-muted">Mock schedule table.</i>
+                                            <div className="client-empty-state">
+                                                <i className="text-muted">
+                                                    No payment history is available.
+                                                </i>
                                             </div>
                                         </Section>
                                     </Tab.Pane>
@@ -644,47 +605,26 @@ function maskSensitiveDataForAgents(value: string, isAgent: boolean): string {
     return `${masked}${last4}`;
 }
 
+function isRestrictedAgentRole(role?: string): boolean {
+    return ['agent', 'sales_agent', 'debt_review_specialist'].includes(role ?? '');
+}
+
 // -----------------------------------------------
 // Header
 // -----------------------------------------------
-function HeaderBlock({
-    data,
-    onEdit,
-    onRefetch,
-}: {
-    data: ClientDetailPayload;
-    onEdit: () => void;
-    onRefetch: () => void;
-}) {
+function HeaderBlock({ data, onEdit }: { data: ClientDetailPayload; onEdit: () => void }) {
     const session = useAuthStore((state) => state.session);
-    const isAgent = session?.user?.role === 'agent';
-    const [downloadingReport, setDownloadingReport] = useState(false);
+    const isAgent = isRestrictedAgentRole(session?.user?.role);
     const navigate = useNavigate();
 
-    const handleDownloadCreditReport = async () => {
-        setDownloadingReport(true);
-        try {
-            const { downloadCreditReport } = await import('@/api/clients.api');
-            const blob = await downloadCreditReport(data.id);
-
-            // Create download link
-            const url = window.URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = `experian-report-${data.nationalId}.pdf`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            window.URL.revokeObjectURL(url);
-
-            // Refetch client data to get updated creditReportViewedAt timestamp
-            onRefetch();
-        } catch (error) {
-            console.error('Failed to download credit report:', error);
-            alert('Failed to download credit report. Please try again.');
-        } finally {
-            setDownloadingReport(false);
-        }
+    const handleOpenCreditReport = () => {
+        document.querySelector<HTMLElement>('[data-rr-ui-event-key="reports"]')?.click();
+        window.requestAnimationFrame(() => {
+            document.getElementById('credit-report-section')?.scrollIntoView({
+                behavior: 'smooth',
+                block: 'center',
+            });
+        });
     };
 
     // Calculate total from income/expense if available
@@ -692,20 +632,12 @@ function HeaderBlock({
 
     return (
         <>
-            {/* Gradient Header */}
-            <div
-                className="card border-0 shadow-sm mb-4"
-                style={{
-                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                    borderRadius: '16px',
-                }}
-            >
-                <div className="card-body p-4 text-white">
-                    <div className="d-flex align-items-center mb-3">
+            <div className="client-profile-header mb-3">
+                <div className="client-profile-header-body">
+                    <div className="client-profile-toolbar">
                         <button
-                            className="btn btn-light btn-sm me-3"
+                            className="btn btn-outline-secondary btn-sm"
                             onClick={() => navigate('/clients')}
-                            style={{ borderRadius: '8px' }}
                         >
                             <svg
                                 width="16"
@@ -716,7 +648,7 @@ function HeaderBlock({
                                 strokeWidth="2"
                                 strokeLinecap="round"
                                 strokeLinejoin="round"
-                                style={{ marginRight: '4px' }}
+                                className="me-1"
                             >
                                 <path d="M19 12H5M12 19l-7-7 7-7" />
                             </svg>
@@ -731,25 +663,17 @@ function HeaderBlock({
                             strokeWidth="2"
                             strokeLinecap="round"
                             strokeLinejoin="round"
-                            className="me-3"
+                            className="client-profile-avatar"
                         >
                             <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
                             <circle cx="12" cy="7" r="4" />
                         </svg>
                         <div className="flex-grow-1">
-                            <h4 className="mb-0" style={{ fontWeight: 700 }}>
-                                {data.name}
-                            </h4>
-                            <div className="opacity-90" style={{ fontSize: '0.95rem' }}>
-                                {data.meta}
-                            </div>
+                            <h1 className="client-profile-name">{data.name}</h1>
+                            <div className="client-profile-meta">{data.meta}</div>
                         </div>
                         <div className="d-flex gap-2">
-                            <button
-                                className="btn btn-light"
-                                onClick={onEdit}
-                                style={{ borderRadius: '8px', fontWeight: 500 }}
-                            >
+                            <button className="btn btn-primary" onClick={onEdit}>
                                 <svg
                                     width="16"
                                     height="16"
@@ -759,7 +683,7 @@ function HeaderBlock({
                                     strokeWidth="2"
                                     strokeLinecap="round"
                                     strokeLinejoin="round"
-                                    style={{ marginRight: '4px' }}
+                                    className="me-1"
                                 >
                                     <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
                                     <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
@@ -767,10 +691,7 @@ function HeaderBlock({
                                 Edit
                             </button>
                             <Dropdown>
-                                <Dropdown.Toggle
-                                    className="btn btn-light"
-                                    style={{ borderRadius: '8px' }}
-                                >
+                                <Dropdown.Toggle className="btn btn-outline-secondary">
                                     <svg
                                         width="16"
                                         height="16"
@@ -787,41 +708,27 @@ function HeaderBlock({
                                     </svg>
                                 </Dropdown.Toggle>
                                 <Dropdown.Menu>
-                                    <Dropdown.Item
-                                        onClick={handleDownloadCreditReport}
-                                        disabled={downloadingReport}
-                                    >
-                                        {downloadingReport ? (
-                                            <>
-                                                <span
-                                                    className="spinner-border spinner-border-sm me-2"
-                                                    role="status"
-                                                    aria-hidden="true"
-                                                ></span>
-                                                Generating...
-                                            </>
-                                        ) : (
-                                            <>
-                                                <svg
-                                                    width="16"
-                                                    height="16"
-                                                    viewBox="0 0 24 24"
-                                                    fill="none"
-                                                    stroke="currentColor"
-                                                    strokeWidth="2"
-                                                    strokeLinecap="round"
-                                                    strokeLinejoin="round"
-                                                    className="me-2"
-                                                >
-                                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                                                    <polyline points="14 2 14 8 20 8" />
-                                                    <line x1="16" y1="13" x2="8" y2="13" />
-                                                    <line x1="16" y1="17" x2="8" y2="17" />
-                                                    <polyline points="10 9 9 9 8 9" />
-                                                </svg>
-                                                Credit Report PDF
-                                            </>
-                                        )}
+                                    <Dropdown.Item onClick={handleOpenCreditReport}>
+                                        <>
+                                            <svg
+                                                width="16"
+                                                height="16"
+                                                viewBox="0 0 24 24"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                strokeWidth="2"
+                                                strokeLinecap="round"
+                                                strokeLinejoin="round"
+                                                className="me-2"
+                                            >
+                                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                                                <polyline points="14 2 14 8 20 8" />
+                                                <line x1="16" y1="13" x2="8" y2="13" />
+                                                <line x1="16" y1="17" x2="8" y2="17" />
+                                                <polyline points="10 9 9 9 8 9" />
+                                            </svg>
+                                            Request Credit Report
+                                        </>
                                     </Dropdown.Item>
                                     <Dropdown.Item>
                                         <svg
@@ -882,54 +789,27 @@ function HeaderBlock({
                     </div>
 
                     {/* Stats Row */}
-                    <div className="row g-3 mt-2">
+                    <div className="client-profile-stats">
                         <div className="col-md-3 col-6">
-                            <div
-                                className="text-center p-3"
-                                style={{
-                                    background: 'rgba(255, 255, 255, 0.15)',
-                                    borderRadius: '12px',
-                                    backdropFilter: 'blur(10px)',
-                                }}
-                            >
-                                <div className="opacity-90" style={{ fontSize: '0.85rem' }}>
-                                    File Reference
-                                </div>
-                                <div style={{ fontSize: '1.1rem', fontWeight: 600 }}>
+                            <div className="client-profile-stat">
+                                <div className="client-profile-stat-label">File Reference</div>
+                                <div className="client-profile-stat-value">
                                     {data.fileReference || 'N/A'}
                                 </div>
                             </div>
                         </div>
                         <div className="col-md-3 col-6">
-                            <div
-                                className="text-center p-3"
-                                style={{
-                                    background: 'rgba(255, 255, 255, 0.15)',
-                                    borderRadius: '12px',
-                                    backdropFilter: 'blur(10px)',
-                                }}
-                            >
-                                <div className="opacity-90" style={{ fontSize: '0.85rem' }}>
-                                    ID Number
-                                </div>
-                                <div style={{ fontSize: '1.1rem', fontWeight: 600 }}>
-                                    {data.nationalId || 'N/A'}
+                            <div className="client-profile-stat">
+                                <div className="client-profile-stat-label">ID Number</div>
+                                <div className="client-profile-stat-value">
+                                    {maskSensitiveDataForAgents(data.nationalId, isAgent) || 'N/A'}
                                 </div>
                             </div>
                         </div>
                         <div className="col-md-3 col-6">
-                            <div
-                                className="text-center p-3"
-                                style={{
-                                    background: 'rgba(255, 255, 255, 0.15)',
-                                    borderRadius: '12px',
-                                    backdropFilter: 'blur(10px)',
-                                }}
-                            >
-                                <div className="opacity-90" style={{ fontSize: '0.85rem' }}>
-                                    Total Income
-                                </div>
-                                <div style={{ fontSize: '1.1rem', fontWeight: 600 }}>
+                            <div className="client-profile-stat">
+                                <div className="client-profile-stat-label">Total Income</div>
+                                <div className="client-profile-stat-value client-profile-stat-money">
                                     R{' '}
                                     {totalDebt.toLocaleString('en-ZA', {
                                         minimumFractionDigits: 2,
@@ -939,35 +819,17 @@ function HeaderBlock({
                             </div>
                         </div>
                         <div className="col-md-3 col-6">
-                            <div
-                                className="text-center p-3"
-                                style={{
-                                    background: 'rgba(255, 255, 255, 0.15)',
-                                    borderRadius: '12px',
-                                    backdropFilter: 'blur(10px)',
-                                }}
-                            >
-                                <div className="opacity-90" style={{ fontSize: '0.85rem' }}>
-                                    Products
-                                </div>
-                                <div style={{ fontSize: '1.1rem', fontWeight: 600 }}>
+                            <div className="client-profile-stat">
+                                <div className="client-profile-stat-label">Products</div>
+                                <div className="client-profile-stat-value">
                                     {data.products.length}
                                 </div>
                             </div>
                         </div>
                         <div className="col-md-3 col-6">
-                            <div
-                                className="text-center p-3"
-                                style={{
-                                    background: 'rgba(255, 255, 255, 0.15)',
-                                    borderRadius: '12px',
-                                    backdropFilter: 'blur(10px)',
-                                }}
-                            >
-                                <div className="opacity-90" style={{ fontSize: '0.85rem' }}>
-                                    Last Contact
-                                </div>
-                                <div style={{ fontSize: '1.1rem', fontWeight: 600 }}>
+                            <div className="client-profile-stat">
+                                <div className="client-profile-stat-label">Last Contact</div>
+                                <div className="client-profile-stat-value">
                                     {data.lastPhone || 'Never'}
                                 </div>
                             </div>
@@ -977,13 +839,10 @@ function HeaderBlock({
             </div>
 
             {/* Contact Info Card */}
-            <div className="card border-0 shadow-sm mb-3" style={{ borderRadius: '12px' }}>
-                <div className="card-body p-3">
+            <div className="client-contact-strip mb-3">
+                <div className="client-contact-strip-body">
                     <div className="d-flex flex-wrap gap-3 align-items-center">
-                        <div
-                            className="d-inline-flex align-items-center gap-2"
-                            style={{ color: '#667eea', fontWeight: 500 }}
-                        >
+                        <div className="client-contact-item d-inline-flex align-items-center gap-2">
                             <svg
                                 width="18"
                                 height="18"
@@ -999,9 +858,8 @@ function HeaderBlock({
                             {maskSensitiveDataForAgents(data.phone, isAgent)}
                         </div>
                         <a
-                            className="d-inline-flex align-items-center gap-2 text-decoration-none"
+                            className="client-contact-item d-inline-flex align-items-center gap-2 text-decoration-none"
                             href={`mailto:${data.email}`}
-                            style={{ color: '#667eea', fontWeight: 500 }}
                         >
                             <svg
                                 width="18"
@@ -1079,6 +937,8 @@ function ProductsPanel({
 }) {
     const [availableProducts, setAvailableProducts] = useState<BackendProduct[]>([]);
     const [selectedProductId, setSelectedProductId] = useState('');
+    const [selectedPaymentOptionId, setSelectedPaymentOptionId] = useState('');
+    const [creditAccounts, setCreditAccounts] = useState(['', '', '']);
     const [loading, setLoading] = useState(true);
     const [adding, setAdding] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
@@ -1106,15 +966,26 @@ function ProductsPanel({
     const handleAddProduct = async () => {
         if (!selectedProductId) return;
 
+        if (!selectedPaymentOptionId) {
+            setErrorMessage('Select a payment option before adding the product.');
+            return;
+        }
+
+        const productToAdd = availableProducts.find((product) => product.id === selectedProductId);
+        if (
+            productToAdd?.code.toUpperCase() === 'CAR' &&
+            creditAccounts.some((account) => !account.trim())
+        ) {
+            setErrorMessage('Provide all three current account names for the CAR product.');
+            return;
+        }
+
         // Validate credit report has been reviewed before adding products
-        console.log('Credit report viewed at:', creditReportViewedAt);
         if (!creditReportViewedAt) {
-            console.log('Validation failed: Credit report not viewed');
             setErrorMessage('Please download and review the credit report before adding products.');
             return;
         }
 
-        console.log('Validation passed: Adding product', selectedProductId);
         setAdding(true);
         setSuccessMessage('');
         setErrorMessage('');
@@ -1126,8 +997,11 @@ function ProductsPanel({
             // Create new product entry
             const newProduct = {
                 productId: selectedProductId,
-                paymentOptionId: '', // Will be set later
-                cirAccounts: [],
+                paymentOptionId: selectedPaymentOptionId,
+                cirAccounts:
+                    productToAdd?.code.toUpperCase() === 'CAR'
+                        ? creditAccounts.map((account) => account.trim())
+                        : undefined,
             };
 
             // Add to existing products or create new array
@@ -1140,6 +1014,8 @@ function ProductsPanel({
 
             const addedProduct = availableProducts.find((p) => p.id === selectedProductId);
             setSelectedProductId('');
+            setSelectedPaymentOptionId('');
+            setCreditAccounts(['', '', '']);
             setSuccessMessage(`Product "${addedProduct?.name}" added successfully!`);
 
             // Auto-dismiss success message after 5 seconds
@@ -1166,6 +1042,46 @@ function ProductsPanel({
             (p) => p.name.toLowerCase().includes(q) || p.status?.toLowerCase().includes(q)
         );
     }, [products, searchQuery]);
+
+    const addableProducts = useMemo(() => {
+        const existingProductIds = new Set(products.map((product) => product.id));
+        return availableProducts.filter((product) => !existingProductIds.has(product.id));
+    }, [availableProducts, products]);
+
+    const selectedProduct = useMemo(
+        () => availableProducts.find((item) => item.id === selectedProductId),
+        [availableProducts, selectedProductId]
+    );
+
+    const paymentOptions = useMemo(() => {
+        const product = selectedProduct;
+        if (!product) return [];
+
+        const pricing = product.pricing_options;
+        const options: Array<{ id: string; label: string }> = [];
+        if (pricing?.oneOff && pricing.oneOff > 0) {
+            options.push({
+                id: `${product.id}_once_off`,
+                label: `Once-off - ${money(pricing.oneOff)}`,
+            });
+        }
+        pricing?.instalments?.forEach((instalment) => {
+            options.push({
+                id: `${product.id}_inst_${instalment.count}`,
+                label: `${instalment.count} x ${money(instalment.amount)}`,
+            });
+        });
+        if (pricing?.recurring && pricing.minimumAmount) {
+            options.push({
+                id: `${product.id}_recurring_min`,
+                label: `Monthly - minimum ${money(pricing.minimumAmount)}`,
+            });
+        }
+
+        return options.length > 0
+            ? options
+            : [{ id: `${product.id}_default`, label: 'Standard pricing' }];
+    }, [selectedProduct]);
 
     const riskBadge = (f?: Product['flag']) => {
         if (f === 'green')
@@ -1200,7 +1116,12 @@ function ProductsPanel({
 
     return (
         <>
-            <h6 className="mb-3">Products</h6>
+            <div className="client-panel-heading">
+                <div>
+                    <h6>Products</h6>
+                    <span>{products.length} linked to this client</span>
+                </div>
+            </div>
 
             {/* Success Message */}
             {successMessage && (
@@ -1235,47 +1156,86 @@ function ProductsPanel({
             )}
 
             {/* Add Product Section */}
-            <div className="panel glass p-3 mb-3">
-                <div className="d-flex align-items-center gap-2">
-                    <FontAwesomeIcon icon={faPlus} className="text-muted" />
+            <div className="client-product-add mb-3">
+                <div className="client-product-add-grid">
                     <Form.Select
-                        className="form-control"
                         value={selectedProductId}
-                        onChange={(e) => setSelectedProductId(e.target.value)}
+                        onChange={(e) => {
+                            setSelectedProductId(e.target.value);
+                            setSelectedPaymentOptionId('');
+                            setCreditAccounts(['', '', '']);
+                        }}
                         disabled={loading || adding}
-                        style={{ flex: 1 }}
+                        aria-label="Product to add"
                     >
                         <option value="" disabled>
                             {loading ? 'Loading products...' : 'Select product to add...'}
                         </option>
-                        {availableProducts.map((p) => (
+                        {addableProducts.map((p) => (
                             <option key={p.id} value={p.id}>
                                 {p.name} ({p.code}) - {p.category.replace(/_/g, ' ')}
                             </option>
                         ))}
                     </Form.Select>
-                    <Button
-                        className="btn btn-primary"
-                        onClick={handleAddProduct}
-                        disabled={!selectedProductId || loading || adding}
+                    <Form.Select
+                        value={selectedPaymentOptionId}
+                        onChange={(e) => setSelectedPaymentOptionId(e.target.value)}
+                        disabled={!selectedProductId || adding}
+                        aria-label="Payment option"
                     >
-                        {adding ? 'Adding...' : 'Add Product'}
+                        <option value="" disabled>
+                            Select payment option...
+                        </option>
+                        {paymentOptions.map((option) => (
+                            <option key={option.id} value={option.id}>
+                                {option.label}
+                            </option>
+                        ))}
+                    </Form.Select>
+                    <Button
+                        variant="primary"
+                        onClick={handleAddProduct}
+                        disabled={
+                            !selectedProductId || !selectedPaymentOptionId || loading || adding
+                        }
+                    >
+                        <FontAwesomeIcon icon={faPlus} /> {adding ? 'Adding...' : 'Add product'}
                     </Button>
                 </div>
+                {selectedProduct?.code.toUpperCase() === 'CAR' && (
+                    <div className="client-product-accounts mt-2">
+                        <span>Current accounts</span>
+                        {creditAccounts.map((account, index) => (
+                            <input
+                                key={index}
+                                className="form-control"
+                                value={account}
+                                onChange={(event) =>
+                                    setCreditAccounts((current) =>
+                                        current.map((value, accountIndex) =>
+                                            accountIndex === index ? event.target.value : value
+                                        )
+                                    )
+                                }
+                                placeholder={`Account ${index + 1}`}
+                                aria-label={`Current account ${index + 1}`}
+                            />
+                        ))}
+                    </div>
+                )}
             </div>
 
             {/* Search Products */}
-            <div className="d-flex align-items-center gap-2 mb-3">
+            <div className="client-product-search mb-3">
                 <FontAwesomeIcon icon={faMagnifyingGlass} className="text-muted" />
                 <input
                     className="form-control"
                     placeholder="Search client's products..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    style={{ maxWidth: 300 }}
                 />
                 {searchQuery && (
-                    <span className="text-muted" style={{ fontSize: 12 }}>
+                    <span className="client-result-count">
                         {filteredProducts.length} of {products.length}
                     </span>
                 )}
@@ -1284,7 +1244,7 @@ function ProductsPanel({
             {/* Products List */}
             <div className="vstack gap-3">
                 {filteredProducts.length === 0 ? (
-                    <div className="panel glass p-3 text-center text-muted">
+                    <div className="client-empty-state">
                         {searchQuery ? 'No products match your search.' : 'No products added yet.'}
                     </div>
                 ) : (
@@ -1294,21 +1254,17 @@ function ProductsPanel({
 
                         return (
                             <div
-                                className="panel glass p-4"
+                                className="client-product-record"
                                 key={p.id}
                                 style={{
-                                    borderLeft: '4px solid #667eea',
-                                    transition: 'all 0.2s ease',
+                                    borderLeft: '3px solid var(--color-brand-teal)',
                                 }}
                             >
                                 <div className="d-flex justify-content-between align-items-start mb-3">
                                     <div className="flex-grow-1">
                                         <div className="d-flex align-items-center gap-2 mb-2">
                                             <h6 className="mb-0 fw-bold">{p.name}</h6>
-                                            <span
-                                                className="badge bg-primary"
-                                                style={{ fontSize: '0.75rem' }}
-                                            >
+                                            <span className="client-code-badge">
                                                 {fullProduct?.code || 'N/A'}
                                             </span>
                                             <span
@@ -1395,8 +1351,8 @@ function ProductsPanel({
                                                         <div className="fw-semibold">
                                                             {fullProduct.createdAt
                                                                 ? new Date(
-                                                                      fullProduct.createdAt
-                                                                  ).toLocaleDateString()
+                                                                    fullProduct.createdAt
+                                                                ).toLocaleDateString()
                                                                 : 'N/A'}
                                                         </div>
                                                     </div>
@@ -1416,39 +1372,39 @@ function ProductsPanel({
                                                 >
                                                     <div className="card-body p-3">
                                                         <div className="text-muted small mb-2 fw-semibold">
-                                                            💰 Pricing
+                                                            Pricing
                                                         </div>
                                                         <div className="row g-2">
                                                             {fullProduct.pricing_options.oneOff !==
                                                                 undefined &&
                                                                 fullProduct.pricing_options.oneOff >
                                                                     0 && (
-                                                                    <div className="col-md-4 col-6">
-                                                                        <div
-                                                                            className="text-muted"
-                                                                            style={{
-                                                                                fontSize: '0.75rem',
-                                                                            }}
-                                                                        >
+                                                                <div className="col-md-4 col-6">
+                                                                    <div
+                                                                        className="text-muted"
+                                                                        style={{
+                                                                            fontSize: '0.75rem',
+                                                                        }}
+                                                                    >
                                                                             One-Time Fee
-                                                                        </div>
-                                                                        <div
-                                                                            className="fw-bold text-success"
-                                                                            style={{
-                                                                                fontSize: '1.1rem',
-                                                                            }}
-                                                                        >
-                                                                            R{' '}
-                                                                            {fullProduct.pricing_options.oneOff.toLocaleString(
-                                                                                'en-ZA',
-                                                                                {
-                                                                                    minimumFractionDigits: 2,
-                                                                                    maximumFractionDigits: 2,
-                                                                                }
-                                                                            )}
-                                                                        </div>
                                                                     </div>
-                                                                )}
+                                                                    <div
+                                                                        className="fw-bold text-success"
+                                                                        style={{
+                                                                            fontSize: '1.1rem',
+                                                                        }}
+                                                                    >
+                                                                            R{' '}
+                                                                        {fullProduct.pricing_options.oneOff.toLocaleString(
+                                                                            'en-ZA',
+                                                                            {
+                                                                                minimumFractionDigits: 2,
+                                                                                maximumFractionDigits: 2,
+                                                                            }
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            )}
 
                                                             {fullProduct.pricing_options
                                                                 .recurring && (
@@ -1495,39 +1451,39 @@ function ProductsPanel({
                                                                 .instalments &&
                                                                 fullProduct.pricing_options
                                                                     .instalments.length > 0 && (
-                                                                    <div className="col-12">
-                                                                        <div
-                                                                            className="text-muted"
-                                                                            style={{
-                                                                                fontSize: '0.75rem',
-                                                                            }}
-                                                                        >
+                                                                <div className="col-12">
+                                                                    <div
+                                                                        className="text-muted"
+                                                                        style={{
+                                                                            fontSize: '0.75rem',
+                                                                        }}
+                                                                    >
                                                                             Installment Options
-                                                                        </div>
-                                                                        <div className="d-flex gap-2 flex-wrap mt-1">
-                                                                            {fullProduct.pricing_options.instalments.map(
-                                                                                (inst, idx) => (
-                                                                                    <span
-                                                                                        key={idx}
-                                                                                        className="badge bg-primary"
-                                                                                        style={{
-                                                                                            fontSize:
-                                                                                                '0.85rem',
-                                                                                            padding:
-                                                                                                '0.4rem 0.8rem',
-                                                                                        }}
-                                                                                    >
-                                                                                        {inst.count}
-                                                                                        x R
-                                                                                        {inst.amount.toLocaleString(
-                                                                                            'en-ZA'
-                                                                                        )}
-                                                                                    </span>
-                                                                                )
-                                                                            )}
-                                                                        </div>
                                                                     </div>
-                                                                )}
+                                                                    <div className="d-flex gap-2 flex-wrap mt-1">
+                                                                        {fullProduct.pricing_options.instalments.map(
+                                                                            (inst, idx) => (
+                                                                                <span
+                                                                                    key={idx}
+                                                                                    className="badge bg-primary"
+                                                                                    style={{
+                                                                                        fontSize:
+                                                                                                '0.85rem',
+                                                                                        padding:
+                                                                                                '0.4rem 0.8rem',
+                                                                                    }}
+                                                                                >
+                                                                                    {inst.count}
+                                                                                        x R
+                                                                                    {inst.amount.toLocaleString(
+                                                                                        'en-ZA'
+                                                                                    )}
+                                                                                </span>
+                                                                            )
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            )}
                                                         </div>
                                                     </div>
                                                 </div>
@@ -1570,25 +1526,6 @@ function ProductsPanel({
                                             </div>
                                         )}
                                     </div>
-
-                                    <Dropdown align="end">
-                                        <Dropdown.Toggle
-                                            className="btn btn-light btn-sm"
-                                            style={{
-                                                borderRadius: '8px',
-                                                border: '1px solid var(--glass-border)',
-                                            }}
-                                        >
-                                            <FontAwesomeIcon icon={faEllipsisH} />
-                                        </Dropdown.Toggle>
-                                        <Dropdown.Menu>
-                                            <Dropdown.Item>Edit Configuration</Dropdown.Item>
-                                            <Dropdown.Item>Attach File</Dropdown.Item>
-                                            <Dropdown.Item className="text-danger">
-                                                Remove
-                                            </Dropdown.Item>
-                                        </Dropdown.Menu>
-                                    </Dropdown>
                                 </div>
                             </div>
                         );
@@ -1624,13 +1561,7 @@ function ProductsPanel({
                     // Only show total if there's pricing data
                     if (totalOneOff > 0 || hasRecurring || totalMinimum > 0) {
                         return (
-                            <div
-                                className="card border-0 shadow-sm mt-4"
-                                style={{
-                                    borderRadius: '12px',
-                                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                                }}
-                            >
+                            <div className="client-product-summary mt-3">
                                 <div className="card-body p-4">
                                     <div className="row align-items-center text-white">
                                         <div className="col-md-8">
@@ -1716,6 +1647,7 @@ function EditableField({
     disabled?: boolean;
     onChange: (value: string) => Promise<void>;
 }) {
+    const inputId = useId();
     const [localValue, setLocalValue] = useState(value);
     const [loading, setLoading] = useState(false);
 
@@ -1731,10 +1663,13 @@ function EditableField({
     };
 
     return (
-        <div className="mb-3">
-            <label className="form-label">{label}</label>
-            <div className="d-flex gap-2">
+        <div className="client-compact-field">
+            <label className="form-label" htmlFor={inputId}>
+                {label}
+            </label>
+            <div className="client-field-control">
                 <input
+                    id={inputId}
                     type="text"
                     className="form-control"
                     value={localValue}
@@ -1755,8 +1690,9 @@ function EditableField({
 // Masked Field (shows last 4 digits for agents, read-only)
 // -----------------------------------------------
 function MaskedField({ label, value }: { label: string; value: string }) {
+    const inputId = useId();
     const session = useAuthStore((state) => state.session);
-    const isAgent = session?.user?.role === 'agent';
+    const isAgent = isRestrictedAgentRole(session?.user?.role);
 
     // Mask sensitive data: show last 4 digits for agents
     const displayValue = () => {
@@ -1771,12 +1707,19 @@ function MaskedField({ label, value }: { label: string; value: string }) {
     };
 
     return (
-        <div className="mb-3">
-            <label className="form-label">{label}</label>
-            <input type="text" className="form-control" value={displayValue()} readOnly disabled />
-            {isAgent && value && (
-                <small className="text-muted">Last 4 digits shown for security</small>
-            )}
+        <div className="client-compact-field">
+            <label className="form-label" htmlFor={inputId}>
+                {label}
+                {isAgent && value && <span className="client-field-security">Masked</span>}
+            </label>
+            <input
+                id={inputId}
+                type="text"
+                className="form-control client-readonly-field"
+                value={displayValue()}
+                readOnly
+                aria-readonly="true"
+            />
         </div>
     );
 }
@@ -1808,109 +1751,121 @@ function ClientMini({
 
     return (
         <Section title="Client">
-            <div className="row g-3">
-                <div className="col-md-6">
-                    <EditableField
-                        label="First names"
-                        value={firstName}
-                        disabled={saving !== null}
-                        onChange={(v) => handleSave('firstName', v)}
-                    />
-                    <EditableField
-                        label="Surname"
-                        value={lastName}
-                        disabled={saving !== null}
-                        onChange={(v) => handleSave('lastName', v)}
-                    />
-                    <div className="mb-3">
-                        <label className="form-label">Marital Status</label>
-                        <Form.Select
-                            value={data.maritalStatus}
-                            disabled={saving !== null}
-                            onChange={(e) => handleSave('maritalStatus', e.target.value)}
-                        >
-                            <option value="single">Single</option>
-                            <option value="married">Married</option>
-                            <option value="divorced">Divorced</option>
-                            <option value="widowed">Widowed</option>
-                        </Form.Select>
+            <div className="client-detail-groups">
+                <section
+                    className="client-detail-group"
+                    aria-labelledby="personal-information-heading"
+                >
+                    <div className="client-detail-group-heading">
+                        <div>
+                            <h6 id="personal-information-heading">Personal information</h6>
+                            <p>Identity and relationship status</p>
+                        </div>
                     </div>
-                </div>
-                <div className="col-md-6">
-                    <Field label="ID Number" value={data.nationalId} />
-                    <MaskedField label="Cell" value={data.phone} />
-                    <EditableField
-                        label="Email"
-                        value={data.email}
-                        disabled={saving !== null}
-                        onChange={(v) => handleSave('email', v)}
-                    />
-                </div>
+                    <div className="client-detail-grid client-detail-grid-three">
+                        <EditableField
+                            label="First names"
+                            value={firstName}
+                            disabled={saving !== null}
+                            onChange={(v) => handleSave('firstName', v)}
+                        />
+                        <EditableField
+                            label="Surname"
+                            value={lastName}
+                            disabled={saving !== null}
+                            onChange={(v) => handleSave('lastName', v)}
+                        />
+                        <div className="client-compact-field">
+                            <label className="form-label" htmlFor="client-marital-status">
+                                Marital status
+                            </label>
+                            <Form.Select
+                                id="client-marital-status"
+                                value={data.maritalStatus}
+                                disabled={saving !== null}
+                                onChange={(e) => handleSave('maritalStatus', e.target.value)}
+                            >
+                                <option value="single">Single</option>
+                                <option value="married">Married</option>
+                                <option value="divorced">Divorced</option>
+                                <option value="widowed">Widowed</option>
+                            </Form.Select>
+                        </div>
+                        <MaskedField label="ID Number" value={data.nationalId} />
+                    </div>
+                </section>
 
-                <div className="col-12">
-                    <EditableField
-                        label="Physical Address"
-                        value={data.physicalAddress || ''}
-                        disabled={saving !== null}
-                        onChange={(v) => handleSave('physicalAddress', v)}
-                    />
-                </div>
+                <section
+                    className="client-detail-group"
+                    aria-labelledby="contact-information-heading"
+                >
+                    <div className="client-detail-group-heading">
+                        <div>
+                            <h6 id="contact-information-heading">Contact and address</h6>
+                            <p>Primary contact channels and verified addresses</p>
+                        </div>
+                    </div>
+                    <div className="client-detail-grid client-detail-grid-two">
+                        <MaskedField label="Cell" value={data.phone} />
+                        <EditableField
+                            label="Email"
+                            value={data.email}
+                            disabled={saving !== null}
+                            onChange={(v) => handleSave('email', v)}
+                        />
+                        <EditableField
+                            label="Physical Address"
+                            value={data.physicalAddress || ''}
+                            disabled={saving !== null}
+                            onChange={(v) => handleSave('physicalAddress', v)}
+                        />
+                        <EditableField
+                            label="Postal Address"
+                            value={data.postalAddress || ''}
+                            disabled={saving !== null}
+                            onChange={(v) => handleSave('postalAddress', v)}
+                        />
+                    </div>
+                </section>
 
-                <div className="col-12">
-                    <EditableField
-                        label="Postal Address"
-                        value={data.postalAddress || ''}
-                        disabled={saving !== null}
-                        onChange={(v) => handleSave('postalAddress', v)}
-                    />
-                </div>
-
-                {/* Banking Details Section */}
-                <div className="col-12 mt-4">
-                    <h6 className="mb-3" style={{ fontWeight: 600, color: '#667eea' }}>
-                        Banking Details
-                    </h6>
-                </div>
-
-                <div className="col-md-6">
-                    <EditableField
-                        label="Bank Name"
-                        value={data.bankName || ''}
-                        disabled={saving !== null}
-                        onChange={(v) => handleSave('bankName', v)}
-                    />
-                </div>
-
-                <div className="col-md-6">
-                    <EditableField
-                        label="Account Type"
-                        value={data.accountType || ''}
-                        disabled={saving !== null}
-                        onChange={(v) => handleSave('accountType', v)}
-                    />
-                </div>
-
-                <div className="col-md-6">
-                    <EditableField
-                        label="Account Holder"
-                        value={data.accountHolder || ''}
-                        disabled={saving !== null}
-                        onChange={(v) => handleSave('accountHolder', v)}
-                    />
-                </div>
-
-                <div className="col-md-6">
-                    <MaskedField label="Account Number" value={data.accountNumber || ''} />
-                </div>
-
-                <div className="col-md-6">
-                    <EditableField
-                        label="Branch Code"
-                        value={data.branchCode || ''}
-                        disabled={saving !== null}
-                        onChange={(v) => handleSave('branchCode', v)}
-                    />
-                </div>
+                <section
+                    className="client-detail-group"
+                    aria-labelledby="banking-information-heading"
+                >
+                    <div className="client-detail-group-heading">
+                        <div>
+                            <h6 id="banking-information-heading">Banking information</h6>
+                            <p>Account details used for financial administration</p>
+                        </div>
+                    </div>
+                    <div className="client-detail-grid client-detail-grid-three">
+                        <EditableField
+                            label="Bank name"
+                            value={data.bankName || ''}
+                            disabled={saving !== null}
+                            onChange={(v) => handleSave('bankName', v)}
+                        />
+                        <EditableField
+                            label="Account type"
+                            value={data.accountType || ''}
+                            disabled={saving !== null}
+                            onChange={(v) => handleSave('accountType', v)}
+                        />
+                        <EditableField
+                            label="Account holder"
+                            value={data.accountHolder || ''}
+                            disabled={saving !== null}
+                            onChange={(v) => handleSave('accountHolder', v)}
+                        />
+                        <MaskedField label="Account number" value={data.accountNumber || ''} />
+                        <EditableField
+                            label="Branch code"
+                            value={data.branchCode || ''}
+                            disabled={saving !== null}
+                            onChange={(v) => handleSave('branchCode', v)}
+                        />
+                    </div>
+                </section>
             </div>
         </Section>
     );
@@ -2006,7 +1961,7 @@ function IncomeExpenseForm({
                 </div>
 
                 <div className="col-12">
-                    <div className="panel glass p-3">
+                    <div className="client-surface">
                         <div className="d-flex flex-wrap gap-3">
                             <BadgeKV label="Total Income (A)" value={money(totalA)} />
                             <BadgeKV label="Total Deductions (B)" value={money(totalB)} />
@@ -2029,12 +1984,13 @@ function IncomeExpenseForm({
                 </div>
 
                 <div className="col-12">
-                    <div className="panel glass p-3 d-flex flex-wrap justify-content-between align-items-center">
+                    <div className="client-surface d-flex flex-wrap justify-content-between align-items-center">
                         <div className="d-flex flex-wrap gap-3 align-items-center">
                             <BadgeKV label="Total Expenses (C)" value={money(totalC)} />
                             <BadgeKV label="Disposable (A - B - C)" value={money(disposable)} />
                             <span className="text-muted" style={{ fontSize: 12 }}>
-                                Tip: approve products only if monthly fee ≤ disposable.
+                                Tip: approve products only if the monthly fee is within the
+                                disposable amount.
                             </span>
                         </div>
                         <Button
@@ -2065,25 +2021,17 @@ function IESection({
     onChange: (id: string, patch: Partial<MoneyRow>) => void;
 }) {
     return (
-        <div className="panel glass p-3">
+        <div className="client-surface">
             <div className="d-flex justify-content-between align-items-center mb-2">
                 <h6 className="m-0">{title}</h6>
-                <Button
-                    className="btn btn-light"
-                    style={{ borderRadius: 999, border: '1px solid var(--glass-border)' }}
-                    onClick={onAdd}
-                >
+                <Button className="btn btn-light" onClick={onAdd}>
                     <FontAwesomeIcon icon={faPlus} /> Add Row
                 </Button>
             </div>
 
             <div className="vstack gap-2">
                 {rows.map((r) => (
-                    <div
-                        key={r.id}
-                        className="d-grid"
-                        style={{ gridTemplateColumns: '1fr 160px 44px', gap: 8 }}
-                    >
+                    <div key={r.id} className="client-money-row">
                         <input
                             className="form-control"
                             placeholder="Label"
@@ -2102,8 +2050,7 @@ function IESection({
                         />
                         <Button
                             variant="link"
-                            className="btn btn-light"
-                            style={{ border: '1px solid var(--glass-border)' }}
+                            className="btn btn-light client-icon-action"
                             onClick={() => onDel(r.id)}
                             aria-label="Delete row"
                             title="Delete row"
@@ -2120,10 +2067,7 @@ function IESection({
 
 function BadgeKV({ label, value }: { label: string; value: string }) {
     return (
-        <div
-            className="badge"
-            style={{ borderColor: 'var(--glass-border)', background: 'transparent' }}
-        >
+        <div className="client-value-badge">
             <b>{label}:</b> <span className="ms-1">{value}</span>
         </div>
     );
@@ -2133,7 +2077,7 @@ function BadgeKV({ label, value }: { label: string; value: string }) {
 // Correspondence (WhatsApp-first)
 // -----------------------------------------------
 function CorrespondencePanel({ clientId }: { clientId: string }) {
-    const [commLogs, setCommLogs] = useState<any[]>([]);
+    const [commLogs, setCommLogs] = useState<CommunicationLog[]>([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -2187,7 +2131,7 @@ function CorrespondencePanel({ clientId }: { clientId: string }) {
     );
 }
 
-function CommunicationHistory({ logs, loading }: { logs: any[]; loading: boolean }) {
+function CommunicationHistory({ logs, loading }: { logs: CommunicationLog[]; loading: boolean }) {
     if (loading) {
         return <div className="text-muted">Loading communication history...</div>;
     }
@@ -2197,7 +2141,7 @@ function CommunicationHistory({ logs, loading }: { logs: any[]; loading: boolean
     }
 
     return (
-        <div className="panel glass p-3">
+        <div className="client-surface">
             <div className="timeline">
                 {logs.map((log, idx) => (
                     <div key={log.id} className="mb-4">
@@ -2325,7 +2269,15 @@ function CommunicationHistory({ logs, loading }: { logs: any[]; loading: boolean
     );
 }
 
-function SmsLog({ logs, loading, clientId }: { logs: any[]; loading: boolean; clientId: string }) {
+function SmsLog({
+    logs,
+    loading,
+    clientId,
+}: {
+    logs: CommunicationLog[];
+    loading: boolean;
+    clientId: string;
+}) {
     const [sending, setSending] = useState(false);
     const [showForm, setShowForm] = useState(false);
     const [message, setMessage] = useState('');
@@ -2351,16 +2303,18 @@ function SmsLog({ logs, loading, clientId }: { logs: any[]; loading: boolean; cl
             setShowForm(false);
             // Refresh the page to show new SMS
             window.location.reload();
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error('Error sending SMS:', error);
-            alert(`Failed to send SMS: ${error.message || 'Unknown error'}`);
+            alert(
+                `Failed to send SMS: ${error instanceof Error ? error.message : 'Unknown error'}`
+            );
         } finally {
             setSending(false);
         }
     };
 
     return (
-        <div className="panel glass p-3">
+        <div className="client-surface">
             <div className="d-flex justify-content-between align-items-center mb-3">
                 <h6 className="mb-0">SMS History</h6>
                 {latestLog && (
@@ -2462,7 +2416,7 @@ function EmailLogNew({
     loading,
     clientId,
 }: {
-    logs: any[];
+    logs: CommunicationLog[];
     loading: boolean;
     clientId: string;
 }) {
@@ -2493,16 +2447,18 @@ function EmailLogNew({
             setShowForm(false);
             // Refresh the page to show new email
             window.location.reload();
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error('Error sending email:', error);
-            alert(`Failed to send email: ${error.message || 'Unknown error'}`);
+            alert(
+                `Failed to send email: ${error instanceof Error ? error.message : 'Unknown error'}`
+            );
         } finally {
             setSending(false);
         }
     };
 
     return (
-        <div className="panel glass p-3">
+        <div className="client-surface">
             <div className="d-flex justify-content-between align-items-center mb-3">
                 <h6 className="mb-0">Email History</h6>
                 {latestLog && (
@@ -2631,6 +2587,7 @@ function WhatsAppChat({ clientId }: { clientId: string }) {
     useEffect(() => {
         loadMessages();
         checkWhatsAppStatus();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [clientId]);
 
     // Poll for new messages every 5 seconds
@@ -2640,11 +2597,11 @@ function WhatsAppChat({ clientId }: { clientId: string }) {
         }, 5000);
 
         return () => clearInterval(interval);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [clientId]);
 
     const checkWhatsAppStatus = async () => {
         try {
-            const { whatsappApi } = await import('@/api/whatsapp.api');
             const response = await whatsappApi.checkHealth();
             setWhatsappReady(response.data.isReady);
         } catch (error) {
@@ -2658,11 +2615,10 @@ function WhatsAppChat({ clientId }: { clientId: string }) {
             if (showLoading) {
                 setLoading(true);
             }
-            const { whatsappApi } = await import('@/api/whatsapp.api');
             const response = await whatsappApi.getMessages(clientId, 50);
             setMsgs(response.data);
             setError(null);
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error('Failed to load WhatsApp messages:', error);
             if (showLoading) {
                 setError('Failed to load messages');
@@ -2685,21 +2641,20 @@ function WhatsAppChat({ clientId }: { clientId: string }) {
         setError(null);
 
         try {
-            const { whatsappApi } = await import('@/api/whatsapp.api');
             await whatsappApi.sendMessage({ clientId, message: input });
             setInput('');
             // Reload messages to show the sent message
             await loadMessages();
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error('Failed to send WhatsApp message:', error);
-            setError(error?.response?.data?.message || 'Failed to send message');
+            setError(error instanceof Error ? error.message : 'Failed to send message');
         } finally {
             setSending(false);
         }
     };
 
     return (
-        <div className="panel glass p-0">
+        <div className="client-surface client-surface-flush">
             {error && (
                 <div className="alert alert-danger m-3 mb-0" role="alert">
                     {error}
@@ -2728,14 +2683,9 @@ function WhatsAppChat({ clientId }: { clientId: string }) {
                     msgs.map((m) => (
                         <div
                             key={m.id}
-                            className={`p-2 rounded ${m.direction === 'outbound' ? 'ms-auto' : 'me-auto'}`}
+                            className={`client-message ${m.direction === 'outbound' ? 'client-message-outbound ms-auto' : 'me-auto'}`}
                             style={{
                                 maxWidth: '80%',
-                                background:
-                                    m.direction === 'outbound'
-                                        ? 'rgba(8, 180, 148, 0.15)'
-                                        : 'rgba(255,255,255,0.08)',
-                                border: '1px solid var(--glass-border)',
                             }}
                         >
                             <div style={{ whiteSpace: 'pre-wrap' }}>{m.message}</div>
@@ -2746,12 +2696,12 @@ function WhatsAppChat({ clientId }: { clientId: string }) {
                                 })}{' '}
                                 {m.direction === 'outbound' && (
                                     <span className="ms-1">
-                                        {m.status === 'sent' && '✓'}
-                                        {m.status === 'delivered' && '✓✓'}
-                                        {m.status === 'read' && <b>✓✓</b>}
+                                        {m.status === 'sent' && 'Sent'}
+                                        {m.status === 'delivered' && 'Delivered'}
+                                        {m.status === 'read' && <b>Read</b>}
                                         {m.status === 'failed' && (
                                             <span className="text-danger">
-                                                ✗{' '}
+                                                Failed{' '}
                                                 {m.errorMessage && (
                                                     <span className="small">
                                                         ({m.errorMessage})
@@ -2760,7 +2710,7 @@ function WhatsAppChat({ clientId }: { clientId: string }) {
                                             </span>
                                         )}
                                         {m.status === 'pending' && (
-                                            <span className="text-muted">⏱</span>
+                                            <span className="text-muted">Pending</span>
                                         )}
                                     </span>
                                 )}
@@ -2775,10 +2725,7 @@ function WhatsAppChat({ clientId }: { clientId: string }) {
                 )}
             </div>
 
-            <div
-                className="d-flex gap-2 p-2 border-top"
-                style={{ borderColor: 'var(--glass-border)' }}
-            >
+            <div className="d-flex gap-2 p-2 border-top">
                 <input
                     className="form-control"
                     placeholder="Type a message…"
@@ -2844,7 +2791,9 @@ export function EmailLog({ clientId }: { clientId: string }) {
             try {
                 const { syncInbox } = await import('@/api/communications.api');
                 await syncInbox();
-            } catch {}
+            } catch (syncError) {
+                console.warn('Inbox sync was unavailable:', syncError);
+            }
 
             let res = await listInboxEmails({ clientId, page: p, limit });
             // If none linked to this client, fallback to latest overall inbox
@@ -2882,7 +2831,9 @@ export function EmailLog({ clientId }: { clientId: string }) {
                             snippet: m.preview,
                         }))
                     );
-                } catch {}
+                } catch (inspectError) {
+                    console.warn('Live inbox inspection was unavailable:', inspectError);
+                }
             }
         } catch (e) {
             setError(e instanceof Error ? e.message : 'Failed to load email log');
@@ -2899,7 +2850,7 @@ export function EmailLog({ clientId }: { clientId: string }) {
     const totalPages = Math.max(1, Math.ceil(total / limit));
 
     return (
-        <div className="panel glass p-2">
+        <div className="client-surface">
             {loading && <div className="text-muted">Loading…</div>}
             {error && <div className="alert alert-danger py-1 my-2">{error}</div>}
             <div className="d-flex justify-content-end mb-2">
@@ -2939,11 +2890,7 @@ export function EmailLog({ clientId }: { clientId: string }) {
             )}
             <ul className="list-unstyled m-0">
                 {items.map((m) => (
-                    <li
-                        key={m.id}
-                        className="py-2"
-                        style={{ borderBottom: '1px dashed var(--glass-border)' }}
-                    >
+                    <li key={m.id} className="client-list-row py-2">
                         <div className="d-flex justify-content-between">
                             <div style={{ fontWeight: 600 }}>{m.subject}</div>
                             <div className="text-muted" style={{ fontSize: 12 }}>
@@ -2954,7 +2901,7 @@ export function EmailLog({ clientId }: { clientId: string }) {
                             {m.from && (
                                 <>
                                     From: {m.from}
-                                    {m.to ? ' → ' + m.to : ''}
+                                    {m.to ? ' to ' + m.to : ''}
                                 </>
                             )}
                         </div>
@@ -2969,11 +2916,7 @@ export function EmailLog({ clientId }: { clientId: string }) {
                     </div>
                     <ul className="list-unstyled m-0">
                         {liveFallback.map((m) => (
-                            <li
-                                key={m.id}
-                                className="py-2"
-                                style={{ borderBottom: '1px dashed var(--glass-border)' }}
-                            >
+                            <li key={m.id} className="client-list-row py-2">
                                 <div className="d-flex justify-content-between">
                                     <div style={{ fontWeight: 600 }}>{m.subject}</div>
                                     <div className="text-muted" style={{ fontSize: 12 }}>
@@ -2984,7 +2927,7 @@ export function EmailLog({ clientId }: { clientId: string }) {
                                     {m.from && (
                                         <>
                                             From: {m.from}
-                                            {m.to ? ' → ' + m.to : ''}
+                                            {m.to ? ' to ' + m.to : ''}
                                         </>
                                     )}
                                 </div>
@@ -3038,6 +2981,14 @@ function TodoPanel({ clientId }: { clientId: string }) {
     const [todos, setTodos] = useState<
         Array<{ id: string; text: string; due: string; assignee?: string; done?: boolean }>
     >([]);
+    const [newTaskTitle, setNewTaskTitle] = useState('');
+    const [newTaskDue, setNewTaskDue] = useState(() => {
+        const date = new Date();
+        date.setDate(date.getDate() + 3);
+        return date.toISOString().slice(0, 10);
+    });
+    const [creatingTask, setCreatingTask] = useState(false);
+    const [taskError, setTaskError] = useState('');
 
     const load = async () => {
         const res = await listTasks({ clientId, limit: 50, page: 1 });
@@ -3067,54 +3018,78 @@ function TodoPanel({ clientId }: { clientId: string }) {
         );
     };
 
+    const addTask = async () => {
+        if (!newTaskTitle.trim()) return;
+        setCreatingTask(true);
+        setTaskError('');
+        try {
+            const created = await createTask({
+                title: newTaskTitle.trim(),
+                type: 'follow_up',
+                status: 'pending',
+                priority: 'normal',
+                dueDate: new Date(`${newTaskDue}T12:00:00`).toISOString(),
+                clientId,
+            });
+            setTodos((prev) => [
+                {
+                    id: created.id,
+                    text: created.title,
+                    due: created.dueDate
+                        ? new Date(created.dueDate).toISOString().slice(0, 10)
+                        : newTaskDue,
+                    assignee: created.assignedToUser
+                        ? `${created.assignedToUser.firstName} ${created.assignedToUser.lastName}`
+                        : undefined,
+                    done: created.status === 'completed',
+                },
+                ...prev,
+            ]);
+            setNewTaskTitle('');
+        } catch (error) {
+            setTaskError(error instanceof Error ? error.message : 'Unable to create the task');
+        } finally {
+            setCreatingTask(false);
+        }
+    };
+
     return (
-        <div className="panel glass p-3 mb-3">
+        <div className="client-surface mb-3">
             <div className="d-flex justify-content-between align-items-center mb-2">
                 <h6 className="m-0">To-do List</h6>
+                <span className="client-panel-count">{todos.length}</span>
+            </div>
+            <div className="client-task-create mb-2">
+                <input
+                    className="form-control"
+                    value={newTaskTitle}
+                    onChange={(event) => setNewTaskTitle(event.target.value)}
+                    placeholder="Add a follow-up task"
+                    aria-label="Task title"
+                />
+                <input
+                    className="form-control"
+                    type="date"
+                    value={newTaskDue}
+                    onChange={(event) => setNewTaskDue(event.target.value)}
+                    aria-label="Task due date"
+                />
                 <Button
-                    className="btn btn-light"
-                    style={{ borderRadius: 999, border: '1px solid var(--glass-border)' }}
-                    onClick={async () => {
-                        const dt = new Date();
-                        dt.setDate(dt.getDate() + 3);
-                        const created = await createTask({
-                            title: 'Collect documents from client',
-                            type: 'document_collection',
-                            status: 'pending',
-                            priority: 'normal',
-                            dueDate: dt.toISOString(),
-                            clientId,
-                        });
-                        setTodos((prev) => [
-                            {
-                                id: created.id,
-                                text: created.title,
-                                due: created.dueDate
-                                    ? new Date(created.dueDate).toISOString().slice(0, 10)
-                                    : dt.toISOString().slice(0, 10),
-                                assignee: created.assignedToUser
-                                    ? `${created.assignedToUser.firstName} ${created.assignedToUser.lastName}`
-                                    : undefined,
-                                done: created.status === 'completed',
-                            },
-                            ...prev,
-                        ]);
-                    }}
+                    variant="primary"
+                    onClick={addTask}
+                    disabled={!newTaskTitle.trim() || !newTaskDue || creatingTask}
                 >
-                    <FontAwesomeIcon icon={faPlus} /> Add
+                    <FontAwesomeIcon icon={faPlus} /> {creatingTask ? 'Adding...' : 'Add'}
                 </Button>
             </div>
+            {taskError && <div className="client-inline-error mb-2">{taskError}</div>}
             <ul className="list-unstyled m-0">
                 {todos.map((t) => (
-                    <li
-                        key={t.id}
-                        className="py-2 d-flex justify-content-between"
-                        style={{ borderBottom: '1px dashed var(--glass-border)' }}
-                    >
+                    <li key={t.id} className="client-list-row py-2 d-flex justify-content-between">
                         <div>
                             <div style={{ fontWeight: 600 }}>{t.text}</div>
                             <div className="text-muted" style={{ fontSize: 12 }}>
-                                Due {new Date(t.due).toLocaleDateString()} •{' '}
+                                Due {new Date(t.due).toLocaleDateString()} -{' '}
                                 {t.assignee || 'Unassigned'}
                             </div>
                         </div>
@@ -3125,6 +3100,9 @@ function TodoPanel({ clientId }: { clientId: string }) {
                         />
                     </li>
                 ))}
+                {todos.length === 0 && (
+                    <li className="client-empty-state">No tasks are currently assigned.</li>
+                )}
             </ul>
         </div>
     );
@@ -3135,6 +3113,8 @@ function NotesPanel({ clientId }: { clientId: string }) {
     const [sys, setSys] = useState<ClientDetailPayload['systemLog']>([]);
     const [fin, setFin] = useState<ClientDetailPayload['financialLog']>([]);
     const [input, setInput] = useState('');
+    const [savingNote, setSavingNote] = useState(false);
+    const [noteError, setNoteError] = useState('');
 
     useEffect(() => {
         // Pull notes and logs from the same client payload if available
@@ -3145,12 +3125,24 @@ function NotesPanel({ clientId }: { clientId: string }) {
                     auditLogs?: AuditEntity[];
                     financialRecords?: FinancialRecordEntity[];
                 };
-                const mappedNotes = (cc.clientNotes || []).map((n) => ({
-                    id: n.id,
-                    time: n.createdAt,
-                    by: n.createdByUser?.firstName || 'Agent',
-                    text: n.title ? `${n.title}: ${n.content ?? ''}` : (n.content ?? ''),
-                }));
+                const mappedNotes =
+                    cc.clientNotes && cc.clientNotes.length > 0
+                        ? cc.clientNotes.map((n) => ({
+                            id: n.id,
+                            time: n.createdAt,
+                            by: n.createdByUser?.firstName || 'Agent',
+                            text: n.title ? `${n.title}: ${n.content ?? ''}` : (n.content ?? ''),
+                        }))
+                        : client.notes
+                            ? [
+                                {
+                                    id: 'client-notes',
+                                    time: client.updatedAt,
+                                    by: 'Client record',
+                                    text: client.notes,
+                                },
+                            ]
+                            : [];
                 const mappedSystem = (cc.auditLogs || []).map((a) => ({
                     id: a.id,
                     time: a.createdAt,
@@ -3176,8 +3168,31 @@ function NotesPanel({ clientId }: { clientId: string }) {
             .catch(() => {});
     }, [clientId]);
 
+    const addNote = async () => {
+        const note = input.trim();
+        if (!note) return;
+        setSavingNote(true);
+        setNoteError('');
+        try {
+            const client = await getClientById(clientId);
+            const timestamp = new Date().toISOString();
+            const entry = `[${timestamp}] ${note}`;
+            const notes = client.notes ? `${client.notes}\n${entry}` : entry;
+            await updateClient(clientId, { notes });
+            setNotes((current) => [
+                { id: timestamp, time: timestamp, by: 'Agent', text: note },
+                ...current,
+            ]);
+            setInput('');
+        } catch (error) {
+            setNoteError(error instanceof Error ? error.message : 'Unable to save the note');
+        } finally {
+            setSavingNote(false);
+        }
+    };
+
     return (
-        <div className="panel glass p-3">
+        <div className="client-surface">
             <Tab.Container defaultActiveKey="notes">
                 <Nav variant="pills" className="mb-2">
                     <Nav.Item>
@@ -3201,11 +3216,16 @@ function NotesPanel({ clientId }: { clientId: string }) {
                                 onChange={(e) => setInput(e.currentTarget.value)}
                             />
                             <div className="d-flex justify-content-end">
-                                <Button className="btn btn-primary" disabled>
-                                    Add (coming soon)
+                                <Button
+                                    variant="primary"
+                                    disabled={!input.trim() || savingNote}
+                                    onClick={addNote}
+                                >
+                                    {savingNote ? 'Saving...' : 'Add note'}
                                 </Button>
                             </div>
                         </div>
+                        {noteError && <div className="client-inline-error mb-2">{noteError}</div>}
                         <LogList items={notes} />
                     </Tab.Pane>
                     <Tab.Pane eventKey="sys">
@@ -3228,15 +3248,11 @@ function LogList({
     return (
         <ul className="list-unstyled m-0">
             {items.map((n) => (
-                <li
-                    key={n.id}
-                    className="py-2"
-                    style={{ borderBottom: '1px dashed var(--glass-border)' }}
-                >
+                <li key={n.id} className="client-list-row py-2">
                     <div style={{ fontWeight: 600 }}>
                         {n.by}{' '}
                         <span className="text-muted" style={{ fontSize: 12 }}>
-                            • {new Date(n.time).toLocaleString()}
+                            - {new Date(n.time).toLocaleString()}
                         </span>
                     </div>
                     <div>{n.text}</div>
@@ -3430,46 +3446,113 @@ function AuditLogList({
 // -----------------------------------------------
 // Credit Report Viewer
 // -----------------------------------------------
-function CreditReportViewer({ clientId }: { clientId: string }) {
+function CreditReportViewer({
+    clientId,
+    physicalAddress,
+    postalAddress,
+}: {
+    clientId: string;
+    physicalAddress?: string;
+    postalAddress?: string;
+}) {
     const [showModal, setShowModal] = useState(false);
     const [loading, setLoading] = useState(false);
     const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+    const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [validationError, setValidationError] = useState<string | null>(null);
+    const [consentConfirmed, setConsentConfirmed] = useState(false);
+    const [purpose, setPurpose] = useState('Debt review assessment');
+    const [enquiryPurpose, setEnquiryPurpose] = useState(13);
 
-    const handleViewReport = async () => {
+    const clientDataIssues = useMemo(() => {
+        const address = String(physicalAddress || '').trim();
+        const postal = String(postalAddress || '').trim();
+        const postalCode = address.match(/\b\d{4,5}\b/) || postal.match(/\b\d{4,5}\b/);
+        const addressParts = address
+            .replace(postalCode?.[0] || '', '')
+            .split(',')
+            .map((part) => part.trim())
+            .filter(Boolean);
+        const issues: string[] = [];
+
+        if (!postalCode) issues.push('add a 4 or 5 digit postal code');
+        if (addressParts.length < 2) issues.push('separate the street and suburb with a comma');
+
+        return issues;
+    }, [physicalAddress, postalAddress]);
+
+    useEffect(() => {
+        return () => {
+            if (pdfUrl) window.URL.revokeObjectURL(pdfUrl);
+        };
+    }, [pdfUrl]);
+
+    const readError = async (err: unknown): Promise<string> => {
+        const candidate = err as { response?: { data?: unknown }; details?: unknown };
+        const data = candidate.response?.data ?? candidate.details;
+        if (data instanceof Blob) {
+            try {
+                const payload = JSON.parse(await data.text()) as { message?: string | string[] };
+                if (Array.isArray(payload.message)) return payload.message.join('. ');
+                if (payload.message) return payload.message;
+            } catch {
+                // Fall through to the safe public message below.
+            }
+        }
+        return err instanceof Error ? err.message : 'The Experian enquiry failed.';
+    };
+
+    const requestReport = async () => {
+        if (clientDataIssues.length > 0) {
+            setValidationError(
+                `Update the client's physical address before requesting the report: ${clientDataIssues.join(' and ')}.`
+            );
+            return;
+        }
+
+        if (!consentConfirmed) {
+            setValidationError(
+                'Confirm the client’s explicit consent before requesting the report.'
+            );
+            return;
+        }
+
+        setValidationError(null);
         setLoading(true);
         setError(null);
         setShowModal(true);
 
         try {
             const { downloadCreditReport } = await import('@/api/clients.api');
-            const blob = await downloadCreditReport(clientId);
+            const blob = await downloadCreditReport(clientId, {
+                consentGiven: true,
+                consentMethod: 'electronic',
+                enquiryPurpose,
+                purpose,
+            });
+            if (pdfUrl) window.URL.revokeObjectURL(pdfUrl);
             const url = window.URL.createObjectURL(blob);
+            setPdfBlob(blob);
             setPdfUrl(url);
         } catch (err) {
             console.error('Failed to load credit report:', err);
-            setError('Failed to load credit report. Please try again.');
+            setError(await readError(err));
         } finally {
             setLoading(false);
         }
     };
 
-    const handleDownloadReport = async () => {
-        try {
-            const { downloadCreditReport } = await import('@/api/clients.api');
-            const blob = await downloadCreditReport(clientId);
-            const url = window.URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = `experian-credit-report-${clientId}.pdf`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            window.URL.revokeObjectURL(url);
-        } catch (err) {
-            console.error('Failed to download credit report:', err);
-            alert('Failed to download credit report. Please try again.');
-        }
+    const handleDownloadReport = () => {
+        if (!pdfBlob) return;
+        const url = window.URL.createObjectURL(pdfBlob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `experian-credit-report-${clientId}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
     };
 
     const handleCloseModal = () => {
@@ -3482,7 +3565,7 @@ function CreditReportViewer({ clientId }: { clientId: string }) {
 
     return (
         <>
-            <div className="panel glass p-4">
+            <div id="credit-report-section" className="client-surface client-credit-report-card">
                 <div className="d-flex align-items-center justify-content-between mb-3">
                     <div>
                         <h5 className="mb-1">
@@ -3490,55 +3573,84 @@ function CreditReportViewer({ clientId }: { clientId: string }) {
                             Experian Credit Report
                         </h5>
                         <p className="text-muted mb-0" style={{ fontSize: '0.9rem' }}>
-                            View comprehensive credit history and score analysis
+                            Request the client’s original report from Experian
                         </p>
                     </div>
                     <div className="text-end">
                         <div
-                            className="badge bg-success"
+                            className="badge bg-info text-dark"
                             style={{ fontSize: '0.85rem', padding: '0.5rem 1rem' }}
                         >
-                            Available
+                            Experian UAT
                         </div>
                     </div>
                 </div>
 
-                <div className="row g-3 mb-4">
-                    <div className="col-md-4">
-                        <div className="text-center p-3 border rounded bg-light">
-                            <div className="text-muted small mb-1">Credit Score</div>
-                            <div className="h4 mb-0 text-primary">---</div>
-                        </div>
+                <div className="row g-2 mb-3">
+                    <div className="col-md-5">
+                        <Form.Label className="small mb-1">Enquiry purpose</Form.Label>
+                        <Form.Select
+                            size="sm"
+                            value={enquiryPurpose}
+                            onChange={(event) => setEnquiryPurpose(Number(event.target.value))}
+                            disabled={loading}
+                        >
+                            <option value={13}>Debt Review</option>
+                            <option value={12}>Credit Assessment</option>
+                            <option value={11}>Affordability Assessment</option>
+                        </Form.Select>
                     </div>
-                    <div className="col-md-4">
-                        <div className="text-center p-3 border rounded bg-light">
-                            <div className="text-muted small mb-1">Total Accounts</div>
-                            <div className="h4 mb-0">---</div>
-                        </div>
-                    </div>
-                    <div className="col-md-4">
-                        <div className="text-center p-3 border rounded bg-light">
-                            <div className="text-muted small mb-1">Report Date</div>
-                            <div className="h4 mb-0" style={{ fontSize: '1rem' }}>
-                                {new Date().toLocaleDateString()}
-                            </div>
-                        </div>
+                    <div className="col-md-7">
+                        <Form.Label className="small mb-1">Recorded reason</Form.Label>
+                        <Form.Control
+                            size="sm"
+                            value={purpose}
+                            maxLength={255}
+                            onChange={(event) => setPurpose(event.target.value)}
+                            disabled={loading}
+                        />
                     </div>
                 </div>
 
-                <div className="d-flex gap-2">
+                <Form.Check
+                    id={`credit-consent-${clientId}`}
+                    className="mb-3"
+                    checked={consentConfirmed}
+                    onChange={(event) => {
+                        setConsentConfirmed(event.target.checked);
+                        if (event.target.checked) setValidationError(null);
+                    }}
+                    label="I confirm that the client explicitly consented to this credit enquiry."
+                    disabled={loading}
+                />
+                {clientDataIssues.length > 0 && (
+                    <div className="alert alert-warning py-2 px-3 small mb-3" role="alert">
+                        <strong>Client record incomplete.</strong> Update the physical address to{' '}
+                        {clientDataIssues.join(' and ')} before requesting an Experian report.
+                    </div>
+                )}
+                {validationError && (
+                    <div className="text-danger small mb-3" role="alert">
+                        {validationError}
+                    </div>
+                )}
+
+                <div className="d-flex gap-2 flex-wrap">
                     <Button
                         variant="primary"
-                        size="lg"
-                        className="flex-fill"
-                        onClick={handleViewReport}
+                        size="sm"
+                        onClick={requestReport}
+                        disabled={loading || purpose.trim().length < 3}
                     >
                         <FontAwesomeIcon icon={faEye} className="me-2" />
-                        View Credit Report
+                        {loading ? 'Requesting Experian…' : 'Request and view report'}
                     </Button>
-                    <Button variant="outline-primary" size="lg" onClick={handleDownloadReport}>
-                        <FontAwesomeIcon icon={faDownload} />
-                    </Button>
+                    {pdfBlob && (
+                        <Button variant="outline-primary" size="sm" onClick={handleDownloadReport}>
+                            <FontAwesomeIcon icon={faDownload} className="me-2" />
+                            Download generated report
+                        </Button>
+                    )}
                 </div>
 
                 <div className="mt-3 pt-3 border-top">
@@ -3548,8 +3660,9 @@ function CreditReportViewer({ clientId }: { clientId: string }) {
                             className="text-warning mt-1"
                         />
                         <small className="text-muted">
-                            This is a <strong>UAT credit report</strong> generated for demonstration
-                            purposes. It does not represent actual credit bureau data.
+                            Each request is submitted to Experian and may be billable. Failed
+                            enquiries now return an error; the system no longer substitutes a mock
+                            report.
                         </small>
                     </div>
                 </div>
@@ -3584,7 +3697,7 @@ function CreditReportViewer({ clientId }: { clientId: string }) {
                                     variant="outline-primary"
                                     size="sm"
                                     onClick={handleDownloadReport}
-                                    disabled={loading}
+                                    disabled={loading || !pdfBlob}
                                 >
                                     <FontAwesomeIcon icon={faDownload} className="me-1" />
                                     Download PDF
@@ -3624,7 +3737,7 @@ function CreditReportViewer({ clientId }: { clientId: string }) {
                                     className="mb-3"
                                 />
                                 <p>{error}</p>
-                                <Button variant="primary" onClick={handleViewReport}>
+                                <Button variant="primary" onClick={requestReport}>
                                     Try Again
                                 </Button>
                             </div>
@@ -3643,35 +3756,6 @@ function CreditReportViewer({ clientId }: { clientId: string }) {
                     )}
                 </Modal.Body>
             </Modal>
-
-            <style>{`
-                .credit-report-modal .modal-content {
-                    border-radius: 12px;
-                    overflow: hidden;
-                }
-                .credit-report-modal .modal-header {
-                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                    color: white;
-                    padding: 1.5rem;
-                }
-                .credit-report-modal .modal-header h5 {
-                    color: white;
-                    margin: 0;
-                }
-                .credit-report-modal .modal-header small {
-                    color: rgba(255, 255, 255, 0.8);
-                }
-                .credit-report-modal .modal-header .btn {
-                    background: rgba(255, 255, 255, 0.2);
-                    border-color: rgba(255, 255, 255, 0.3);
-                    color: white;
-                }
-                .credit-report-modal .modal-header .btn:hover {
-                    background: rgba(255, 255, 255, 0.3);
-                    border-color: rgba(255, 255, 255, 0.4);
-                    color: white;
-                }
-            `}</style>
         </>
     );
 }
@@ -3681,28 +3765,9 @@ function CreditReportViewer({ clientId }: { clientId: string }) {
 // -----------------------------------------------
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
     return (
-        <div className="mb-3">
-            <div className="d-flex align-items-start gap-2 mb-2">
-                <div
-                    className="badge"
-                    style={{ borderColor: 'var(--glass-border)', background: 'transparent' }}
-                >
-                    {title}
-                </div>
-                <div style={{ height: 1, background: 'var(--glass-border)', flex: 1 }} />
-            </div>
+        <div className="client-section mb-3">
+            <h6 className="client-section-title">{title}</h6>
             {children}
-        </div>
-    );
-}
-
-function Field({ label, value }: { label: string; value: string }) {
-    return (
-        <div>
-            <div className="text-muted" style={{ fontSize: 12 }}>
-                {label}
-            </div>
-            <div style={{ fontWeight: 600 }}>{value}</div>
         </div>
     );
 }

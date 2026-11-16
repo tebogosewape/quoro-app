@@ -54,3 +54,12 @@ Before testing a logged-in or role-protected feature:
 3. Do not assume Admin coverage proves another role works.
 4. Keep the shared credentials local and never expose them in external output.
 5. Do not claim that all seed users exist after a clean reset while the documented seed-runner gap remains unresolved.
+
+## Experian UAT blocker
+
+Before changing or retrying the Experian integration, read
+[`docs/EXPERIAN_UAT_FOLLOW_UP.md`](docs/EXPERIAN_UAT_FOLLOW_UP.md).
+
+Do not retry a real enquiry while error `-103` remains unresolved, do not add subscriber code as an
+invented SOAP parameter, and do not claim the integration works until Experian confirms the UAT
+account and one explicitly authorised enquiry returns successfully.

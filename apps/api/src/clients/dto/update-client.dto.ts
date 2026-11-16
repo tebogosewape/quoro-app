@@ -6,6 +6,10 @@ import { CreateClientDto } from './create-client.dto';
 
 export class UpdateClientDto extends PartialType(CreateClientDto) {
     @IsOptional()
+    @IsString()
+    notes?: string;
+
+    @IsOptional()
     @IsDate()
     @Type(() => Date)
     creditReportViewedAt?: Date;

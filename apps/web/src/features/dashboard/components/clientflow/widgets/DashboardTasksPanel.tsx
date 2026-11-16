@@ -1,4 +1,7 @@
+import { useEffect, useMemo, useState } from 'react';
 import type { TaskResponse } from '@/api/tasks.api';
+
+const PAGE_SIZE = 5;
 
 type DashboardTasksPanelProps = {
     tasks: TaskResponse[];
@@ -24,16 +27,19 @@ const TaskContent = ({ task }: { task: TaskResponse }) => (
         </span>
 
         <span className="dashboard-task-item__content">
-            <span className="dashboard-task-item__badges">
-                {task.metadata?.leadId && (
-                    <span className="dashboard-badge dashboard-badge--lead">New lead</span>
-                )}
-                <span className={`dashboard-badge dashboard-badge--${priorityTone(task.priority)}`}>
-                    {task.priority}
+            <span className="dashboard-task-item__title-row">
+                <strong className="dashboard-task-item__title">{task.title}</strong>
+                <span className="dashboard-task-item__badges">
+                    {task.metadata?.leadId && (
+                        <span className="dashboard-badge dashboard-badge--lead">Lead</span>
+                    )}
+                    <span
+                        className={`dashboard-badge dashboard-badge--${priorityTone(task.priority)}`}
+                    >
+                        {task.priority}
+                    </span>
                 </span>
             </span>
-
-            <strong className="dashboard-task-item__title">{task.title}</strong>
 
             <span className="dashboard-task-item__description">
                 {task.metadata?.leadId ? (
@@ -77,15 +83,50 @@ export default function DashboardTasksPanel({
     onRetry,
     onTaskClick,
 }: DashboardTasksPanelProps) {
-    const activeTasks = tasks.filter((task) => task.status !== 'completed');
-    const visibleTasks = activeTasks.slice(0, 10);
+    const activeTasks = useMemo(() => tasks.filter((task) => task.status !== 'completed'), [tasks]);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [currentPage, setCurrentPage] = useState(1);
+    const filteredTasks = useMemo(() => {
+        const query = searchQuery.trim().toLowerCase();
+        if (!query) return activeTasks;
+
+        return activeTasks.filter((task) => {
+            const leadData = task.metadata?.leadData as
+                | { name?: string; cell?: string; idNumber?: string }
+                | undefined;
+            const clientName = task.client
+                ? `${task.client.firstName} ${task.client.lastName}`
+                : '';
+            return [
+                task.title,
+                task.description,
+                leadData?.name,
+                leadData?.cell,
+                leadData?.idNumber,
+                clientName,
+            ]
+                .filter(Boolean)
+                .some((value) => String(value).toLowerCase().includes(query));
+        });
+    }, [activeTasks, searchQuery]);
+    const totalPages = Math.max(1, Math.ceil(filteredTasks.length / PAGE_SIZE));
+    const pageStart = (currentPage - 1) * PAGE_SIZE;
+    const visibleTasks = filteredTasks.slice(pageStart, pageStart + PAGE_SIZE);
+
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchQuery, tasks]);
+
+    useEffect(() => {
+        if (currentPage > totalPages) setCurrentPage(totalPages);
+    }, [currentPage, totalPages]);
 
     return (
         <section className="dashboard-tasks-panel" aria-labelledby="dashboard-tasks-title">
             <header className="dashboard-tasks-panel__header">
                 <div>
-                    <h2 id="dashboard-tasks-title">My Tasks</h2>
-                    <p>Assigned work requiring your attention</p>
+                    <h2 id="dashboard-tasks-title">My Work Queue</h2>
+                    <p>Assigned leads and tasks requiring your attention</p>
                 </div>
                 <span
                     className={`dashboard-tasks-panel__count${isError ? ' dashboard-tasks-panel__count--error' : ''}`}
@@ -95,6 +136,21 @@ export default function DashboardTasksPanel({
                         : `${activeTasks.length} active${tasks.length > 0 ? ` / ${tasks.length} total` : ''}`}
                 </span>
             </header>
+
+            {!isLoading && !isError && activeTasks.length > 0 && (
+                <div className="dashboard-tasks-panel__toolbar">
+                    <label>
+                        <span className="visually-hidden">Search work queue</span>
+                        <input
+                            type="search"
+                            value={searchQuery}
+                            placeholder="Search lead, client or phone"
+                            onChange={(event) => setSearchQuery(event.target.value)}
+                        />
+                    </label>
+                    <span>{filteredTasks.length} matching</span>
+                </div>
+            )}
 
             <div className="dashboard-tasks-panel__body">
                 {isLoading ? (
@@ -133,8 +189,25 @@ export default function DashboardTasksPanel({
                         </span>
                         <div>
                             <strong>All caught up!</strong>
-                            <p>You don&apos;t have any active tasks assigned right now.</p>
+                            <p>You don&apos;t have any assigned leads or active tasks right now.</p>
                         </div>
+                    </div>
+                ) : filteredTasks.length === 0 ? (
+                    <div className="dashboard-tasks-state dashboard-tasks-state--empty">
+                        <span className="dashboard-tasks-state__icon" aria-hidden="true">
+                            <i className="bi bi-search" />
+                        </span>
+                        <div>
+                            <strong>No matching work</strong>
+                            <p>Try a lead name, client name, phone number or ID number.</p>
+                        </div>
+                        <button
+                            type="button"
+                            className="btn btn-sm btn-outline-primary"
+                            onClick={() => setSearchQuery('')}
+                        >
+                            Clear search
+                        </button>
                     </div>
                 ) : (
                     <div className="dashboard-task-list">
@@ -161,9 +234,32 @@ export default function DashboardTasksPanel({
                 )}
             </div>
 
-            {!isLoading && !isError && activeTasks.length > 10 && (
+            {!isLoading && !isError && filteredTasks.length > 0 && (
                 <footer className="dashboard-tasks-panel__footer">
-                    Showing 10 of {activeTasks.length} active tasks
+                    <span>
+                        Showing {pageStart + 1}-
+                        {Math.min(pageStart + PAGE_SIZE, filteredTasks.length)} of{' '}
+                        {filteredTasks.length}
+                    </span>
+                    <span>
+                        Page {currentPage} of {totalPages}
+                    </span>
+                    <div>
+                        <button
+                            type="button"
+                            disabled={currentPage === 1}
+                            onClick={() => setCurrentPage((page) => page - 1)}
+                        >
+                            Previous
+                        </button>
+                        <button
+                            type="button"
+                            disabled={currentPage === totalPages}
+                            onClick={() => setCurrentPage((page) => page + 1)}
+                        >
+                            Next
+                        </button>
+                    </div>
                 </footer>
             )}
         </section>

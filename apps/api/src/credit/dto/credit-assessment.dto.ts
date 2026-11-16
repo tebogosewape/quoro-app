@@ -1,6 +1,18 @@
 /* eslint-disable indent */
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsOptional, IsIn, Length, Matches } from 'class-validator';
+import {
+    Equals,
+    IsBoolean,
+    IsIn,
+    IsInt,
+    IsNotEmpty,
+    IsOptional,
+    IsString,
+    Length,
+    Matches,
+    Max,
+    Min,
+} from 'class-validator';
 
 export class CreditAssessmentRequestDto {
     @ApiProperty({
@@ -9,12 +21,12 @@ export class CreditAssessmentRequestDto {
     })
     @IsString()
     @IsNotEmpty()
-    @Matches(/^\d{13}$/)
+    @Length(1, 20)
     identityNumber!: string;
 
     @ApiPropertyOptional({
         example: 'N',
-        description: 'Set to Y if identityNumber is a Passport Number, N for SA ID. Defaults to N.',
+        description: 'Set to Y if identityNumber is a passport number, otherwise N.',
     })
     @IsString()
     @IsOptional()
@@ -35,7 +47,7 @@ export class CreditAssessmentRequestDto {
 
     @ApiPropertyOptional({
         example: 'M',
-        description: 'Gender: M = Male, F = Female. Defaults to M.',
+        description: 'Gender: M = Male, F = Female.',
     })
     @IsString()
     @IsOptional()
@@ -71,11 +83,10 @@ export class CreditAssessmentRequestDto {
     @Length(1, 25) // Max length 25 per doc
     address4?: string;
 
-    @ApiProperty({ example: '0152', description: '5 digits postal code' })
+    @ApiProperty({ example: '0152', description: 'South African postal code, maximum 5 digits' })
     @IsString()
-    @IsOptional()
-    @Matches(/^\d{5}$/) // 5 digits per doc
-    postalCode?: string;
+    @Matches(/^\d{4,5}$/)
+    postalCode!: string;
 
     @ApiPropertyOptional({ example: '27', description: 'Home Tel Code. Max 7 digits.' })
     @IsString()
@@ -113,7 +124,7 @@ export class CreditAssessmentRequestDto {
     cellTelNo?: string;
 
     @ApiPropertyOptional({
-        example: 'PDF4',
+        example: 'XPDF2',
         enum: ['PDF2', 'PDF3', 'PDF4', 'XPDF2', 'XPDF3', 'XPDF4', 'JPDF2', 'JPDF3', 'JPDF4'],
     })
     @IsOptional()
@@ -142,6 +153,27 @@ export class CreditAssessmentRequestDto {
         | 'JPDF2'
         | 'JPDF3'
         | 'JPDF4';
+
+    @ApiProperty({ example: true, description: 'The client explicitly consented to this enquiry' })
+    @IsBoolean()
+    @Equals(true)
+    clientConsent!: true;
+
+    @ApiProperty({ example: 13, description: 'Experian enquiry purpose code (1-19)' })
+    @IsInt()
+    @Min(1)
+    @Max(19)
+    enquiryPurpose!: number;
+
+    @ApiPropertyOptional({ example: true, default: true })
+    @IsOptional()
+    @IsBoolean()
+    includeCpaNlrData?: boolean;
+
+    @ApiPropertyOptional({ example: true, default: true })
+    @IsOptional()
+    @IsBoolean()
+    runCompuScore?: boolean;
 
     // Enquirer (required by spec)
     @ApiProperty({ example: 'Quora Holdings (QA Branch)' })

@@ -12,6 +12,7 @@ import {
     Max,
     Matches,
     IsObject,
+    IsNotEmpty,
     ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -22,9 +23,11 @@ import { ClientStatus, MaritalStatus, ClientType } from '@/entities/client.entit
  */
 export class SelectedProductDto {
     @IsString()
+    @IsNotEmpty()
     productId!: string;
 
     @IsString()
+    @IsNotEmpty()
     paymentOptionId!: string;
 
     @IsOptional()

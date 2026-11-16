@@ -1,17 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-    Row,
-    Col,
-    Form,
-    Button,
-    Spinner,
-    Badge,
-    Table,
-    Pagination,
-} from 'react-bootstrap';
+import { Form, Button, Spinner } from 'react-bootstrap';
 import { getLeads, type Lead, type LeadSearchQuery, formatPhoneNumber } from '@/api/leads.api';
 import { format } from 'date-fns';
+import './LeadsOverview.css';
 
 type LeadListItem = {
     id: string;
@@ -46,6 +38,26 @@ function mapLeadsToListItems(leads: Lead[]): LeadListItem[] {
     }));
 }
 
+function getOutcomeTone(outcome: string) {
+    const normalized = outcome.toLowerCase();
+
+    if (normalized === 'pending') return 'pending';
+    if (normalized.includes('success') || normalized.includes('converted')) return 'success';
+    if (
+        normalized.includes('failed') ||
+        normalized.includes('rejected') ||
+        normalized.includes('declined')
+    ) {
+        return 'danger';
+    }
+    return 'neutral';
+}
+
+function isPendingOutcome(outcome: string) {
+    const normalized = outcome.trim().toLowerCase();
+    return normalized === 'pending' || normalized === 'not processed';
+}
+
 export default function LeadsOverview() {
     const navigate = useNavigate();
 
@@ -55,6 +67,7 @@ export default function LeadsOverview() {
     const [error, setError] = useState<string | null>(null);
 
     // Filter State
+    const [searchInput, setSearchInput] = useState('');
     const [searchQuery, setSearchQuery] = useState('');
     const [franchiseFilter, setFranchiseFilter] = useState('all');
     const [affiliateFilter, setAffiliateFilter] = useState('all');
@@ -77,7 +90,7 @@ export default function LeadsOverview() {
     );
 
     // Calculate stats
-    const pendingLeads = all.filter((l) => l.leadOutcome === 'Pending').length;
+    const pendingLeads = all.filter((lead) => isPendingOutcome(lead.leadOutcome)).length;
     const assignedLeads = all.filter((l) => l.allocatedTo !== 'Unassigned').length;
 
     // Error message helper
@@ -149,10 +162,12 @@ export default function LeadsOverview() {
 
     const handleSearch = (e: React.FormEvent) => {
         e.preventDefault();
-        setCurrentPage(1); // Reset to first page on new search
+        setSearchQuery(searchInput.trim());
+        setCurrentPage(1);
     };
 
     const handleClearFilters = () => {
+        setSearchInput('');
         setSearchQuery('');
         setFranchiseFilter('all');
         setAffiliateFilter('all');
@@ -161,657 +176,349 @@ export default function LeadsOverview() {
     };
 
     return (
-        <div className="container-fluid px-4 py-4">
-            {/* Modern Header Card with Gradient */}
-            <div
-                className="card border-0 shadow-sm mb-4"
-                style={{
-                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                    borderRadius: '16px',
-                }}
-            >
-                <div className="card-body p-4">
-                    <div className="row align-items-center">
-                        <div className="col-md-6">
-                            <div className="d-flex align-items-center">
-                                <div
-                                    className="bg-white bg-opacity-25 rounded-3 p-3 me-3"
-                                    style={{ backdropFilter: 'blur(10px)' }}
-                                >
-                                    <svg
-                                        width="32"
-                                        height="32"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="white"
-                                        strokeWidth="2"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                    >
-                                        <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-                                        <circle cx="8.5" cy="7" r="4"></circle>
-                                        <polyline points="17 11 19 13 23 9"></polyline>
-                                    </svg>
-                                </div>
-                                <div>
-                                    <h2 className="text-white mb-1 fw-bold">Leads Management</h2>
-                                    <p className="text-white text-opacity-75 mb-0">
-                                        Track and manage all incoming leads
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
-                        <div className="col-md-6">
-                            <div className="row g-3 text-white">
-                                <div className="col-4">
-                                    <div className="text-center">
-                                        <div className="fs-3 fw-bold">{totalLeads}</div>
-                                        <div className="small opacity-75">Total Leads</div>
-                                    </div>
-                                </div>
-                                <div className="col-4">
-                                    <div className="text-center">
-                                        <div className="fs-3 fw-bold">{pendingLeads}</div>
-                                        <div className="small opacity-75">Pending</div>
-                                    </div>
-                                </div>
-                                <div className="col-4">
-                                    <div className="text-center">
-                                        <div className="fs-3 fw-bold">{assignedLeads}</div>
-                                        <div className="small opacity-75">Assigned</div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
+        <main className="leads-overview-screen">
+            <header className="leads-overview-header">
+                <div className="leads-overview-header__title">
+                    <span className="leads-overview-header__icon" aria-hidden="true">
+                        <i className="fa-solid fa-user-group" />
+                    </span>
+                    <div>
+                        <h1>Leads Management</h1>
+                        <p>Track, filter and manage incoming leads</p>
                     </div>
                 </div>
-            </div>
-
-            {/* Search and Filters Card */}
-            <div className="card border-0 shadow-sm mb-4" style={{ borderRadius: '12px' }}>
-                <div className="card-body p-4">
-                    <Form onSubmit={handleSearch}>
-                        <Row className="g-3 align-items-end">
-                            {/* Search */}
-                            <Col md={12} lg={4}>
-                                <Form.Group>
-                                    <Form.Label className="fw-semibold mb-2">
-                                        <svg
-                                            width="16"
-                                            height="16"
-                                            viewBox="0 0 24 24"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            strokeWidth="2"
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                            className="me-2"
-                                            style={{ marginTop: '-3px' }}
-                                        >
-                                            <circle cx="11" cy="11" r="8"></circle>
-                                            <path d="m21 21-4.35-4.35"></path>
-                                        </svg>
-                                        Search
-                                    </Form.Label>
-                                    <div className="input-group shadow-sm">
-                                        <span
-                                            className="input-group-text bg-white border-end-0"
-                                            style={{ borderRadius: '8px 0 0 8px' }}
-                                        >
-                                            <svg
-                                                width="18"
-                                                height="18"
-                                                viewBox="0 0 24 24"
-                                                fill="none"
-                                                stroke="currentColor"
-                                                strokeWidth="2"
-                                                strokeLinecap="round"
-                                                strokeLinejoin="round"
-                                            >
-                                                <circle cx="11" cy="11" r="8"></circle>
-                                                <path d="m21 21-4.35-4.35"></path>
-                                            </svg>
-                                        </span>
-                                        <Form.Control
-                                            type="text"
-                                            placeholder="Search by name, cell, ID..."
-                                            value={searchQuery}
-                                            onChange={(e) => setSearchQuery(e.target.value)}
-                                            className="border-start-0 border-end-0"
-                                        />
-                                        <Button
-                                            variant="outline-secondary"
-                                            type="submit"
-                                            style={{ borderRadius: '0 8px 8px 0' }}
-                                        >
-                                            Search
-                                        </Button>
-                                    </div>
-                                </Form.Group>
-                            </Col>
-
-                            {/* Franchise Filter */}
-                            <Col md={4} lg={2}>
-                                <Form.Group>
-                                    <Form.Label className="fw-semibold mb-2">
-                                        <svg
-                                            width="16"
-                                            height="16"
-                                            viewBox="0 0 24 24"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            strokeWidth="2"
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                            className="me-2"
-                                            style={{ marginTop: '-3px' }}
-                                        >
-                                            <rect x="3" y="3" width="7" height="7"></rect>
-                                            <rect x="14" y="3" width="7" height="7"></rect>
-                                            <rect x="14" y="14" width="7" height="7"></rect>
-                                            <rect x="3" y="14" width="7" height="7"></rect>
-                                        </svg>
-                                        Franchise
-                                    </Form.Label>
-                                    <Form.Select
-                                        value={franchiseFilter}
-                                        onChange={(e) => {
-                                            setFranchiseFilter(e.target.value);
-                                            setCurrentPage(1);
-                                        }}
-                                        className="shadow-sm"
-                                        style={{ borderRadius: '8px' }}
-                                    >
-                                        <option value="all">All Franchises</option>
-                                        {uniqueFranchises.map((f) => (
-                                            <option key={f} value={f}>
-                                                {f}
-                                            </option>
-                                        ))}
-                                    </Form.Select>
-                                </Form.Group>
-                            </Col>
-
-                            {/* Affiliate Filter */}
-                            <Col md={4} lg={2}>
-                                <Form.Group>
-                                    <Form.Label className="fw-semibold mb-2">
-                                        <svg
-                                            width="16"
-                                            height="16"
-                                            viewBox="0 0 24 24"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            strokeWidth="2"
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                            className="me-2"
-                                            style={{ marginTop: '-3px' }}
-                                        >
-                                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-                                            <circle cx="9" cy="7" r="4"></circle>
-                                            <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-                                            <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-                                        </svg>
-                                        Affiliate
-                                    </Form.Label>
-                                    <Form.Select
-                                        value={affiliateFilter}
-                                        onChange={(e) => {
-                                            setAffiliateFilter(e.target.value);
-                                            setCurrentPage(1);
-                                        }}
-                                        className="shadow-sm"
-                                        style={{ borderRadius: '8px' }}
-                                    >
-                                        <option value="all">All Affiliates</option>
-                                        {uniqueAffiliates.map((a) => (
-                                            <option key={a} value={a}>
-                                                {a}
-                                            </option>
-                                        ))}
-                                    </Form.Select>
-                                </Form.Group>
-                            </Col>
-
-                            {/* Outcome Filter */}
-                            <Col md={4} lg={2}>
-                                <Form.Group>
-                                    <Form.Label className="fw-semibold mb-2">
-                                        <svg
-                                            width="16"
-                                            height="16"
-                                            viewBox="0 0 24 24"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            strokeWidth="2"
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                            className="me-2"
-                                            style={{ marginTop: '-3px' }}
-                                        >
-                                            <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
-                                        </svg>
-                                        Outcome
-                                    </Form.Label>
-                                    <Form.Select
-                                        value={outcomeFilter}
-                                        onChange={(e) => {
-                                            setOutcomeFilter(e.target.value);
-                                            setCurrentPage(1);
-                                        }}
-                                        className="shadow-sm"
-                                        style={{ borderRadius: '8px' }}
-                                    >
-                                        <option value="all">All Outcomes</option>
-                                        {uniqueOutcomes.map((o) => (
-                                            <option key={o} value={o}>
-                                                {o}
-                                            </option>
-                                        ))}
-                                    </Form.Select>
-                                </Form.Group>
-                            </Col>
-
-                            {/* Action Buttons */}
-                            <Col md={12} lg={2}>
-                                <div className="d-flex gap-2">
-                                    <Button
-                                        variant="outline-secondary"
-                                        onClick={handleClearFilters}
-                                        className="flex-grow-1 shadow-sm"
-                                        style={{ borderRadius: '8px' }}
-                                    >
-                                        <svg
-                                            width="16"
-                                            height="16"
-                                            viewBox="0 0 24 24"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            strokeWidth="2"
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                            className="me-1"
-                                            style={{ marginTop: '-2px' }}
-                                        >
-                                            <line x1="18" y1="6" x2="6" y2="18"></line>
-                                            <line x1="6" y1="6" x2="18" y2="18"></line>
-                                        </svg>
-                                        Clear
-                                    </Button>
-                                    <Button
-                                        variant="primary"
-                                        onClick={() => navigate('/leads/import')}
-                                        className="shadow-sm"
-                                        style={{
-                                            borderRadius: '8px',
-                                            background:
-                                                'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                                            border: 'none',
-                                        }}
-                                    >
-                                        <svg
-                                            width="16"
-                                            height="16"
-                                            viewBox="0 0 24 24"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            strokeWidth="2"
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                            className="me-1"
-                                            style={{ marginTop: '-2px' }}
-                                        >
-                                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                                            <polyline points="17 8 12 3 7 8"></polyline>
-                                            <line x1="12" y1="3" x2="12" y2="15"></line>
-                                        </svg>
-                                        Import
-                                    </Button>
-                                </div>
-                            </Col>
-                        </Row>
-                    </Form>
-                </div>
-            </div>
-
-            {/* Error Alert */}
-            {error && (
-                <div
-                    className="alert alert-danger shadow-sm d-flex align-items-center mb-4"
-                    style={{ borderRadius: '12px' }}
+                <Button
+                    type="button"
+                    className="leads-overview-primary-action"
+                    onClick={() => navigate('/leads/import')}
                 >
-                    <svg
-                        width="20"
-                        height="20"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        className="me-2 flex-shrink-0"
-                    >
-                        <circle cx="12" cy="12" r="10"></circle>
-                        <line x1="15" y1="9" x2="9" y2="15"></line>
-                        <line x1="9" y1="9" x2="15" y2="15"></line>
-                    </svg>
-                    {error}
-                </div>
-            )}
+                    <i className="fa-solid fa-file-import" aria-hidden="true" />
+                    Import leads
+                </Button>
+            </header>
 
-            {/* Loading State */}
-            {loading && (
-                <div className="text-center py-5">
-                    <Spinner
-                        animation="border"
-                        style={{ width: '3rem', height: '3rem', color: '#667eea' }}
-                    />
-                    <p className="text-muted mt-3 mb-0">Loading leads...</p>
-                </div>
-            )}
+            <section className="leads-overview-stats" aria-label="Lead summary">
+                <article className="leads-overview-stat leads-overview-stat--total">
+                    <span className="leads-overview-stat__icon" aria-hidden="true">
+                        <i className="fa-solid fa-layer-group" />
+                    </span>
+                    <div>
+                        <span>Total leads</span>
+                        <strong>{totalLeads}</strong>
+                    </div>
+                </article>
+                <article className="leads-overview-stat leads-overview-stat--pending">
+                    <span className="leads-overview-stat__icon" aria-hidden="true">
+                        <i className="fa-regular fa-clock" />
+                    </span>
+                    <div>
+                        <span>Pending on page</span>
+                        <strong>{pendingLeads}</strong>
+                    </div>
+                </article>
+                <article className="leads-overview-stat leads-overview-stat--assigned">
+                    <span className="leads-overview-stat__icon" aria-hidden="true">
+                        <i className="fa-solid fa-user-check" />
+                    </span>
+                    <div>
+                        <span>Assigned on page</span>
+                        <strong>{assignedLeads}</strong>
+                    </div>
+                </article>
+            </section>
 
-            {/* Data Table */}
-            {!loading && all.length > 0 && (
-                <>
-                    <div className="card border-0 shadow-sm" style={{ borderRadius: '12px' }}>
-                        <div style={{ overflowX: 'auto' }}>
-                            <Table hover responsive className="mb-0">
-                                <thead
-                                    style={{
-                                        background: '#f8f9fa',
-                                        borderBottom: '2px solid #dee2e6',
-                                    }}
-                                >
+            <section className="leads-overview-workspace" aria-label="Lead directory">
+                <Form className="leads-overview-toolbar" onSubmit={handleSearch}>
+                    <Form.Group className="leads-overview-search" controlId="lead-search">
+                        <Form.Label>Search leads</Form.Label>
+                        <span className="leads-overview-search__control">
+                            <i className="fa-solid fa-magnifying-glass" aria-hidden="true" />
+                            <Form.Control
+                                type="search"
+                                placeholder="Name, cell or ID number"
+                                value={searchInput}
+                                onChange={(event) => setSearchInput(event.target.value)}
+                            />
+                        </span>
+                    </Form.Group>
+
+                    <Form.Group className="leads-overview-filter" controlId="lead-franchise">
+                        <Form.Label>Franchise</Form.Label>
+                        <Form.Select
+                            value={franchiseFilter}
+                            onChange={(event) => {
+                                setFranchiseFilter(event.target.value);
+                                setCurrentPage(1);
+                            }}
+                        >
+                            <option value="all">All franchises</option>
+                            {uniqueFranchises.map((franchise) => (
+                                <option key={franchise} value={franchise}>
+                                    {franchise}
+                                </option>
+                            ))}
+                        </Form.Select>
+                    </Form.Group>
+
+                    <Form.Group className="leads-overview-filter" controlId="lead-affiliate">
+                        <Form.Label>Affiliate</Form.Label>
+                        <Form.Select
+                            value={affiliateFilter}
+                            onChange={(event) => {
+                                setAffiliateFilter(event.target.value);
+                                setCurrentPage(1);
+                            }}
+                        >
+                            <option value="all">All affiliates</option>
+                            {uniqueAffiliates.map((affiliate) => (
+                                <option key={affiliate} value={affiliate}>
+                                    {affiliate}
+                                </option>
+                            ))}
+                        </Form.Select>
+                    </Form.Group>
+
+                    <Form.Group className="leads-overview-filter" controlId="lead-outcome">
+                        <Form.Label>Outcome</Form.Label>
+                        <Form.Select
+                            value={outcomeFilter}
+                            onChange={(event) => {
+                                setOutcomeFilter(event.target.value);
+                                setCurrentPage(1);
+                            }}
+                        >
+                            <option value="all">All outcomes</option>
+                            {uniqueOutcomes.map((outcome) => (
+                                <option key={outcome} value={outcome}>
+                                    {outcome}
+                                </option>
+                            ))}
+                        </Form.Select>
+                    </Form.Group>
+
+                    <div className="leads-overview-toolbar__actions">
+                        <Button type="submit" className="leads-overview-search-button">
+                            Search
+                        </Button>
+                        <Button
+                            type="button"
+                            variant="outline-secondary"
+                            className="leads-overview-clear-button"
+                            onClick={handleClearFilters}
+                        >
+                            Clear
+                        </Button>
+                    </div>
+                </Form>
+
+                {error && (
+                    <div className="leads-overview-alert" role="alert">
+                        <i className="fa-solid fa-circle-exclamation" aria-hidden="true" />
+                        <span>{error}</span>
+                    </div>
+                )}
+
+                {loading && (
+                    <div className="leads-overview-state" aria-label="Loading leads">
+                        <Spinner animation="border" size="sm" />
+                        <span>Loading leads...</span>
+                    </div>
+                )}
+
+                {!loading && all.length > 0 && (
+                    <>
+                        <div className="leads-overview-table-scroll">
+                            <table className="leads-overview-table">
+                                <thead>
                                     <tr>
-                                        <th
-                                            style={{
-                                                fontWeight: 600,
-                                                fontSize: '0.875rem',
-                                                color: '#495057',
-                                                padding: '1rem 0.75rem',
-                                                textTransform: 'uppercase',
-                                                letterSpacing: '0.5px',
-                                            }}
-                                        >
-                                            Time Received
-                                        </th>
-                                        <th
-                                            style={{
-                                                fontWeight: 600,
-                                                fontSize: '0.875rem',
-                                                color: '#495057',
-                                                padding: '1rem 0.75rem',
-                                                textTransform: 'uppercase',
-                                                letterSpacing: '0.5px',
-                                            }}
-                                        >
-                                            Name
-                                        </th>
-                                        <th
-                                            style={{
-                                                fontWeight: 600,
-                                                fontSize: '0.875rem',
-                                                color: '#495057',
-                                                padding: '1rem 0.75rem',
-                                                textTransform: 'uppercase',
-                                                letterSpacing: '0.5px',
-                                            }}
-                                        >
-                                            Cell
-                                        </th>
-                                        <th
-                                            style={{
-                                                fontWeight: 600,
-                                                fontSize: '0.875rem',
-                                                color: '#495057',
-                                                padding: '1rem 0.75rem',
-                                                textTransform: 'uppercase',
-                                                letterSpacing: '0.5px',
-                                            }}
-                                        >
-                                            Franchise
-                                        </th>
-                                        <th
-                                            style={{
-                                                fontWeight: 600,
-                                                fontSize: '0.875rem',
-                                                color: '#495057',
-                                                padding: '1rem 0.75rem',
-                                                textTransform: 'uppercase',
-                                                letterSpacing: '0.5px',
-                                            }}
-                                        >
-                                            Affiliate
-                                        </th>
-                                        <th
-                                            style={{
-                                                fontWeight: 600,
-                                                fontSize: '0.875rem',
-                                                color: '#495057',
-                                                padding: '1rem 0.75rem',
-                                                textTransform: 'uppercase',
-                                                letterSpacing: '0.5px',
-                                            }}
-                                        >
-                                            Allocated To
-                                        </th>
-                                        <th
-                                            style={{
-                                                fontWeight: 600,
-                                                fontSize: '0.875rem',
-                                                color: '#495057',
-                                                padding: '1rem 0.75rem',
-                                                textTransform: 'uppercase',
-                                                letterSpacing: '0.5px',
-                                            }}
-                                        >
-                                            Outcome
-                                        </th>
+                                        <th scope="col">Received</th>
+                                        <th scope="col">Lead</th>
+                                        <th scope="col">Cell</th>
+                                        <th scope="col">Source</th>
+                                        <th scope="col">Allocated to</th>
+                                        <th scope="col">Outcome</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {all.map((lead) => (
-                                        <tr
-                                            key={lead.id}
-                                            style={{
-                                                borderBottom: '1px solid #e9ecef',
-                                                transition: 'all 0.2s ease',
-                                            }}
-                                            className="lead-row"
-                                        >
-                                            <td
-                                                className="text-nowrap"
-                                                style={{ padding: '1rem 0.75rem' }}
-                                            >
+                                        <tr key={lead.id}>
+                                            <td className="leads-overview-date">
                                                 {format(
                                                     new Date(lead.timeReceived),
-                                                    'yyyy-MM-dd HH:mm'
+                                                    'dd MMM yyyy, HH:mm'
                                                 )}
                                             </td>
-                                            <td
-                                                style={{ padding: '1rem 0.75rem', fontWeight: 500 }}
-                                            >
-                                                {lead.name}
+                                            <td>
+                                                <strong className="leads-overview-name">
+                                                    {lead.name}
+                                                </strong>
                                                 {lead.idNumber !== 'N/A' && (
-                                                    <div className="small text-muted mt-1">
-                                                        ID: {lead.idNumber}
-                                                    </div>
+                                                    <span className="leads-overview-secondary">
+                                                        ID {lead.idNumber}
+                                                    </span>
                                                 )}
                                             </td>
-                                            <td
-                                                className="text-nowrap"
-                                                style={{ padding: '1rem 0.75rem' }}
-                                            >
-                                                <svg
-                                                    width="14"
-                                                    height="14"
-                                                    viewBox="0 0 24 24"
-                                                    fill="none"
-                                                    stroke="currentColor"
-                                                    strokeWidth="2"
-                                                    strokeLinecap="round"
-                                                    strokeLinejoin="round"
-                                                    className="me-2 text-muted"
-                                                    style={{ marginTop: '-2px' }}
-                                                >
-                                                    <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
-                                                </svg>
+                                            <td className="leads-overview-cell">
                                                 {formatPhoneNumber(lead.cell)}
                                             </td>
-                                            <td style={{ padding: '1rem 0.75rem' }}>
-                                                <Badge bg="secondary" className="px-3 py-2">
+                                            <td>
+                                                <span className="leads-overview-source">
                                                     {lead.franchise}
-                                                </Badge>
+                                                </span>
+                                                <span className="leads-overview-secondary">
+                                                    {lead.affiliate}
+                                                </span>
                                             </td>
-                                            <td style={{ padding: '1rem 0.75rem' }}>
-                                                {lead.affiliate}
-                                            </td>
-                                            <td style={{ padding: '1rem 0.75rem' }}>
-                                                {lead.allocatedTo !== 'Unassigned' ? (
-                                                    <Badge bg="info" className="px-3 py-2">
-                                                        {lead.allocatedTo}
-                                                    </Badge>
-                                                ) : (
-                                                    <span className="text-muted">Unassigned</span>
-                                                )}
-                                            </td>
-                                            <td style={{ padding: '1rem 0.75rem' }}>
-                                                <Badge
-                                                    bg={
-                                                        lead.leadOutcome === 'Pending'
-                                                            ? 'warning'
-                                                            : lead.leadOutcome
-                                                                    .toLowerCase()
-                                                                    .includes('success') ||
-                                                                lead.leadOutcome
-                                                                    .toLowerCase()
-                                                                    .includes('converted')
-                                                              ? 'success'
-                                                              : 'secondary'
+                                            <td>
+                                                <span
+                                                    className={
+                                                        'leads-overview-status ' +
+                                                        (lead.allocatedTo === 'Unassigned'
+                                                            ? 'leads-overview-status--unassigned'
+                                                            : 'leads-overview-status--assigned')
                                                     }
-                                                    className="px-3 py-2"
+                                                >
+                                                    {lead.allocatedTo}
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <span
+                                                    className={
+                                                        'leads-overview-status leads-overview-status--' +
+                                                        getOutcomeTone(lead.leadOutcome)
+                                                    }
                                                 >
                                                     {lead.leadOutcome}
-                                                </Badge>
+                                                </span>
                                             </td>
                                         </tr>
                                     ))}
                                 </tbody>
-                                <style>{`
-                                    .lead-row:hover {
-                                        background-color: #f8f9fa;
-                                        transform: translateY(-1px);
-                                        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-                                    }
-                                `}</style>
-                            </Table>
+                            </table>
                         </div>
 
-                        {/* Pagination Footer */}
-                        {totalPages > 1 && (
-                            <div
-                                className="d-flex justify-content-between align-items-center px-4 py-3"
-                                style={{
-                                    borderTop: '1px solid #e9ecef',
-                                    background: '#f8f9fa',
-                                    borderRadius: '0 0 12px 12px',
-                                }}
-                            >
-                                <div className="text-muted">
-                                    Page <span className="fw-semibold">{currentPage}</span> of{' '}
-                                    <span className="fw-semibold">{totalPages}</span>
-                                </div>
-                                <Pagination className="mb-0" size="sm">
-                                    <Pagination.First
-                                        disabled={currentPage === 1}
-                                        onClick={() => setCurrentPage(1)}
-                                    />
-                                    <Pagination.Prev
-                                        disabled={currentPage === 1}
-                                        onClick={() => setCurrentPage(currentPage - 1)}
-                                    />
-                                    <Pagination.Item active>
-                                        {currentPage} / {totalPages}
-                                    </Pagination.Item>
-                                    <Pagination.Next
-                                        disabled={currentPage === totalPages}
-                                        onClick={() => setCurrentPage(currentPage + 1)}
-                                    />
-                                    <Pagination.Last
-                                        disabled={currentPage === totalPages}
-                                        onClick={() => setCurrentPage(totalPages)}
-                                    />
-                                </Pagination>
+                        <div className="leads-overview-mobile-list" aria-label="Lead results">
+                            {all.map((lead) => (
+                                <article className="leads-overview-mobile-card" key={lead.id}>
+                                    <div className="leads-overview-mobile-card__header">
+                                        <div>
+                                            <strong>{lead.name}</strong>
+                                            <span>
+                                                {format(
+                                                    new Date(lead.timeReceived),
+                                                    'dd MMM yyyy, HH:mm'
+                                                )}
+                                            </span>
+                                        </div>
+                                        <span
+                                            className={
+                                                'leads-overview-status leads-overview-status--' +
+                                                getOutcomeTone(lead.leadOutcome)
+                                            }
+                                        >
+                                            {lead.leadOutcome}
+                                        </span>
+                                    </div>
+                                    <dl className="leads-overview-mobile-card__details">
+                                        <div>
+                                            <dt>Cell</dt>
+                                            <dd>{formatPhoneNumber(lead.cell)}</dd>
+                                        </div>
+                                        <div>
+                                            <dt>Source</dt>
+                                            <dd>
+                                                {lead.franchise} · {lead.affiliate}
+                                            </dd>
+                                        </div>
+                                        <div>
+                                            <dt>Allocated to</dt>
+                                            <dd>{lead.allocatedTo}</dd>
+                                        </div>
+                                        {lead.idNumber !== 'N/A' && (
+                                            <div>
+                                                <dt>ID number</dt>
+                                                <dd>{lead.idNumber}</dd>
+                                            </div>
+                                        )}
+                                    </dl>
+                                </article>
+                            ))}
+                        </div>
+
+                        <footer className="leads-overview-pagination">
+                            <span>
+                                Page <strong>{currentPage}</strong> of{' '}
+                                <strong>{Math.max(totalPages, 1)}</strong>
+                            </span>
+                            <div aria-label="Lead pagination">
+                                <Button
+                                    type="button"
+                                    variant="outline-secondary"
+                                    disabled={currentPage === 1}
+                                    onClick={() => setCurrentPage(1)}
+                                    aria-label="First page"
+                                >
+                                    <i className="fa-solid fa-angles-left" aria-hidden="true" />
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant="outline-secondary"
+                                    disabled={currentPage === 1}
+                                    onClick={() => setCurrentPage((page) => page - 1)}
+                                    aria-label="Previous page"
+                                >
+                                    <i className="fa-solid fa-angle-left" aria-hidden="true" />
+                                </Button>
+                                <span className="leads-overview-pagination__current">
+                                    {currentPage}
+                                </span>
+                                <Button
+                                    type="button"
+                                    variant="outline-secondary"
+                                    disabled={currentPage === totalPages}
+                                    onClick={() => setCurrentPage((page) => page + 1)}
+                                    aria-label="Next page"
+                                >
+                                    <i className="fa-solid fa-angle-right" aria-hidden="true" />
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant="outline-secondary"
+                                    disabled={currentPage === totalPages}
+                                    onClick={() => setCurrentPage(totalPages)}
+                                    aria-label="Last page"
+                                >
+                                    <i className="fa-solid fa-angles-right" aria-hidden="true" />
+                                </Button>
                             </div>
-                        )}
-                    </div>
-                </>
-            )}
+                        </footer>
+                    </>
+                )}
 
-            {/* Empty State */}
-            {!loading && all.length === 0 && !error && (
-                <div className="card border-0 shadow-sm" style={{ borderRadius: '12px' }}>
-                    <div className="card-body text-center py-5">
-                        <div
-                            className="bg-primary bg-opacity-10 rounded-circle d-inline-flex align-items-center justify-content-center mb-3"
-                            style={{ width: '80px', height: '80px' }}
-                        >
-                            <svg
-                                width="40"
-                                height="40"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="#667eea"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                            >
-                                <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-                                <circle cx="8.5" cy="7" r="4"></circle>
-                                <polyline points="17 11 19 13 23 9"></polyline>
-                            </svg>
-                        </div>
-                        <h4 className="mb-2">No Leads Found</h4>
-                        <p className="text-muted mb-4">
+                {!loading && all.length === 0 && !error && (
+                    <div className="leads-overview-state leads-overview-empty">
+                        <span className="leads-overview-empty__icon" aria-hidden="true">
+                            <i className="fa-solid fa-user-group" />
+                        </span>
+                        <h2>No leads found</h2>
+                        <p>
                             {searchQuery ||
                             franchiseFilter !== 'all' ||
                             affiliateFilter !== 'all' ||
                             outcomeFilter !== 'all'
-                                ? 'Try adjusting your filters or search criteria'
-                                : 'Import a CSV file to get started'}
+                                ? 'No records match the current search and filters.'
+                                : 'Import a lead file to create the first records.'}
                         </p>
                         <Button
-                            variant="primary"
+                            type="button"
+                            className="leads-overview-primary-action"
                             onClick={() => navigate('/leads/import')}
-                            className="shadow-sm"
-                            style={{
-                                borderRadius: '8px',
-                                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                                border: 'none',
-                            }}
                         >
-                            <svg
-                                width="18"
-                                height="18"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                className="me-2"
-                                style={{ marginTop: '-3px' }}
-                            >
-                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                                <polyline points="17 8 12 3 7 8"></polyline>
-                                <line x1="12" y1="3" x2="12" y2="15"></line>
-                            </svg>
-                            Import Leads
+                            Import leads
                         </Button>
                     </div>
-                </div>
-            )}
-        </div>
+                )}
+            </section>
+        </main>
     );
 }

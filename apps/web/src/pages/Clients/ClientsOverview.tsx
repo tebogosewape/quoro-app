@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Form, Button, Spinner, Badge, Table, Pagination } from 'react-bootstrap';
+import { Button, Pagination, Spinner } from 'react-bootstrap';
 import {
     getClients,
     type Client,
@@ -11,31 +11,26 @@ import type { z } from 'zod';
 import { hasPermission } from '@/utils/permissions';
 import './ClientsOverview.css';
 
-/** Simple money helper (kept local so this file is drop-in) */
-const money = (n: number) =>
+const money = (value: number) =>
     new Intl.NumberFormat('en-ZA', {
         style: 'currency',
         currency: 'ZAR',
         maximumFractionDigits: 0,
-    }).format(Number.isFinite(n) ? n : 0);
+    }).format(Number.isFinite(value) ? value : 0);
 
 type ClientListItem = {
-    id: string; // e.g. KH12919
-    name: string; // e.g. Mr KT PHALATSE
+    id: string;
+    fileReference: string;
+    name: string;
     phone: string;
     email: string;
-    nationalId: string;
     status: 'new' | 'active' | 'awaiting_payment' | 'documents_outstanding' | 'finalised';
-    product: string; // primary product label
-    createdAt: string; // ISO
-    lastActivity: string; // ISO
-    agent: string; // assigned agent
-    balance: number; // outstanding balance
+    product: string;
+    lastActivity: string;
+    agent: string;
+    balance: number;
 };
 
-/**
- * Map backend ClientStatus to frontend ClientListItem status
- */
 function mapBackendStatusToFrontend(
     status: z.infer<typeof clientStatusEnum>
 ): ClientListItem['status'] {
@@ -53,82 +48,73 @@ function mapBackendStatusToFrontend(
     return map[status] || 'new';
 }
 
-/**
- * Convert API Client response to ClientListItem for display
- */
 function mapClientsToListItems(clients: Client[]): ClientListItem[] {
-    return clients.map((c) => {
-        const product = c.clientProducts?.[0]?.productName ?? 'N/A';
-        const agentName = c.assignedAgent
-            ? `${c.assignedAgent.firstName} ${c.assignedAgent.lastName ?? ''}`.trim()
-            : 'Unassigned';
+    return clients.map((client) => {
+        const productNames = (client.clientProducts ?? [])
+            .map((entry) => entry.productName || entry.product?.name)
+            .filter((name): name is string => Boolean(name));
+        const hasStoredProduct = Boolean(client.selectedProducts?.length);
+        const product = productNames.length
+            ? productNames.join(', ')
+            : hasStoredProduct
+                ? 'Product details unavailable'
+                : 'No product selected';
+        const agent = client.assignedAgent
+            ? `${client.assignedAgent.firstName} ${client.assignedAgent.lastName ?? ''}`.trim()
+            : client.assignedAgentId
+                ? 'Assigned agent unavailable'
+                : 'Unassigned';
+
         return {
-            id: c.id,
-            name: `${c.firstName} ${c.lastName}`,
-            phone: c.phoneNumber,
-            email: c.email,
-            nationalId: c.idNumber,
-            status: mapBackendStatusToFrontend(c.status as z.infer<typeof clientStatusEnum>),
+            id: client.id,
+            fileReference: client.fileReference || 'Pending reference',
+            name: `${client.firstName} ${client.lastName}`.trim(),
+            phone: client.phoneNumber,
+            email: client.email,
+            status: mapBackendStatusToFrontend(client.status as z.infer<typeof clientStatusEnum>),
             product,
-            createdAt: c.createdAt,
-            lastActivity: c.updatedAt,
-            agent: agentName,
-            balance: c.totalDebt || 0,
+            lastActivity: client.updatedAt,
+            agent,
+            balance: client.totalDebt || 0,
         };
     });
 }
 
-// removed unused seedDirectory
-
-// Note: server-side sorting, local SortKey type removed
+const statusLabels: Record<ClientListItem['status'], string> = {
+    new: 'New',
+    active: 'Active',
+    awaiting_payment: 'Awaiting payment',
+    documents_outstanding: 'Documents outstanding',
+    finalised: 'Finalised',
+};
 
 export default function ClientsOverview() {
     const navigate = useNavigate();
-
-    // API State
-    const [all, setAll] = useState<ClientListItem[]>([]);
+    const [clients, setClients] = useState<ClientListItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [retryRequest, setRetryRequest] = useState(0);
-
-    // Filter State
-    const [q, setQ] = useState('');
+    const [query, setQuery] = useState('');
     const [status, setStatus] = useState<'all' | ClientListItem['status']>('all');
-    // Note: server-side sorting for now
-
-    // Pagination State
     const [currentPage, setCurrentPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
     const [totalClients, setTotalClients] = useState(0);
 
-    // Calculate stats
-    const activeClients = all.filter((c) => c.status === 'active').length;
-    const newClients = all.filter((c) => c.status === 'new').length;
-
-    // Error message helper function for user-friendly messages
     const getErrorMessage = (err: unknown): string => {
-        if (err instanceof Error) {
-            const message = err.message.toLowerCase();
-
-            // Check for specific error patterns
-            if (message.includes('internal server error') || message.includes('500')) {
-                return 'The server encountered an error loading clients. Please try again.';
-            }
-            if (message.includes('not found') || message.includes('404')) {
-                return 'The requested clients could not be found.';
-            }
-            if (message.includes('unauthorized') || message.includes('401')) {
-                return 'You do not have permission to view clients.';
-            }
-            if (message.includes('network error') || message.includes('timeout')) {
-                return 'Network connection error. Please check your internet connection and try again.';
-            }
-            return err.message;
+        if (!(err instanceof Error)) return 'Failed to fetch clients. Please try again.';
+        const message = err.message.toLowerCase();
+        if (message.includes('internal server error') || message.includes('500')) {
+            return 'The server encountered an error loading clients. Please try again.';
         }
-        return 'Failed to fetch clients. Please try again.';
+        if (message.includes('unauthorized') || message.includes('401')) {
+            return 'You do not have permission to view clients.';
+        }
+        if (message.includes('network error') || message.includes('timeout')) {
+            return 'Network connection error. Check the connection and try again.';
+        }
+        return err.message;
     };
 
-    // Fetch clients from API
     useEffect(() => {
         let isMounted = true;
 
@@ -136,7 +122,6 @@ export default function ClientsOverview() {
             setLoading(true);
             setError(null);
             try {
-                // Map frontend status to backend status enum if needed
                 let backendStatus: z.infer<typeof clientStatusEnum> | undefined;
                 if (status !== 'all') {
                     const statusMap: Record<ClientListItem['status'], string> = {
@@ -149,17 +134,16 @@ export default function ClientsOverview() {
                     backendStatus = statusMap[status] as z.infer<typeof clientStatusEnum>;
                 }
 
-                const query: ClientSearchQuery = {
+                const request: ClientSearchQuery = {
                     page: currentPage,
                     limit: 12,
-                    search: q.trim() || undefined,
+                    search: query.trim() || undefined,
                     status: backendStatus,
                 };
-
-                const response = await getClients(query);
+                const response = await getClients(request);
 
                 if (isMounted) {
-                    setAll(mapClientsToListItems(response.data));
+                    setClients(mapClientsToListItems(response.data));
                     setTotalPages(response.meta.totalPages);
                     setTotalClients(response.meta.total);
                 }
@@ -169,571 +153,254 @@ export default function ClientsOverview() {
                     console.error('[ClientsOverview] Fetch error:', err);
                 }
             } finally {
-                if (isMounted) {
-                    setLoading(false);
-                }
+                if (isMounted) setLoading(false);
             }
         };
 
-        fetchClients();
-
+        void fetchClients();
         return () => {
             isMounted = false;
         };
-    }, [currentPage, q, retryRequest, status]);
+    }, [currentPage, query, retryRequest, status]);
 
-    // Reset to page 1 when filters change
     useEffect(() => {
         setCurrentPage(1);
-    }, [q, status]);
-
-    // Note: list is already filtered/sorted by API
+    }, [query, status]);
 
     const canCreateClients = hasPermission('create-clients') || hasPermission('manage-clients');
 
-    const statusBadgeVariant: Record<ClientListItem['status'], string> = {
-        new: 'primary',
-        active: 'success',
-        awaiting_payment: 'warning',
-        documents_outstanding: 'danger',
-        finalised: 'info',
-    };
-
-    // Simple table headers without client-side sorting for now
-
     return (
-        <div className="clients-overview-screen container-fluid px-4 py-4">
-            {/* Compact page header */}
-            <div
-                className="clients-overview-header card mb-4"
-                style={{
-                    background: 'var(--color-brand-teal)',
-                    borderRadius: '10px',
-                }}
-            >
-                <div className="card-body p-3">
-                    <div className="row align-items-center">
-                        <div className="col-lg-6">
-                            <div className="d-flex align-items-center">
-                                <div className="clients-overview-header__icon rounded-3 p-2 me-3">
-                                    <svg
-                                        width="32"
-                                        height="32"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="white"
-                                        strokeWidth="2"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                    >
-                                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-                                        <circle cx="8.5" cy="7" r="4"></circle>
-                                        <line x1="17" y1="11" x2="23" y2="11"></line>
-                                        <line x1="20" y1="8" x2="20" y2="14"></line>
-                                    </svg>
-                                </div>
-                                <div>
-                                    <h1 className="text-white mb-1 fw-bold">Clients Overview</h1>
-                                    <p className="text-white text-opacity-75 mb-0">
-                                        Manage all your clients and their accounts
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
-                        <div className="col-lg-6 mt-3 mt-lg-0">
-                            <div className="clients-overview-header__summary row g-2 text-white">
-                                <div className="col-4">
-                                    <div className="text-center">
-                                        <div className="fs-3 fw-bold">{totalClients}</div>
-                                        <div className="small opacity-75">Total Clients</div>
-                                    </div>
-                                </div>
-                                <div className="col-4">
-                                    <div className="text-center">
-                                        <div className="fs-3 fw-bold">{activeClients}</div>
-                                        <div className="small opacity-75">Active on page</div>
-                                    </div>
-                                </div>
-                                <div className="col-4">
-                                    <div className="text-center">
-                                        <div className="fs-3 fw-bold">{newClients}</div>
-                                        <div className="small opacity-75">New on page</div>
-                                    </div>
-                                </div>
-                            </div>
-                            {canCreateClients && (
-                                <div className="text-lg-end mt-3">
-                                    <Button
-                                        type="button"
-                                        className="clients-overview-header__action"
-                                        onClick={() => navigate('/clients/new')}
-                                    >
-                                        New client
-                                    </Button>
-                                </div>
-                            )}
-                        </div>
+        <div className="clients-overview-screen">
+            <header className="clients-overview-header">
+                <div className="clients-overview-header__title">
+                    <span className="clients-overview-header__icon" aria-hidden="true">
+                        <i className="bi bi-people" />
+                    </span>
+                    <div>
+                        <h1>Clients Overview</h1>
+                        <p>Search, review and manage client accounts</p>
                     </div>
                 </div>
-            </div>
 
-            {/* Error Alert */}
-            {error && (
-                <div
-                    className="alert alert-danger d-flex align-items-center justify-content-between mb-4"
-                    style={{ borderRadius: '8px' }}
-                    role="alert"
-                >
-                    <div className="d-flex align-items-center">
-                        <svg
-                            width="20"
-                            height="20"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            className="me-2 flex-shrink-0"
+                <div className="clients-overview-header__meta">
+                    <span>
+                        <strong>{totalClients}</strong> total clients
+                    </span>
+                    {canCreateClients && (
+                        <Button
+                            type="button"
+                            size="sm"
+                            className="clients-overview-header__action"
+                            onClick={() => navigate('/clients/new')}
                         >
-                            <circle cx="12" cy="12" r="10"></circle>
-                            <line x1="15" y1="9" x2="9" y2="15"></line>
-                            <line x1="9" y1="9" x2="15" y2="15"></line>
-                        </svg>
-                        {error}
-                    </div>
-                    <Button
-                        variant="link"
-                        size="sm"
+                            <i className="bi bi-plus-lg" aria-hidden="true" />
+                            New client
+                        </Button>
+                    )}
+                </div>
+            </header>
+
+            {error && (
+                <div className="clients-overview-alert" role="alert">
+                    <i className="bi bi-exclamation-circle" aria-hidden="true" />
+                    <span>{error}</span>
+                    <button
+                        type="button"
                         onClick={() => {
                             setError(null);
                             setCurrentPage(1);
                             setRetryRequest((request) => request + 1);
                         }}
-                        className="ms-2 p-0"
                     >
                         Retry
-                    </Button>
+                    </button>
                 </div>
             )}
 
-            {/* Search and Filters Card */}
-            <div className="clients-overview-panel card mb-4">
-                <div className="card-body p-3">
-                    <div className="row g-3 align-items-end">
-                        {/* Search */}
-                        <div className="col-md-4">
-                            <Form.Label className="fw-semibold mb-2">
-                                <svg
-                                    width="16"
-                                    height="16"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="2"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    className="me-2"
-                                    style={{ marginTop: '-3px' }}
-                                >
-                                    <circle cx="11" cy="11" r="8"></circle>
-                                    <path d="m21 21-4.35-4.35"></path>
-                                </svg>
-                                Search
-                            </Form.Label>
-                            <div className="clients-overview-search input-group">
-                                <span
-                                    className="input-group-text bg-white border-end-0"
-                                    style={{ borderRadius: '6px 0 0 6px' }}
-                                >
-                                    <svg
-                                        width="18"
-                                        height="18"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        strokeWidth="2"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                    >
-                                        <circle cx="11" cy="11" r="8"></circle>
-                                        <path d="m21 21-4.35-4.35"></path>
-                                    </svg>
-                                </span>
-                                <Form.Control
-                                    value={q}
-                                    onChange={(e) => setQ(e.currentTarget.value)}
-                                    placeholder="Search name, ID, phone, product..."
-                                    disabled={loading}
-                                    className="border-start-0"
-                                    style={{ borderRadius: '0 6px 6px 0' }}
-                                />
-                            </div>
-                        </div>
+            <section className="clients-overview-workspace" aria-label="Client directory">
+                <div className="clients-overview-toolbar">
+                    <label className="clients-overview-search">
+                        <span className="visually-hidden">Search clients</span>
+                        <i className="bi bi-search" aria-hidden="true" />
+                        <input
+                            type="search"
+                            value={query}
+                            onChange={(event) => setQuery(event.currentTarget.value)}
+                            placeholder="Search name, file no., ID, phone or email"
+                            disabled={loading}
+                        />
+                    </label>
 
-                        {/* Status Filter */}
-                        <div className="col-md-3">
-                            <Form.Label className="fw-semibold mb-2">
-                                <svg
-                                    width="16"
-                                    height="16"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="2"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    className="me-2"
-                                    style={{ marginTop: '-3px' }}
-                                >
-                                    <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
-                                </svg>
-                                Status
-                            </Form.Label>
-                            <Form.Select
-                                value={status}
-                                onChange={(e) =>
-                                    setStatus(
-                                        e.currentTarget.value as 'all' | ClientListItem['status']
-                                    )
-                                }
-                                disabled={loading}
-                                style={{ borderRadius: '6px' }}
-                            >
-                                <option value="all">All statuses</option>
-                                <option value="new">New</option>
-                                <option value="active">Active</option>
-                                <option value="awaiting_payment">Awaiting payment</option>
-                                <option value="documents_outstanding">Documents outstanding</option>
-                                <option value="finalised">Finalised</option>
-                            </Form.Select>
-                        </div>
+                    <label className="clients-overview-filter">
+                        <span>Status</span>
+                        <select
+                            value={status}
+                            onChange={(event) =>
+                                setStatus(
+                                    event.currentTarget.value as 'all' | ClientListItem['status']
+                                )
+                            }
+                            disabled={loading}
+                        >
+                            <option value="all">All statuses</option>
+                            <option value="new">New</option>
+                            <option value="active">Active</option>
+                            <option value="awaiting_payment">Awaiting payment</option>
+                            <option value="documents_outstanding">Documents outstanding</option>
+                            <option value="finalised">Finalised</option>
+                        </select>
+                    </label>
 
-                        {/* Results Count */}
-                        <div className="col-md-3 text-md-end">
-                            <div className="text-muted small mb-2">Results</div>
-                            <div className="fs-5 fw-semibold">
-                                {loading ? (
-                                    <Spinner
-                                        animation="border"
-                                        size="sm"
-                                        role="status"
-                                        aria-label="Loading results"
-                                    />
-                                ) : (
-                                    `${all.length}`
-                                )}
-                            </div>
-                        </div>
-                    </div>
+                    <span className="clients-overview-results" aria-live="polite">
+                        {loading ? 'Loading…' : `${clients.length} shown`}
+                    </span>
                 </div>
-            </div>
 
-            {/* Table */}
-            <div className="clients-overview-panel clients-overview-table-card card">
+                <p className="clients-overview-table-hint">
+                    Swipe horizontally to view every column.
+                </p>
+
                 <div className="clients-overview-table-scroll">
-                    <p className="clients-overview-table-hint mb-2 px-3 pt-3">
-                        Scroll horizontally to view all client details on smaller screens.
-                    </p>
-                    <Table hover responsive className="mb-0">
+                    <table className="clients-overview-table">
                         <thead>
                             <tr>
-                                <th
-                                    style={{
-                                        fontWeight: 600,
-                                        fontSize: '0.875rem',
-                                        color: '#495057',
-                                        padding: '1rem 0.75rem',
-                                        textTransform: 'uppercase',
-                                        letterSpacing: '0.5px',
-                                    }}
-                                >
-                                    Client
-                                </th>
-                                <th
-                                    style={{
-                                        fontWeight: 600,
-                                        fontSize: '0.875rem',
-                                        color: '#495057',
-                                        padding: '1rem 0.75rem',
-                                        textTransform: 'uppercase',
-                                        letterSpacing: '0.5px',
-                                    }}
-                                >
-                                    File ID
-                                </th>
-                                <th
-                                    style={{
-                                        fontWeight: 600,
-                                        fontSize: '0.875rem',
-                                        color: '#495057',
-                                        padding: '1rem 0.75rem',
-                                        textTransform: 'uppercase',
-                                        letterSpacing: '0.5px',
-                                    }}
-                                >
-                                    Product
-                                </th>
-                                <th
-                                    style={{
-                                        fontWeight: 600,
-                                        fontSize: '0.875rem',
-                                        color: '#495057',
-                                        padding: '1rem 0.75rem',
-                                        textTransform: 'uppercase',
-                                        letterSpacing: '0.5px',
-                                    }}
-                                >
-                                    Status
-                                </th>
-                                <th
-                                    style={{
-                                        fontWeight: 600,
-                                        fontSize: '0.875rem',
-                                        color: '#495057',
-                                        padding: '1rem 0.75rem',
-                                        textTransform: 'uppercase',
-                                        letterSpacing: '0.5px',
-                                    }}
-                                >
-                                    Agent
-                                </th>
-                                <th
-                                    style={{
-                                        fontWeight: 600,
-                                        fontSize: '0.875rem',
-                                        color: '#495057',
-                                        padding: '1rem 0.75rem',
-                                        textTransform: 'uppercase',
-                                        letterSpacing: '0.5px',
-                                    }}
-                                >
-                                    Last Activity
-                                </th>
-                                <th
-                                    style={{
-                                        fontWeight: 600,
-                                        fontSize: '0.875rem',
-                                        color: '#495057',
-                                        padding: '1rem 0.75rem',
-                                        textTransform: 'uppercase',
-                                        letterSpacing: '0.5px',
-                                    }}
-                                >
-                                    Balance
-                                </th>
-                                <th
-                                    style={{
-                                        fontWeight: 600,
-                                        fontSize: '0.875rem',
-                                        color: '#495057',
-                                        padding: '1rem 0.75rem',
-                                        textTransform: 'uppercase',
-                                        letterSpacing: '0.5px',
-                                        width: '100px',
-                                    }}
-                                />
+                                <th>Client</th>
+                                <th>File no.</th>
+                                <th>Product</th>
+                                <th>Status</th>
+                                <th>Assigned to</th>
+                                <th>Updated</th>
+                                <th className="clients-overview-table__money">Debt</th>
+                                <th aria-label="Actions" />
                             </tr>
                         </thead>
                         <tbody>
                             {loading ? (
                                 <tr>
-                                    <td colSpan={8} className="text-center py-5">
-                                        <Spinner
-                                            animation="border"
-                                            role="status"
-                                            aria-label="Loading clients"
-                                            style={{
-                                                width: '3rem',
-                                                height: '3rem',
-                                                color: 'var(--color-brand-teal)',
-                                            }}
-                                        />
-                                        <p className="text-muted mt-3 mb-0">Loading clients...</p>
+                                    <td colSpan={8}>
+                                        <div className="clients-overview-state" role="status">
+                                            <Spinner
+                                                animation="border"
+                                                size="sm"
+                                                aria-label="Loading clients"
+                                            />
+                                            <span>Loading clients…</span>
+                                        </div>
                                     </td>
                                 </tr>
-                            ) : all.length === 0 ? (
+                            ) : clients.length === 0 ? (
                                 <tr>
-                                    <td colSpan={8} className="text-center py-5">
-                                        <div
-                                            className="bg-primary bg-opacity-10 rounded-circle d-inline-flex align-items-center justify-content-center mb-3"
-                                            style={{ width: '80px', height: '80px' }}
-                                        >
-                                            <svg
-                                                width="40"
-                                                height="40"
-                                                viewBox="0 0 24 24"
-                                                fill="none"
-                                                stroke="var(--color-brand-teal)"
-                                                strokeWidth="2"
-                                                strokeLinecap="round"
-                                                strokeLinejoin="round"
+                                    <td colSpan={8}>
+                                        <div className="clients-overview-state">
+                                            <span
+                                                className="clients-overview-state__icon"
+                                                aria-hidden="true"
                                             >
-                                                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-                                                <circle cx="8.5" cy="7" r="4"></circle>
-                                                <line x1="17" y1="11" x2="23" y2="11"></line>
-                                                <line x1="20" y1="8" x2="20" y2="14"></line>
-                                            </svg>
+                                                <i className="bi bi-person-x" />
+                                            </span>
+                                            <div>
+                                                <strong>No clients found</strong>
+                                                <p>Adjust the search or status filter.</p>
+                                            </div>
                                         </div>
-                                        <h5 className="mb-2">No clients found</h5>
-                                        <p className="text-muted mb-0">
-                                            Try adjusting your search or filters
-                                        </p>
                                     </td>
                                 </tr>
                             ) : (
-                                all.map((c) => (
-                                    <tr key={c.id} className="client-row">
-                                        <td style={{ padding: '1rem 0.75rem' }}>
-                                            <div className="fw-semibold">{c.name}</div>
-                                            <div className="small text-muted mt-1">
-                                                <svg
-                                                    width="12"
-                                                    height="12"
-                                                    viewBox="0 0 24 24"
-                                                    fill="none"
-                                                    stroke="currentColor"
-                                                    strokeWidth="2"
-                                                    strokeLinecap="round"
-                                                    strokeLinejoin="round"
-                                                    className="me-1"
-                                                    style={{ marginTop: '-2px' }}
-                                                >
-                                                    <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
-                                                </svg>
-                                                {c.phone}
-                                                <span className="mx-1" aria-hidden="true">
-                                                    ·
-                                                </span>
-                                                <svg
-                                                    width="12"
-                                                    height="12"
-                                                    viewBox="0 0 24 24"
-                                                    fill="none"
-                                                    stroke="currentColor"
-                                                    strokeWidth="2"
-                                                    strokeLinecap="round"
-                                                    strokeLinejoin="round"
-                                                    className="me-1"
-                                                    style={{ marginTop: '-2px' }}
-                                                >
-                                                    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
-                                                    <polyline points="22,6 12,13 2,6"></polyline>
-                                                </svg>
-                                                {c.email}
-                                            </div>
+                                clients.map((client) => (
+                                    <tr key={client.id}>
+                                        <td>
+                                            <strong className="clients-overview-client-name">
+                                                {client.name}
+                                            </strong>
+                                            <span className="clients-overview-client-contact">
+                                                {client.phone} · {client.email}
+                                            </span>
                                         </td>
-                                        <td
-                                            style={{
-                                                padding: '1rem 0.75rem',
-                                                whiteSpace: 'nowrap',
-                                            }}
-                                        >
-                                            <code className="bg-light px-2 py-1 rounded">
-                                                {c.id}
-                                            </code>
+                                        <td>
+                                            <span className="clients-overview-file-reference">
+                                                {client.fileReference}
+                                            </span>
                                         </td>
-                                        <td style={{ padding: '1rem 0.75rem' }}>{c.product}</td>
-                                        <td style={{ padding: '1rem 0.75rem' }}>
-                                            <Badge
-                                                bg={statusBadgeVariant[c.status]}
-                                                className="px-3 py-2"
-                                                style={{ textTransform: 'capitalize' }}
+                                        <td>
+                                            <span className="clients-overview-product">
+                                                {client.product}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <span
+                                                className={`clients-overview-status clients-overview-status--${client.status}`}
                                             >
-                                                {c.status.replace('_', ' ')}
-                                            </Badge>
+                                                {statusLabels[client.status]}
+                                            </span>
                                         </td>
-                                        <td style={{ padding: '1rem 0.75rem' }}>{c.agent}</td>
-                                        <td
-                                            style={{
-                                                padding: '1rem 0.75rem',
-                                                whiteSpace: 'nowrap',
-                                            }}
-                                        >
-                                            {new Date(c.lastActivity).toLocaleDateString()}
+                                        <td>
+                                            <span
+                                                className={
+                                                    client.agent === 'Unassigned'
+                                                        ? 'clients-overview-agent clients-overview-agent--unassigned'
+                                                        : 'clients-overview-agent'
+                                                }
+                                            >
+                                                {client.agent}
+                                            </span>
                                         </td>
-                                        <td style={{ padding: '1rem 0.75rem', fontWeight: 500 }}>
-                                            {money(c.balance)}
+                                        <td className="clients-overview-date">
+                                            {new Date(client.lastActivity).toLocaleDateString(
+                                                'en-ZA'
+                                            )}
                                         </td>
-                                        <td
-                                            className="text-end"
-                                            style={{
-                                                padding: '1rem 0.75rem',
-                                                whiteSpace: 'nowrap',
-                                            }}
-                                        >
+                                        <td className="clients-overview-table__money">
+                                            {money(client.balance)}
+                                        </td>
+                                        <td className="clients-overview-table__action">
                                             <Button
                                                 size="sm"
-                                                onClick={() => navigate(`/clients/${c.id}`)}
+                                                variant="outline-primary"
+                                                onClick={() => navigate(`/clients/${client.id}`)}
                                                 className="clients-overview-open"
-                                                style={{
-                                                    borderRadius: '6px',
-                                                }}
                                             >
-                                                <svg
-                                                    width="14"
-                                                    height="14"
-                                                    viewBox="0 0 24 24"
-                                                    fill="none"
-                                                    stroke="currentColor"
-                                                    strokeWidth="2"
-                                                    strokeLinecap="round"
-                                                    strokeLinejoin="round"
-                                                    className="me-1"
-                                                    style={{ marginTop: '-2px' }}
-                                                >
-                                                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
-                                                    <polyline points="15 3 21 3 21 9"></polyline>
-                                                    <line x1="10" y1="14" x2="21" y2="3"></line>
-                                                </svg>
                                                 Open
+                                                <i
+                                                    className="bi bi-arrow-right"
+                                                    aria-hidden="true"
+                                                />
                                             </Button>
                                         </td>
                                     </tr>
                                 ))
                             )}
                         </tbody>
-                    </Table>
+                    </table>
                 </div>
 
-                {/* Pagination Footer */}
                 {totalPages > 1 && (
-                    <div
-                        className="d-flex justify-content-between align-items-center px-4 py-3"
-                        style={{
-                            borderTop: '1px solid #e9ecef',
-                            background: '#f8f9fa',
-                            borderRadius: '0 0 10px 10px',
-                        }}
-                    >
-                        <div className="text-muted">
-                            Page <span className="fw-semibold">{currentPage}</span> of{' '}
-                            <span className="fw-semibold">{totalPages}</span>
-                        </div>
-                        <Pagination className="mb-0" size="sm">
+                    <footer className="clients-overview-pagination">
+                        <span>
+                            Page <strong>{currentPage}</strong> of <strong>{totalPages}</strong>
+                        </span>
+                        <Pagination size="sm">
                             <Pagination.First
                                 disabled={currentPage <= 1 || loading}
                                 onClick={() => setCurrentPage(1)}
                             />
                             <Pagination.Prev
                                 disabled={currentPage <= 1 || loading}
-                                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                                onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
                             />
-                            <Pagination.Item active>
-                                {currentPage} / {totalPages}
-                            </Pagination.Item>
                             <Pagination.Next
                                 disabled={currentPage >= totalPages || loading}
-                                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                                onClick={() =>
+                                    setCurrentPage((page) => Math.min(totalPages, page + 1))
+                                }
                             />
                             <Pagination.Last
                                 disabled={currentPage >= totalPages || loading}
                                 onClick={() => setCurrentPage(totalPages)}
                             />
                         </Pagination>
-                    </div>
+                    </footer>
                 )}
-            </div>
+            </section>
         </div>
     );
 }

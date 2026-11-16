@@ -7,12 +7,15 @@ import { MemoryRouter, useLocation } from 'react-router-dom';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AuthSession } from '@/interfaces/AuthUser';
 
-const { agentDashboardMock, listTasksMock, apiGetMock, authState } = vi.hoisted(() => ({
-    agentDashboardMock: vi.fn(),
-    listTasksMock: vi.fn(),
-    apiGetMock: vi.fn(),
-    authState: { session: null as AuthSession | null },
-}));
+const { agentDashboardMock, listTasksMock, getLeadsMock, apiGetMock, authState } = vi.hoisted(
+    () => ({
+        agentDashboardMock: vi.fn(),
+        listTasksMock: vi.fn(),
+        getLeadsMock: vi.fn(),
+        apiGetMock: vi.fn(),
+        authState: { session: null as AuthSession | null },
+    })
+);
 
 vi.mock('@/stores/auth.store', () => ({
     useAuthStore: (selector: (state: { session: AuthSession | null }) => unknown) =>
@@ -25,6 +28,11 @@ vi.mock('../../api/dashboard.api', () => ({
 
 vi.mock('@/api/tasks.api', () => ({
     listTasks: listTasksMock,
+}));
+
+vi.mock('@/api/leads.api', () => ({
+    getLeads: getLeadsMock,
+    logLeadView: vi.fn(),
 }));
 
 vi.mock('@/api/axios.config', () => ({
@@ -46,6 +54,7 @@ const agentDashboard = {
         averageCommission: 0,
     },
     assignedClients: 4,
+    assignedLeads: 0,
     newClientsThisMonth: 2,
     activeTasks: 1,
     overdueTasks: 0,
@@ -55,6 +64,7 @@ const agentDashboard = {
     targetAchievement: 80,
     recentTasks: [],
     recentClients: [],
+    recentAssignedLeads: [],
 };
 
 const makeSession = (role: AuthSession['user']['role']): AuthSession => ({
@@ -97,6 +107,13 @@ beforeEach(() => {
     agentDashboardMock.mockReset().mockResolvedValue(agentDashboard);
     listTasksMock.mockReset().mockResolvedValue({
         tasks: [],
+        total: 0,
+        page: 1,
+        limit: 50,
+        totalPages: 0,
+    });
+    getLeadsMock.mockReset().mockResolvedValue({
+        leads: [],
         total: 0,
         page: 1,
         limit: 50,
@@ -159,10 +176,152 @@ describe('ClientflowDashboard', () => {
         await vi.waitFor(() => expect(container.textContent).toContain('Welcome back, Test'));
         expect(container.querySelector('.dashboard-screen--agent')).not.toBeNull();
         expect(container.textContent).toContain('My Clients');
+        expect(container.textContent).toContain('Assigned Leads');
         expect(container.textContent).toContain('All caught up!');
         expect(container.textContent).toContain('No recent messages');
         expect(agentDashboardMock).toHaveBeenCalledWith({ timeRange: 'month' });
         expect(listTasksMock).toHaveBeenCalledWith({ assignedToUserId: 'user-1', limit: 50 });
+        expect(getLeadsMock).toHaveBeenCalledWith({
+            allocatedTo: 'Test User',
+            limit: 50,
+            sortBy: 'timeReceived',
+            sortOrder: 'DESC',
+        });
+    });
+
+    it('shows allocated leads in the work queue without duplicating an existing lead task', async () => {
+        const allocatedLeads = [
+            {
+                id: 'lead-1',
+                name: 'Leeuw',
+                cell: '0810197967',
+                idNumber: null,
+                franchise: 'QFinance',
+                affiliate: null,
+                message: null,
+                allocatedTo: 'Test User',
+                leadOutcome: 'Not Processed',
+                timeReceived: '2026-11-15T08:00:00.000Z',
+                createdAt: '2026-11-15T08:00:00.000Z',
+                updatedAt: '2026-11-15T08:00:00.000Z',
+            },
+            {
+                id: 'lead-2',
+                name: 'Mokoena',
+                cell: '0820000000',
+                idNumber: null,
+                franchise: 'QFinance',
+                affiliate: null,
+                message: null,
+                allocatedTo: 'Test User',
+                leadOutcome: 'Not Processed',
+                timeReceived: '2026-11-14T08:00:00.000Z',
+                createdAt: '2026-11-14T08:00:00.000Z',
+                updatedAt: '2026-11-14T08:00:00.000Z',
+            },
+        ];
+        agentDashboardMock.mockResolvedValue({
+            ...agentDashboard,
+            assignedLeads: 33,
+            recentAssignedLeads: allocatedLeads,
+        });
+        listTasksMock.mockResolvedValue({
+            tasks: [
+                {
+                    id: 'task-1',
+                    title: 'Convert Lead: Leeuw',
+                    description: 'Follow up',
+                    type: 'follow_up',
+                    status: 'assigned',
+                    priority: 'normal',
+                    dueDate: null,
+                    completedAt: null,
+                    estimatedHours: null,
+                    actualHours: null,
+                    completionNotes: null,
+                    metadata: { leadId: 'lead-1', leadData: { name: 'Leeuw' } },
+                    createdAt: '2026-11-15T08:00:00.000Z',
+                    updatedAt: '2026-11-15T08:00:00.000Z',
+                    assignedToUser: null,
+                    client: null,
+                    createdByUser: null,
+                },
+            ],
+            total: 1,
+            page: 1,
+            limit: 50,
+            totalPages: 1,
+        });
+        getLeadsMock.mockResolvedValue({
+            leads: allocatedLeads,
+            total: 33,
+            page: 1,
+            limit: 50,
+            totalPages: 1,
+        });
+
+        await renderDashboard();
+
+        await vi.waitFor(() => expect(container.textContent).toContain('Mokoena'));
+        expect(container.textContent).toContain('33');
+        expect(container.textContent).toContain('My Work Queue');
+        expect(container.querySelectorAll('.dashboard-task-item')).toHaveLength(2);
+        expect(container.textContent?.match(/Convert Lead: Leeuw/g)).toHaveLength(1);
+    });
+
+    it('searches and paginates the compact work queue', async () => {
+        const allocatedLeads = Array.from({ length: 7 }, (_, index) => ({
+            id: `lead-${index + 1}`,
+            name: `Lead ${index + 1}`,
+            cell: `082000000${index}`,
+            idNumber: null,
+            franchise: 'QFinance',
+            affiliate: null,
+            message: null,
+            allocatedTo: 'Test User',
+            leadOutcome: 'Not Processed',
+            timeReceived: `2026-11-${String(15 - index).padStart(2, '0')}T08:00:00.000Z`,
+            createdAt: '2026-11-15T08:00:00.000Z',
+            updatedAt: '2026-11-15T08:00:00.000Z',
+        }));
+        getLeadsMock.mockResolvedValue({
+            leads: allocatedLeads,
+            total: 7,
+            page: 1,
+            limit: 50,
+            totalPages: 1,
+        });
+
+        await renderDashboard();
+
+        await vi.waitFor(() =>
+            expect(container.querySelectorAll('.dashboard-task-item')).toHaveLength(5)
+        );
+        expect(container.textContent).toContain('Page 1 of 2');
+
+        const nextButton = Array.from(container.querySelectorAll('button')).find(
+            (button) => button.textContent === 'Next'
+        );
+        await act(async () => nextButton?.click());
+        expect(container.querySelectorAll('.dashboard-task-item')).toHaveLength(2);
+        expect(container.textContent).toContain('Convert Lead: Lead 7');
+
+        const searchInput = container.querySelector<HTMLInputElement>(
+            'input[placeholder="Search lead, client or phone"]'
+        );
+        await act(async () => {
+            if (!searchInput) return;
+            const valueSetter = Object.getOwnPropertyDescriptor(
+                HTMLInputElement.prototype,
+                'value'
+            )?.set;
+            valueSetter?.call(searchInput, 'Lead 3');
+            searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        expect(container.querySelectorAll('.dashboard-task-item')).toHaveLength(1);
+        expect(container.textContent).toContain('Convert Lead: Lead 3');
+        expect(container.textContent).toContain('1 matching');
+        expect(container.textContent).toContain('Page 1 of 1');
     });
 
     it('renders recent inbox messages with compact sender and subject hierarchy', async () => {

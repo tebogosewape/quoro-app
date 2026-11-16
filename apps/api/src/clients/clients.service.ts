@@ -1,7 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { Injectable, NotFoundException, ConflictException, Logger } from '@nestjs/common';
+import {
+    Injectable,
+    NotFoundException,
+    ConflictException,
+    BadRequestException,
+    Logger,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, FindOptionsWhere } from 'typeorm';
+import { Repository, FindOptionsWhere, In } from 'typeorm';
 import { Client, ClientStatus } from '@/entities/client.entity';
 import { Lead } from '@/entities/lead.entity';
 import { CreateClientDto } from './dto/create-client.dto';
@@ -13,6 +19,16 @@ import { WhatsappService } from '@/whatsapp/whatsapp.service';
 import { AuditService } from '@/modules/audit/audit.service';
 import { AuditAction, AuditLog } from '@/entities/audit-log.entity';
 import { UserRole } from '@/entities/user.entity';
+import { User } from '@/entities/user.entity';
+import { Product, ProductStatus } from '@/entities/product.entity';
+
+type ClientListRecord = Client & {
+    assignedAgent?: Pick<User, 'id' | 'firstName' | 'lastName'>;
+    clientProducts?: Array<{
+        productName: string;
+        product: Pick<Product, 'id' | 'code' | 'name'>;
+    }>;
+};
 
 @Injectable()
 export class ClientsService {
@@ -25,6 +41,10 @@ export class ClientsService {
         private readonly leadRepository: Repository<Lead>,
         @InjectRepository(AuditLog)
         private readonly auditLogRepository: Repository<AuditLog>,
+        @InjectRepository(Product)
+        private readonly productRepository: Repository<Product>,
+        @InjectRepository(User)
+        private readonly userRepository: Repository<User>,
         private readonly mailService: MailService,
         private readonly smsService: ZoomConnectService,
         private readonly whatsappService: WhatsappService,
@@ -68,6 +88,33 @@ export class ClientsService {
         return fileReference;
     }
 
+    private async validateProductSelections(
+        clientData: Pick<CreateClientDto, 'selectedProducts'>
+    ): Promise<void> {
+        const selections = clientData.selectedProducts ?? [];
+        if (selections.length === 0) return;
+
+        const productIds = selections.map((selection) => selection.productId);
+        if (new Set(productIds).size !== productIds.length) {
+            throw new BadRequestException('A product can only be selected once');
+        }
+
+        const activeProducts = await this.productRepository.find({
+            where: { id: In(productIds), status: ProductStatus.ACTIVE },
+            select: { id: true },
+        });
+        const activeProductIds = new Set(activeProducts.map((product) => product.id));
+        const invalidProductIds = productIds.filter(
+            (productId) => !activeProductIds.has(productId)
+        );
+
+        if (invalidProductIds.length > 0) {
+            throw new BadRequestException(
+                `Selected product is unavailable: ${invalidProductIds.join(', ')}`
+            );
+        }
+    }
+
     /**
      * Create a new client from onboarding wizard
      * If created by an agent, automatically assigns the client to that agent
@@ -101,13 +148,16 @@ export class ClientsService {
             );
         }
 
+        await this.validateProductSelections(createClientDto);
+
         // Generate unique file reference number
         const fileReference = await this.generateFileReference();
         this.logger.log(`Generated file reference: ${fileReference}`);
 
         // If created by an agent, automatically assign the client to them
+        const agentRoles = [UserRole.AGENT, UserRole.SALES_AGENT, UserRole.DEBT_REVIEW_SPECIALIST];
         const assignedAgentId =
-            userRole === UserRole.AGENT ? userId : createClientDto.assignedAgentId;
+            userRole && agentRoles.includes(userRole) ? userId : createClientDto.assignedAgentId;
 
         // Determine appropriate status based on onboarding completion
         // If products are selected and banking info provided, set as ACTIVE, otherwise DOCUMENTATION_PENDING
@@ -336,7 +386,7 @@ export class ClientsService {
      * Find all clients with pagination and filtering
      */
     async findAll(searchDto: SearchClientsDto): Promise<{
-        data: Client[];
+        data: ClientListRecord[];
         meta: {
             total: number;
             page: number;
@@ -368,7 +418,7 @@ export class ClientsService {
 
         if (search) {
             queryBuilder.where(
-                '(client.firstName LIKE :search OR client.lastName LIKE :search OR client.email LIKE :search OR client.idNumber LIKE :search OR client.phoneNumber LIKE :search)',
+                '(client.firstName LIKE :search OR client.lastName LIKE :search OR client.email LIKE :search OR client.fileReference LIKE :search OR client.idNumber LIKE :search OR client.phoneNumber LIKE :search)',
                 { search: `%${search}%` }
             );
         }
@@ -407,8 +457,75 @@ export class ClientsService {
             return client;
         });
 
+        const assignedAgentIds = [
+            ...new Set(
+                sanitizedData
+                    .map((client) => client.assignedAgentId)
+                    .filter((id): id is string => Boolean(id))
+            ),
+        ];
+        const selectedProductIds = [
+            ...new Set(
+                sanitizedData.flatMap((client) =>
+                    (client.selectedProducts ?? [])
+                        .map((selection) => selection.productId)
+                        .filter(Boolean)
+                )
+            ),
+        ];
+
+        const [agents, products] = await Promise.all([
+            assignedAgentIds.length
+                ? this.userRepository.find({
+                    where: { id: In(assignedAgentIds) },
+                    select: { id: true, firstName: true, lastName: true },
+                })
+                : Promise.resolve([]),
+            selectedProductIds.length
+                ? this.productRepository.find({
+                    where: { id: In(selectedProductIds) },
+                    select: { id: true, code: true, name: true },
+                })
+                : Promise.resolve([]),
+        ]);
+
+        const agentsById = new Map(agents.map((agent) => [agent.id, agent]));
+        const productsById = new Map(products.map((product) => [product.id, product]));
+
+        const enrichedData: ClientListRecord[] = sanitizedData.map((client) => {
+            const assignedAgent = client.assignedAgentId
+                ? agentsById.get(client.assignedAgentId)
+                : undefined;
+            const clientProducts = (client.selectedProducts ?? []).flatMap((selection) => {
+                const product = productsById.get(selection.productId);
+                return product
+                    ? [
+                        {
+                            productName: product.name,
+                            product: {
+                                id: product.id,
+                                code: product.code,
+                                name: product.name,
+                            },
+                        },
+                    ]
+                    : [];
+            });
+
+            return Object.assign(client, {
+                assignedAgent: assignedAgent
+                    ? {
+                        id: assignedAgent.id,
+                        firstName: assignedAgent.firstName,
+                        lastName: assignedAgent.lastName,
+                    }
+                    : undefined,
+                clientProducts,
+            });
+        });
+
         return {
-            data: sanitizedData,
+            data: enrichedData,
             meta: {
                 total,
                 page,
@@ -465,6 +582,10 @@ export class ClientsService {
      */
     async update(id: string, updateClientDto: UpdateClientDto, userId?: string): Promise<Client> {
         const client = await this.findOne(id);
+
+        if (updateClientDto.selectedProducts) {
+            await this.validateProductSelections(updateClientDto);
+        }
 
         // Check for ID number conflict if being updated
         if (updateClientDto.idNumber && updateClientDto.idNumber !== client.idNumber) {

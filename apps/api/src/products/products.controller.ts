@@ -15,7 +15,7 @@ import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery, ApiParam } from '@nestj
 import { ProductsService } from './products.service';
 import { CreateProductDto, UpdateProductDto, ProductListQuery } from './products.dto';
 import { AuthenticatedUser, CurrentUser, JwtAuthGuard, Roles, RolesGuard } from '@/auth';
-import { ProductStatus } from '@/entities/product.entity';
+import { ProductCategory, ProductStatus } from '@/entities/product.entity';
 import { UserRole } from '@/entities/user.entity';
 import { ListProductsQueryDto } from './list-products.query.dto';
 
@@ -34,22 +34,21 @@ export class ProductsController {
         UserRole.OPERATIONS_MANAGER,
         UserRole.CHIEF_EXECUTIVE_OFFICER,
         UserRole.AGENT,
+        UserRole.SALES_AGENT,
+        UserRole.DEBT_REVIEW_SPECIALIST,
         UserRole.VIEWER
     )
     @ApiOperation({ summary: 'List products' })
     @ApiQuery({ name: 'page', required: false, type: Number })
     @ApiQuery({ name: 'limit', required: false, type: Number })
     @ApiQuery({ name: 'search', required: false, type: String })
-    @ApiQuery({ name: 'category', required: false, enum: Object.values(ProductStatus) })
+    @ApiQuery({ name: 'category', required: false, enum: Object.values(ProductCategory) })
     @ApiQuery({ name: 'status', required: false, enum: Object.values(ProductStatus) })
     async list(@Query() q: ListProductsQueryDto) {
-        // Convert category and status from string to enum if present
         const query: ProductListQuery = {
             ...q,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            category: q.category ? (ProductStatus as any)[q.category] : undefined,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            status: q.status ? (ProductStatus as any)[q.status] : undefined,
+            category: q.category as ProductCategory | undefined,
+            status: q.status as ProductStatus | undefined,
         };
         const res = await this.svc.list(query);
         return {
@@ -66,6 +65,9 @@ export class ProductsController {
         UserRole.TEAM_LEADER,
         UserRole.OPERATIONS_MANAGER,
         UserRole.CHIEF_EXECUTIVE_OFFICER,
+        UserRole.AGENT,
+        UserRole.SALES_AGENT,
+        UserRole.DEBT_REVIEW_SPECIALIST,
         UserRole.VIEWER
     )
     @ApiOperation({ summary: 'Get product by id' })

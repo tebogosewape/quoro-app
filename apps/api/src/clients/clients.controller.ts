@@ -12,6 +12,7 @@ import {
     HttpCode,
     HttpStatus,
     Res,
+    ForbiddenException,
 } from '@nestjs/common';
 import { Response } from 'express';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
@@ -23,17 +24,32 @@ import { SearchClientsDto } from './dto/search-clients.dto';
 import { AuthenticatedUser, CurrentUser, JwtAuthGuard, Roles, RolesGuard } from '@/auth';
 import { UserRole } from '@/entities/user.entity';
 import { AuditService } from '@/modules/audit/audit.service';
+import { GenerateCreditReportDto } from './dto/generate-credit-report.dto';
 
 @ApiTags('Clients')
 @Controller('clients')
 @ApiBearerAuth('JWT-auth')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class ClientsController {
+    private readonly restrictedAgentRoles = [
+        UserRole.AGENT,
+        UserRole.SALES_AGENT,
+        UserRole.DEBT_REVIEW_SPECIALIST,
+    ];
+
     constructor(
         private readonly clientsService: ClientsService,
         private readonly experianReportService: ExperianReportService,
         private readonly auditService: AuditService
     ) {}
+
+    private async ensureClientAccess(id: string, user: AuthenticatedUser) {
+        const client = await this.clientsService.findOne(id);
+        if (this.restrictedAgentRoles.includes(user.role) && client.assignedAgentId !== user.id) {
+            throw new ForbiddenException('You can only access clients assigned to you');
+        }
+        return client;
+    }
 
     /**
      * Create a new client (onboarding endpoint)
@@ -47,23 +63,6 @@ export class ClientsController {
         @Body() createClientDto: CreateClientDto,
         @CurrentUser() user: AuthenticatedUser
     ) {
-        console.log(
-            '[ClientsController] Received createClientDto:',
-            JSON.stringify(createClientDto, null, 2)
-        );
-        console.log(
-            '[ClientsController] selectedProducts type:',
-            typeof createClientDto.selectedProducts
-        );
-        console.log('[ClientsController] selectedProducts:', createClientDto.selectedProducts);
-        if (createClientDto.selectedProducts && createClientDto.selectedProducts.length > 0) {
-            console.log('[ClientsController] First product:', createClientDto.selectedProducts[0]);
-            console.log(
-                '[ClientsController] First product type:',
-                typeof createClientDto.selectedProducts[0]
-            );
-        }
-
         const client = await this.clientsService.create(createClientDto, user.id, user.role);
         return {
             success: true,
@@ -85,13 +84,15 @@ export class ClientsController {
         UserRole.OPERATIONS_MANAGER,
         UserRole.CHIEF_EXECUTIVE_OFFICER,
         UserRole.AGENT,
+        UserRole.SALES_AGENT,
+        UserRole.DEBT_REVIEW_SPECIALIST,
         UserRole.VIEWER
     )
     @ApiOperation({ summary: 'Get all clients with pagination and filtering' })
     async findAll(@Query() searchDto: SearchClientsDto, @CurrentUser() user: AuthenticatedUser) {
         // If user is an agent, automatically filter to only their assigned clients
         const effectiveSearchDto = { ...searchDto };
-        if (user.role === UserRole.AGENT) {
+        if (this.restrictedAgentRoles.includes(user.role)) {
             effectiveSearchDto.assignedAgentId = user.id;
         }
 
@@ -135,13 +136,15 @@ export class ClientsController {
         UserRole.MANAGER,
         UserRole.TEAM_LEADER,
         UserRole.AGENT,
+        UserRole.SALES_AGENT,
+        UserRole.DEBT_REVIEW_SPECIALIST,
         UserRole.OPERATIONS_MANAGER,
         UserRole.CHIEF_EXECUTIVE_OFFICER,
         UserRole.VIEWER
     )
     @ApiOperation({ summary: 'Get a client by ID' })
-    async findOne(@Param('id', ParseUUIDPipe) id: string) {
-        const client = await this.clientsService.findOne(id);
+    async findOne(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
+        const client = await this.ensureClientAccess(id, user);
         return {
             success: true,
             data: client,
@@ -158,12 +161,18 @@ export class ClientsController {
         UserRole.MANAGER,
         UserRole.TEAM_LEADER,
         UserRole.AGENT,
+        UserRole.SALES_AGENT,
+        UserRole.DEBT_REVIEW_SPECIALIST,
         UserRole.OPERATIONS_MANAGER,
         UserRole.CHIEF_EXECUTIVE_OFFICER,
         UserRole.VIEWER
     )
     @ApiOperation({ summary: 'Get communication history for a client' })
-    async getClientCommunications(@Param('id', ParseUUIDPipe) id: string) {
+    async getClientCommunications(
+        @Param('id', ParseUUIDPipe) id: string,
+        @CurrentUser() user: AuthenticatedUser
+    ) {
+        await this.ensureClientAccess(id, user);
         const communications = await this.clientsService.getClientCommunications(id);
         return {
             success: true,
@@ -181,6 +190,8 @@ export class ClientsController {
         UserRole.MANAGER,
         UserRole.TEAM_LEADER,
         UserRole.AGENT,
+        UserRole.SALES_AGENT,
+        UserRole.DEBT_REVIEW_SPECIALIST,
         UserRole.OPERATIONS_MANAGER
     )
     @ApiOperation({ summary: 'Send email to a client' })
@@ -189,6 +200,7 @@ export class ClientsController {
         @Body() emailData: { subject: string; message: string },
         @CurrentUser() user: AuthenticatedUser
     ) {
+        await this.ensureClientAccess(id, user);
         const result = await this.clientsService.sendEmailToClient(
             id,
             emailData.subject,
@@ -211,6 +223,8 @@ export class ClientsController {
         UserRole.MANAGER,
         UserRole.TEAM_LEADER,
         UserRole.AGENT,
+        UserRole.SALES_AGENT,
+        UserRole.DEBT_REVIEW_SPECIALIST,
         UserRole.OPERATIONS_MANAGER
     )
     @ApiOperation({ summary: 'Send SMS to a client' })
@@ -219,6 +233,7 @@ export class ClientsController {
         @Body() smsData: { message: string },
         @CurrentUser() user: AuthenticatedUser
     ) {
+        await this.ensureClientAccess(id, user);
         const result = await this.clientsService.sendSmsToClient(id, smsData.message, user.id);
         return {
             success: true,
@@ -231,13 +246,21 @@ export class ClientsController {
      * Update a client
      */
     @Put(':id')
-    @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.TEAM_LEADER, UserRole.AGENT)
+    @Roles(
+        UserRole.ADMIN,
+        UserRole.MANAGER,
+        UserRole.TEAM_LEADER,
+        UserRole.AGENT,
+        UserRole.SALES_AGENT,
+        UserRole.DEBT_REVIEW_SPECIALIST
+    )
     @ApiOperation({ summary: 'Update a client' })
     async update(
         @Param('id', ParseUUIDPipe) id: string,
         @Body() updateClientDto: UpdateClientDto,
         @CurrentUser() user: AuthenticatedUser
     ) {
+        await this.ensureClientAccess(id, user);
         const client = await this.clientsService.update(id, updateClientDto, user.id);
         return {
             success: true,
@@ -260,25 +283,27 @@ export class ClientsController {
     /**
      * Generate Experian credit report PDF (uses real API if configured)
      */
-    @Get(':id/credit-report')
+    @Post(':id/credit-report')
     @Roles(
         UserRole.ADMIN,
         UserRole.MANAGER,
         UserRole.TEAM_LEADER,
         UserRole.AGENT,
+        UserRole.SALES_AGENT,
+        UserRole.DEBT_REVIEW_SPECIALIST,
         UserRole.OPERATIONS_MANAGER,
         UserRole.CHIEF_EXECUTIVE_OFFICER
     )
-    @ApiOperation({ summary: 'Generate Experian credit report PDF (real or mock)' })
+    @ApiOperation({ summary: 'Request and download an Experian credit report PDF' })
     async getCreditReport(
         @Param('id', ParseUUIDPipe) id: string,
+        @Body() consent: GenerateCreditReportDto,
         @Res() res: Response,
         @CurrentUser() user: AuthenticatedUser
     ) {
-        const client = await this.clientsService.findOne(id);
+        const client = await this.ensureClientAccess(id, user);
 
-        // Pass user ID for audit tracking
-        const pdfBuffer = await this.experianReportService.generateCreditReport(client, user.id);
+        const report = await this.experianReportService.generateCreditReport(client, user, consent);
 
         // Track that the credit report was viewed
         await this.clientsService.update(
@@ -303,10 +328,12 @@ export class ClientsController {
 
         res.set({
             'Content-Type': 'application/pdf',
-            'Content-Disposition': `attachment; filename="experian-report-${client.idNumber}.pdf"`,
-            'Content-Length': pdfBuffer.length,
+            'Content-Disposition': `attachment; filename="${report.filename}"`,
+            'Content-Length': report.buffer.length,
+            'X-Credit-Report-Source': 'experian',
+            'X-Credit-Report-Environment': report.environment,
         });
 
-        res.send(pdfBuffer);
+        res.send(report.buffer);
     }
 }

@@ -47,6 +47,7 @@ const productsResponse = {
     products: [
         {
             id: 'product-1',
+            code: 'CAR',
             name: 'Credit Health Review',
             description: 'Review and interpretation service',
             pricing_options: { oneOff: 795 },
@@ -169,6 +170,35 @@ describe('OnboardingWizard', () => {
             'products',
             undefined,
             expect.objectContaining({ stepLabel: 'Select product/s' })
+        );
+    });
+
+    it('uses the live product code to collect required credit account history', async () => {
+        await renderWizard();
+        await selectStep('Select product');
+        await vi.waitFor(() => expect(container.textContent).toContain('Credit Health Review'));
+
+        expect(container.textContent).toContain('CAR');
+        await act(async () => container.querySelector<HTMLElement>('.cf-prod')?.click());
+        await clickAction('Confirm');
+        await clickAction('Next');
+
+        expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+            'Please provide at least 3 account names'
+        );
+        const accountInputs = Array.from(
+            container.querySelectorAll<HTMLInputElement>(
+                '.wizard-panel input[placeholder^="Account "]'
+            )
+        );
+        expect(accountInputs).toHaveLength(3);
+        await changeValue(accountInputs[0], 'Vehicle finance');
+        await changeValue(accountInputs[1], 'Retail account');
+        await changeValue(accountInputs[2], 'Home loan');
+        await clickAction('Next');
+
+        expect(container.querySelector('[aria-current="step"]')?.textContent).toContain(
+            'Banking details'
         );
     });
 

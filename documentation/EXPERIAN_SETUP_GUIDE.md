@@ -38,22 +38,24 @@ Request:
 2. Edit `.env.local` and add your credentials:
 
     ```env
-    # Use sandbox for testing
-    EXPERIAN_API_URL=https://sandbox.experian.co.za/cais/webservice/NormalSearchV2
+    # Official Normal Search V2 UAT endpoints
+    EXPERIAN_WSDL=https://apis-uat.experian.co.za/NormalSearchService?wsdl
+    EXPERIAN_API_URL=https://apis-uat.experian.co.za/NormalSearchService
     EXPERIAN_SUBSCRIBER_CODE=YOUR_SUBSCRIBER_CODE
     EXPERIAN_USERNAME=YOUR_API_USERNAME
     EXPERIAN_PASSWORD=YOUR_API_PASSWORD
-    EXPERIAN_MOCK_MODE=false
+    EXPERIAN_ENV=uat
     ```
 
 3. For production, update `.env.production`:
     ```env
-    # Production endpoint
-    EXPERIAN_API_URL=https://secure.experian.co.za/cais/webservice/NormalSearchV2
+    # Official Normal Search V2 production endpoints
+    EXPERIAN_WSDL=https://apis.experian.co.za/NormalSearchService?wsdl
+    EXPERIAN_API_URL=https://apis.experian.co.za/NormalSearchService
     EXPERIAN_SUBSCRIBER_CODE=YOUR_PROD_SUBSCRIBER_CODE
     EXPERIAN_USERNAME=YOUR_PROD_USERNAME
     EXPERIAN_PASSWORD=YOUR_PROD_PASSWORD
-    EXPERIAN_MOCK_MODE=false
+    EXPERIAN_ENV=production
     ```
 
 ## Step 3: Run Database Migration
@@ -281,26 +283,31 @@ async performCreditCheckWithRetry(clientId: string, maxRetries = 3) {
 
 ### Go-Live Steps
 
-1. **Switch to production endpoint**:
+1.  **Switch to production endpoint**:
 
-    ```env
-    EXPERIAN_API_URL=https://secure.experian.co.za/cais/webservice/NormalSearchV2
-    EXPERIAN_MOCK_MODE=false
+        ```env
+
+    EXPERIAN_WSDL=https://apis.experian.co.za/NormalSearchService?wsdl
+    EXPERIAN_API_URL=https://apis.experian.co.za/NormalSearchService
+    EXPERIAN_ENV=production
+
     ```
 
-2. **Deploy application**:
+    ```
+
+2.  **Deploy application**:
 
     ```bash
     git push production main
     ```
 
-3. **Run smoke tests**:
+3.  **Run smoke tests**:
 
     ```bash
     npm run test:e2e:production
     ```
 
-4. **Monitor for 24 hours**:
+4.  **Monitor for 24 hours**:
     - Check logs for errors
     - Verify credit checks are working
     - Monitor API response times
@@ -312,7 +319,7 @@ async performCreditCheckWithRetry(clientId: string, maxRetries = 3) {
 
 ```bash
 # Test API connectivity
-curl -X POST https://sandbox.experian.co.za/cais/webservice/NormalSearchV2 \
+curl -X POST https://apis-uat.experian.co.za/NormalSearchService \
   -H "Content-Type: text/xml" \
   -d '<?xml version="1.0"?><soap:Envelope>...</soap:Envelope>'
 ```

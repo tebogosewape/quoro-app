@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '@/stores/auth.store';
 import { getAgentDashboard } from '../../api/dashboard.api';
 import { listTasks, type TaskResponse } from '@/api/tasks.api';
+import { getLeads } from '@/api/leads.api';
 import { apiClient } from '@/api/axios.config';
 import { useNavigate } from 'react-router-dom';
 import DashboardMetricCard, {
@@ -79,6 +80,20 @@ export default function ClientflowDashboard() {
             listTasks({
                 assignedToUserId: session?.user?.id,
                 limit: 50,
+            }),
+        enabled: isAgent && Boolean(session?.access_token) && Boolean(session?.user?.id),
+        staleTime: 1000 * 30,
+    });
+
+    const assignedLeadsQuery = useQuery({
+        queryKey: ['leads', 'assigned-dashboard', session?.user?.id],
+        queryFn: () =>
+            getLeads({
+                allocatedTo:
+                    `${session?.user?.firstName || ''} ${session?.user?.lastName || ''}`.trim(),
+                limit: 50,
+                sortBy: 'timeReceived',
+                sortOrder: 'DESC',
             }),
         enabled: isAgent && Boolean(session?.access_token) && Boolean(session?.user?.id),
         staleTime: 1000 * 30,
@@ -269,6 +284,47 @@ export default function ClientflowDashboard() {
         const agentData = agentDashboardQuery.data;
         const tasks = tasksQuery.data?.tasks ?? [];
         const emails = inboxQuery.data || [];
+        const assignedLeadRecords =
+            assignedLeadsQuery.data?.leads ?? agentData?.recentAssignedLeads ?? [];
+        const assignedLeadCount = assignedLeadsQuery.data?.total ?? agentData?.assignedLeads ?? 0;
+        const taskLeadIds = new Set(
+            tasks
+                .filter((task) => task.status !== 'completed' && task.status !== 'cancelled')
+                .map((task) => task.metadata?.leadId)
+                .filter((leadId): leadId is string => typeof leadId === 'string')
+        );
+        const allocatedLeadWork: TaskResponse[] = assignedLeadRecords
+            .filter((lead) => lead.leadOutcome !== 'Converted' && !taskLeadIds.has(lead.id))
+            .map((lead) => ({
+                id: `allocated-lead-${lead.id}`,
+                title: `Convert Lead: ${lead.name || 'Unknown'}`,
+                description: lead.message || 'Follow up with this allocated lead.',
+                type: 'follow_up',
+                status: 'assigned',
+                priority: 'normal',
+                dueDate: null,
+                completedAt: null,
+                estimatedHours: null,
+                actualHours: null,
+                completionNotes: null,
+                metadata: {
+                    leadId: lead.id,
+                    leadData: {
+                        name: lead.name,
+                        cell: lead.cell,
+                        idNumber: lead.idNumber,
+                        franchise: lead.franchise,
+                        affiliate: lead.affiliate,
+                        message: lead.message,
+                    },
+                },
+                createdAt: lead.createdAt,
+                updatedAt: lead.updatedAt,
+                assignedToUser: null,
+                client: null,
+                createdByUser: null,
+            }));
+        const workItems = [...tasks, ...allocatedLeadWork];
 
         // Handle task click - if it's a lead conversion task, navigate to onboarding with lead data
         const handleTaskClick = async (task: TaskResponse) => {
@@ -328,16 +384,23 @@ export default function ClientflowDashboard() {
         }
 
         // Calculate task counts from actual task data
-        const activeTasks = tasks.filter(
+        const activeTasks = workItems.filter(
             (task) => task.status !== 'completed' && task.status !== 'cancelled'
         ).length;
-        const overdueTasks = tasks.filter(
+        const overdueTasks = workItems.filter(
             (task) =>
                 task.status === 'overdue' ||
                 (task.dueDate && new Date(task.dueDate) < new Date() && task.status !== 'completed')
         ).length;
 
         const agentStats = [
+            {
+                label: 'Assigned Leads',
+                value: assignedLeadCount,
+                icon: 'tasks' as DashboardMetricIcon,
+                helper: 'Current allocation',
+                tone: 'blue' as DashboardMetricTone,
+            },
             {
                 label: 'My Clients',
                 value: agentData?.assignedClients || 0,
@@ -346,26 +409,19 @@ export default function ClientflowDashboard() {
                 tone: 'teal' as DashboardMetricTone,
             },
             {
-                label: 'Active Tasks',
+                label: 'Open Work',
                 value: activeTasks,
-                icon: 'tasks' as DashboardMetricIcon,
-                helper: 'Open work items',
-                tone: 'blue' as DashboardMetricTone,
+                icon: 'performance' as DashboardMetricIcon,
+                helper: 'Leads and tasks',
+                tone: 'violet' as DashboardMetricTone,
             },
             {
-                label: 'Overdue Tasks',
+                label: 'Overdue Work',
                 value: overdueTasks,
                 icon: 'warning' as DashboardMetricIcon,
                 helper: overdueTasks > 0 ? 'Requires follow-up' : 'Nothing overdue',
                 tone: 'red' as DashboardMetricTone,
                 attention: overdueTasks > 0,
-            },
-            {
-                label: 'Completion Rate',
-                value: `${(agentData?.completionRate || 0).toFixed(1)}%`,
-                icon: 'performance' as DashboardMetricIcon,
-                helper: 'Assigned task progress',
-                tone: 'violet' as DashboardMetricTone,
             },
         ];
 
@@ -409,7 +465,7 @@ export default function ClientflowDashboard() {
                     {/* Tasks Section */}
                     <div className="col-lg-8 mb-4">
                         <DashboardTasksPanel
-                            tasks={tasks}
+                            tasks={workItems}
                             isLoading={tasksQuery.isLoading}
                             isError={tasksQuery.isError}
                             error={tasksQuery.error}

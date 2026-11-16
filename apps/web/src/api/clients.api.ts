@@ -146,7 +146,9 @@ export type CreateClientDto = z.infer<typeof createClientDtoSchema>;
 /**
  * Schema for updating a client (all fields optional)
  */
-export const updateClientDtoSchema = createClientDtoSchema.partial();
+export const updateClientDtoSchema = createClientDtoSchema.partial().extend({
+    notes: z.string().max(10000).optional(),
+});
 export type UpdateClientDto = z.infer<typeof updateClientDtoSchema>;
 
 /**
@@ -227,6 +229,7 @@ export const clientSchema = z
         title: z.string().optional().nullable(),
         language: z.string().optional().nullable(),
         gender: z.string().optional().nullable(),
+        notes: z.string().optional().nullable(),
         // Credit report tracking
         creditReportViewedAt: z.string().or(z.null()).optional(),
         creditReportViewedBy: z.string().or(z.null()).optional(),
@@ -640,13 +643,19 @@ export const sendSmsToClient = async (clientId: string, message: string) => {
     return response.data;
 };
 
-/**
- * Download Experian credit report PDF for a client
- * @param clientId - Client ID
- * @returns PDF blob
- */
-export const downloadCreditReport = async (clientId: string): Promise<Blob> => {
-    const response = await apiClient.get(`/clients/${clientId}/credit-report`, {
+export type CreditReportConsent = {
+    consentGiven: true;
+    consentMethod: 'electronic' | 'written' | 'verbal';
+    enquiryPurpose: number;
+    purpose: string;
+};
+
+/** Requests one billable Experian enquiry and returns Experian's original PDF. */
+export const downloadCreditReport = async (
+    clientId: string,
+    consent: CreditReportConsent
+): Promise<Blob> => {
+    const response = await apiClient.post(`/clients/${clientId}/credit-report`, consent, {
         headers: getAuthHeaders(),
         responseType: 'blob',
     });
