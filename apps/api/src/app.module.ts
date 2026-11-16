@@ -32,6 +32,8 @@ import { WhatsappModule } from './whatsapp/whatsapp.module';
 import { LeadsModule } from './leads/leads.module';
 import { ClientsModule } from './clients/clients.module';
 import { TasksModule } from './tasks/tasks.module';
+import { DebicheckModule } from './debicheck/debicheck.module';
+import { DashboardModule } from './dashboard/dashboard.module';
 
 @Module({
     imports: [
@@ -88,6 +90,8 @@ import { TasksModule } from './tasks/tasks.module';
         LeadsModule,
         ClientsModule,
         TasksModule,
+        DebicheckModule,
+        DashboardModule,
     ],
     controllers: [AppController, HealthController],
     providers: [

@@ -1,14 +1,22 @@
-import { Container, Form, Button, Alert } from 'react-bootstrap';
-import { Formik, Field, Form as FormikForm, ErrorMessage } from 'formik';
-import * as Yup from 'yup';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import {
+    faCheckCircle,
+    faExclamationCircle,
+    faEye,
+    faEyeSlash,
+    faLock,
+} from '@fortawesome/free-solid-svg-icons';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { ErrorMessage, Field, Form as FormikForm, Formik } from 'formik';
 import { useState } from 'react';
+import { Alert, Button, Container, Form, InputGroup } from 'react-bootstrap';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import * as Yup from 'yup';
 
 import '@/styles/login.css';
 import { HttpProxy } from '../../api/http-proxy.service';
+import { AuthCardHeader } from '../../components/auth/AuthCardHeader';
 import { appConfig } from '../../config/env';
 import { useAuthPageTheme } from '../../hooks/useAuthPageTheme';
-import { AuthCardHeader } from '../../components/auth/AuthCardHeader';
 
 const schema = Yup.object().shape({
     password: Yup.string()
@@ -31,11 +39,13 @@ const ResetPassword = () => {
     const token = params.get('token');
     const email = params.get('email');
     const [done, setDone] = useState(false);
-    const [err, setErr] = useState<string | null>(null);
+    const [error, setError] = useState<string | null>(null);
+    const [showPassword, setShowPassword] = useState(false);
+    const [showConfirmation, setShowConfirmation] = useState(false);
 
     if (!token || !email) {
         return (
-            <div className="login-page-wrapper">
+            <div className="login-page-wrapper login-page-wrapper--auth-split">
                 <div className="login-wrapper">
                     <AuthCardHeader
                         title="Reset link expired"
@@ -43,24 +53,27 @@ const ResetPassword = () => {
                     />
                     <div className="login-form-wrapper">
                         <Container className="login-form-container">
-                            <Alert variant="danger" className="auth-alert">
-                                Invalid or missing reset link. Please request a new email.
-                            </Alert>
-                            <div className="d-grid gap-3 mt-4">
-                                <Button
-                                    variant="primary"
-                                    className="login-button"
-                                    onClick={() => navigate('/forgot-password')}
+                            <div className="auth-result">
+                                <Alert
+                                    variant="danger"
+                                    className="auth-alert auth-alert--danger"
+                                    role="alert"
                                 >
+                                    <FontAwesomeIcon
+                                        icon={faExclamationCircle}
+                                        className="auth-alert__icon"
+                                        aria-hidden="true"
+                                    />
+                                    <span>
+                                        Invalid or missing reset link. Please request a new email.
+                                    </span>
+                                </Alert>
+                                <Link className="login-button" to="/forgot-password">
                                     Request new link
-                                </Button>
-                                <Button
-                                    variant="link"
-                                    className="reset-password-link"
-                                    onClick={() => navigate('/login')}
-                                >
+                                </Link>
+                                <Link className="auth-secondary-link" to="/login">
                                     Back to sign in
-                                </Button>
+                                </Link>
                             </div>
                         </Container>
                     </div>
@@ -70,38 +83,56 @@ const ResetPassword = () => {
     }
 
     const submit = async (values: { password: string; confirmPassword: string }) => {
-        setErr(null);
+        setError(null);
         try {
-            const payload = { token, email, password: values.password };
-            const res = await http.request(
+            const response = await http.request(
                 'AUTH',
                 `${appConfig.apiUrl}/auth/reset-password`,
                 'POST',
-                payload
+                { token, email, password: values.password }
             );
-            if (res?.statusCode && res.statusCode !== 200) {
-                throw new Error(res?.errorMessage || 'Reset failed');
+
+            if (response.statusCode !== 200) {
+                throw new Error(response.errorMessage || 'Reset failed');
             }
+
             setDone(true);
             setTimeout(() => navigate('/login', { replace: true }), 1500);
-        } catch (e: unknown) {
-            setErr((e as Error)?.message || 'Unable to reset password. The link may have expired.');
+        } catch (caughtError: unknown) {
+            setError(
+                caughtError instanceof Error
+                    ? caughtError.message
+                    : 'Unable to reset password. The link may have expired.'
+            );
         }
     };
 
     return (
-        <div className="login-page-wrapper">
+        <div className="login-page-wrapper login-page-wrapper--auth-split">
             <div className="login-wrapper">
                 <AuthCardHeader
                     title="Set a new password"
                     subtitle="Choose a strong password to secure your account."
                 />
+
                 <div className="login-form-wrapper">
                     <Container className="login-form-container">
                         {done ? (
-                            <Alert variant="success" className="auth-alert">
-                                Your password has been updated. Redirecting to sign in…
-                            </Alert>
+                            <div className="auth-result" aria-live="polite">
+                                <Alert variant="success" className="auth-alert" role="status">
+                                    <FontAwesomeIcon
+                                        icon={faCheckCircle}
+                                        className="auth-alert__icon"
+                                        aria-hidden="true"
+                                    />
+                                    <span>
+                                        Your password has been updated. Redirecting to sign in.
+                                    </span>
+                                </Alert>
+                                <Link className="auth-secondary-link" to="/login">
+                                    Continue to sign in
+                                </Link>
+                            </div>
                         ) : (
                             <Formik
                                 initialValues={{ password: '', confirmPassword: '' }}
@@ -110,62 +141,128 @@ const ResetPassword = () => {
                             >
                                 {({ isSubmitting }) => (
                                     <FormikForm className="login-form">
-                                        <Form.Group className="mb-4">
-                                            <Form.Label className="form-label">
-                                                New password
-                                            </Form.Label>
-                                            <Field
-                                                name="password"
-                                                type="password"
-                                                className="form-control form-input"
-                                                placeholder="Enter a strong password"
-                                            />
+                                        <Form.Group className="mb-3" controlId="new-password">
+                                            <Form.Label>New password</Form.Label>
+                                            <InputGroup>
+                                                <InputGroup.Text className="input-icon">
+                                                    <FontAwesomeIcon
+                                                        icon={faLock}
+                                                        className="input-icon__fa"
+                                                        aria-hidden="true"
+                                                    />
+                                                </InputGroup.Text>
+                                                <Field
+                                                    name="password"
+                                                    type={showPassword ? 'text' : 'password'}
+                                                    id="new-password"
+                                                    className="form-control form-input"
+                                                    placeholder="Enter a strong password"
+                                                    autoComplete="new-password"
+                                                    aria-describedby="new-password-help"
+                                                />
+                                                <Button
+                                                    type="button"
+                                                    variant="light"
+                                                    className="password-toggle"
+                                                    aria-label={
+                                                        showPassword
+                                                            ? 'Hide new password'
+                                                            : 'Show new password'
+                                                    }
+                                                    aria-pressed={showPassword}
+                                                    onClick={() =>
+                                                        setShowPassword((current) => !current)
+                                                    }
+                                                >
+                                                    <FontAwesomeIcon
+                                                        icon={showPassword ? faEyeSlash : faEye}
+                                                        aria-hidden="true"
+                                                    />
+                                                </Button>
+                                            </InputGroup>
+                                            <div id="new-password-help" className="auth-field-help">
+                                                Use 8+ characters with uppercase, lowercase and a number.
+                                            </div>
                                             <ErrorMessage name="password">
-                                                {(msg) => (
-                                                    <div className="error-message mt-2">{msg}</div>
+                                                {(message) => (
+                                                    <div className="error-message">{message}</div>
                                                 )}
                                             </ErrorMessage>
                                         </Form.Group>
 
-                                        <Form.Group className="mb-3">
-                                            <Form.Label className="form-label">
-                                                Confirm password
-                                            </Form.Label>
-                                            <Field
-                                                name="confirmPassword"
-                                                type="password"
-                                                className="form-control form-input"
-                                                placeholder="Re-enter your password"
-                                            />
+                                        <Form.Group className="mb-3" controlId="confirm-password">
+                                            <Form.Label>Confirm password</Form.Label>
+                                            <InputGroup>
+                                                <InputGroup.Text className="input-icon">
+                                                    <FontAwesomeIcon
+                                                        icon={faLock}
+                                                        className="input-icon__fa"
+                                                        aria-hidden="true"
+                                                    />
+                                                </InputGroup.Text>
+                                                <Field
+                                                    name="confirmPassword"
+                                                    type={showConfirmation ? 'text' : 'password'}
+                                                    id="confirm-password"
+                                                    className="form-control form-input"
+                                                    placeholder="Re-enter your password"
+                                                    autoComplete="new-password"
+                                                />
+                                                <Button
+                                                    type="button"
+                                                    variant="light"
+                                                    className="password-toggle"
+                                                    aria-label={
+                                                        showConfirmation
+                                                            ? 'Hide password confirmation'
+                                                            : 'Show password confirmation'
+                                                    }
+                                                    aria-pressed={showConfirmation}
+                                                    onClick={() =>
+                                                        setShowConfirmation((current) => !current)
+                                                    }
+                                                >
+                                                    <FontAwesomeIcon
+                                                        icon={showConfirmation ? faEyeSlash : faEye}
+                                                        aria-hidden="true"
+                                                    />
+                                                </Button>
+                                            </InputGroup>
                                             <ErrorMessage name="confirmPassword">
-                                                {(msg) => (
-                                                    <div className="error-message mt-2">{msg}</div>
+                                                {(message) => (
+                                                    <div className="error-message">{message}</div>
                                                 )}
                                             </ErrorMessage>
                                         </Form.Group>
 
-                                        {err && (
-                                            <Alert variant="danger" className="auth-alert">
-                                                {err}
+                                        {error && (
+                                            <Alert
+                                                variant="danger"
+                                                className="auth-alert auth-alert--danger"
+                                                role="alert"
+                                            >
+                                                <FontAwesomeIcon
+                                                    icon={faExclamationCircle}
+                                                    className="auth-alert__icon"
+                                                    aria-hidden="true"
+                                                />
+                                                <span>{error}</span>
                                             </Alert>
                                         )}
 
-                                        <div className="d-grid gap-3 mt-4">
+                                        <div className="auth-actions-stack mt-4">
                                             <Button
                                                 variant="primary"
                                                 type="submit"
                                                 className="login-button"
                                                 disabled={isSubmitting}
+                                                aria-busy={isSubmitting}
                                             >
                                                 {isSubmitting ? 'Updating…' : 'Update password'}
                                             </Button>
-                                            <Button
-                                                variant="link"
-                                                className="reset-password-link"
-                                                onClick={() => navigate('/login')}
-                                            >
+                                            <Link className="auth-secondary-link" to="/login">
                                                 Back to sign in
-                                            </Button>
+                                            </Link>
                                         </div>
                                     </FormikForm>
                                 )}

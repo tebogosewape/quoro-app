@@ -1,9 +1,15 @@
 import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '@/stores/auth.store';
 import { getAgentDashboard } from '../../api/dashboard.api';
-import { listTasks } from '@/api/tasks.api';
+import { listTasks, type TaskResponse } from '@/api/tasks.api';
 import { apiClient } from '@/api/axios.config';
 import { useNavigate } from 'react-router-dom';
+import DashboardMetricCard, {
+    type DashboardMetricIcon,
+    type DashboardMetricTone,
+} from './widgets/DashboardMetricCard';
+import DashboardMessagesPanel, { type DashboardEmail } from './widgets/DashboardMessagesPanel';
+import DashboardTasksPanel from './widgets/DashboardTasksPanel';
 
 // Mock data for admin dashboard placeholder
 const adminStats = [
@@ -20,6 +26,26 @@ const adminRecentActivity = [
     { user: 'Dave', action: 'updated system settings', time: '1 hour ago' },
 ];
 
+type ClientStats = {
+    total?: number;
+    byStatus?: {
+        active?: number;
+        lead?: number;
+    };
+};
+
+type SmsTotals = {
+    delivered?: number;
+    sent?: number;
+    failed?: number;
+};
+
+type SmsStats = {
+    grandTotal?: SmsTotals;
+    total?: SmsTotals;
+    users?: Array<{ user?: { creditBalance?: number } }>;
+};
+
 export default function ClientflowDashboard() {
     const session = useAuthStore((state) => state.session);
     const role = session?.user?.role || 'viewer';
@@ -33,6 +59,11 @@ export default function ClientflowDashboard() {
         role === 'team_leader' ||
         role === 'operations_manager';
     const isCEO = role === 'chief_executive_officer';
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayStr = today.toISOString().split('T')[0];
+    const thisMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+    const thisMonthStartStr = thisMonthStart.toISOString().split('T')[0];
 
     // Agent dashboard data queries
     const agentDashboardQuery = useQuery({
@@ -63,8 +94,6 @@ export default function ClientflowDashboard() {
                     headers: { Authorization: `Bearer ${token}` },
                 });
 
-                console.log('Inbox API response:', response.data);
-
                 // Handle different response formats
                 let emailData = response.data;
 
@@ -79,18 +108,64 @@ export default function ClientflowDashboard() {
                 }
 
                 // Ensure it's an array
-                const emails = Array.isArray(emailData) ? emailData : [];
+                const emails: DashboardEmail[] = Array.isArray(emailData) ? emailData : [];
 
-                console.log('Processed emails:', emails);
                 return emails;
             } catch (error) {
                 console.error('Error fetching inbox:', error);
-                return [];
+                throw error;
             }
         },
         enabled: isAgent && Boolean(session?.access_token),
         staleTime: 1000 * 60,
         retry: 1,
+    });
+
+    const clientStatsQuery = useQuery<ClientStats>({
+        queryKey: ['client-stats'],
+        queryFn: async () => {
+            const token = session?.access_token;
+            const response = await apiClient.get('/clients/stats', {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            return response.data?.data || response.data || {};
+        },
+        enabled: isCEO && Boolean(session?.access_token),
+        staleTime: 1000 * 60 * 5,
+    });
+
+    const smsStatsQuery = useQuery<SmsStats>({
+        queryKey: ['zoomconnect-stats', thisMonthStartStr, todayStr],
+        queryFn: async () => {
+            const token = session?.access_token;
+            const response = await apiClient.get('/zoomconnect/stats', {
+                params: { from: thisMonthStartStr, to: todayStr },
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            return response.data?.data || response.data || {};
+        },
+        enabled: isCEO && Boolean(session?.access_token),
+        staleTime: 1000 * 60 * 5,
+    });
+
+    const taskStatsQuery = useQuery({
+        queryKey: ['task-stats'],
+        queryFn: async () => {
+            const token = session?.access_token;
+            const response = await apiClient.get('/tasks', {
+                params: { limit: 1000 },
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            const responseTasks = response.data?.data || response.data || [];
+            const taskItems: Array<{ status?: string }> = Array.isArray(responseTasks)
+                ? responseTasks
+                : [];
+            const total = taskItems.length;
+            const completed = taskItems.filter((task) => task.status === 'completed').length;
+            return { total, completed, incomplete: total - completed };
+        },
+        enabled: isCEO && Boolean(session?.access_token),
+        staleTime: 1000 * 60 * 5,
     });
 
     // Admin dashboard handlers
@@ -112,13 +187,19 @@ export default function ClientflowDashboard() {
     // Render Admin Dashboard
     if (isAdmin) {
         return (
-            <div className="container py-4">
-                <h1 className="mb-4">Admin Dashboard</h1>
+            <div className="dashboard-screen dashboard-screen--admin">
+                <header className="dashboard-page-header">
+                    <div>
+                        <p className="dashboard-eyebrow">Administration</p>
+                        <h1>Admin Dashboard</h1>
+                        <p>Monitor users, clients, approvals, and system activity.</p>
+                    </div>
+                </header>
                 {/* Stats cards */}
                 <div className="row mb-4">
                     {adminStats.map((s) => (
                         <div className="col-md-3 mb-3" key={s.label}>
-                            <div className="card shadow-sm h-100">
+                            <div className="card h-100 dashboard-stat-card">
                                 <div className="card-body d-flex align-items-center">
                                     <i className={`bi ${s.icon} display-5 me-3 text-primary`} />
                                     <div>
@@ -131,7 +212,7 @@ export default function ClientflowDashboard() {
                     ))}
                 </div>
                 {/* Quick actions */}
-                <div className="mb-4">
+                <div className="dashboard-section dashboard-quick-actions">
                     <h5>Quick Actions</h5>
                     <button className="btn btn-primary me-2" onClick={handleAddUser}>
                         Add User
@@ -147,7 +228,7 @@ export default function ClientflowDashboard() {
                     </button>
                 </div>
                 {/* Placeholder chart */}
-                <div className="mb-4">
+                <div className="dashboard-section">
                     <h5>Client Growth and Communication</h5>
                     <div className="bg-light border rounded p-4 text-center text-muted">
                         {/* TODO: Replace with real chart */}
@@ -155,7 +236,7 @@ export default function ClientflowDashboard() {
                     </div>
                 </div>
                 {/* Recent activity */}
-                <div className="mb-4">
+                <div className="dashboard-section">
                     <h5>Recent Activity</h5>
                     <ul className="list-group">
                         {adminRecentActivity.map((a, i) => (
@@ -172,7 +253,7 @@ export default function ClientflowDashboard() {
                     </ul>
                 </div>
                 {/* System health */}
-                <div className="mb-4">
+                <div className="dashboard-section">
                     <h5>System Health</h5>
                     <div className="bg-light border rounded p-3">
                         <span className="text-success">All systems operational</span>
@@ -189,18 +270,8 @@ export default function ClientflowDashboard() {
         const tasks = tasksQuery.data?.tasks ?? [];
         const emails = inboxQuery.data || [];
 
-        // Debug logging
-        console.log('Agent Dashboard Debug:', {
-            userId: session?.user?.id,
-            tasksQueryData: tasksQuery.data,
-            tasksCount: tasks.length,
-            tasksQueryError: tasksQuery.error,
-            tasksQueryIsLoading: tasksQuery.isLoading,
-            tasks: tasks,
-        });
-
         // Handle task click - if it's a lead conversion task, navigate to onboarding with lead data
-        const handleTaskClick = async (task: any) => {
+        const handleTaskClick = async (task: TaskResponse) => {
             // Log lead view if this is a lead conversion task
             if (task.metadata?.leadId) {
                 try {
@@ -227,58 +298,92 @@ export default function ClientflowDashboard() {
 
         if (agentDashboardQuery.isLoading) {
             return (
-                <div className="container py-4 text-center">
+                <div className="dashboard-screen dashboard-state text-center">
                     <div className="spinner-border text-primary" role="status" />
-                    <p className="mt-3 text-muted">Loading your dashboard…</p>
+                    <p className="mt-3 text-muted">Loading your dashboard.</p>
+                </div>
+            );
+        }
+
+        if (agentDashboardQuery.isError) {
+            return (
+                <div className="dashboard-screen dashboard-state">
+                    <div className="alert alert-danger" role="alert">
+                        <h5 className="alert-heading">Unable to load your dashboard</h5>
+                        <p className="mb-3">
+                            {agentDashboardQuery.error instanceof Error
+                                ? agentDashboardQuery.error.message
+                                : 'Please try again.'}
+                        </p>
+                        <button
+                            className="btn btn-primary"
+                            type="button"
+                            onClick={() => agentDashboardQuery.refetch()}
+                        >
+                            Retry
+                        </button>
+                    </div>
                 </div>
             );
         }
 
         // Calculate task counts from actual task data
         const activeTasks = tasks.filter(
-            (t: any) => t.status !== 'completed' && t.status !== 'cancelled'
+            (task) => task.status !== 'completed' && task.status !== 'cancelled'
         ).length;
         const overdueTasks = tasks.filter(
-            (t: any) =>
-                t.status === 'overdue' ||
-                (t.dueDate && new Date(t.dueDate) < new Date() && t.status !== 'completed')
+            (task) =>
+                task.status === 'overdue' ||
+                (task.dueDate && new Date(task.dueDate) < new Date() && task.status !== 'completed')
         ).length;
 
         const agentStats = [
             {
                 label: 'My Clients',
                 value: agentData?.assignedClients || 0,
-                icon: 'bi-people',
+                icon: 'clients' as DashboardMetricIcon,
+                helper: 'Assigned portfolio',
+                tone: 'teal' as DashboardMetricTone,
             },
             {
                 label: 'Active Tasks',
                 value: activeTasks,
-                icon: 'bi-list-check',
+                icon: 'tasks' as DashboardMetricIcon,
+                helper: 'Open work items',
+                tone: 'blue' as DashboardMetricTone,
             },
             {
                 label: 'Overdue Tasks',
                 value: overdueTasks,
-                icon: 'bi-exclamation-triangle',
-                variant: 'danger',
+                icon: 'warning' as DashboardMetricIcon,
+                helper: overdueTasks > 0 ? 'Requires follow-up' : 'Nothing overdue',
+                tone: 'red' as DashboardMetricTone,
+                attention: overdueTasks > 0,
+            },
+            {
+                label: 'Completion Rate',
+                value: `${(agentData?.completionRate || 0).toFixed(1)}%`,
+                icon: 'performance' as DashboardMetricIcon,
+                helper: 'Assigned task progress',
+                tone: 'violet' as DashboardMetricTone,
             },
         ];
 
         return (
-            <div className="container-fluid py-4" style={{ minHeight: '100vh' }}>
+            <div className="dashboard-screen dashboard-screen--agent">
                 {/* Header Section */}
-                <div className="row mb-4">
+                <div className="row mb-4 dashboard-page-header">
                     <div className="col-12">
-                        <div className="d-flex justify-content-between align-items-center">
+                        <div className="d-flex justify-content-between align-items-center dashboard-page-header__content">
                             <div>
-                                <h1 className="mb-1" style={{ fontWeight: 700, fontSize: '2rem' }}>
-                                    Welcome back, {session?.user.firstName}! 👋
-                                </h1>
-                                <p className="text-muted mb-0" style={{ fontSize: '1rem' }}>
+                                <p className="dashboard-eyebrow">My workspace</p>
+                                <h1 className="mb-1">Welcome back, {session?.user.firstName}</h1>
+                                <p className="text-muted mb-0">
                                     Here's what's happening with your work today
                                 </p>
                             </div>
-                            <div className="text-end">
-                                <div className="text-muted" style={{ fontSize: '0.9rem' }}>
+                            <div className="text-end dashboard-page-header__date">
+                                <div className="text-muted">
                                     {new Date().toLocaleDateString('en-ZA', {
                                         weekday: 'long',
                                         year: 'numeric',
@@ -292,68 +397,10 @@ export default function ClientflowDashboard() {
                 </div>
 
                 {/* Stats cards */}
-                <div className="row mb-4">
-                    {agentStats.map((s, idx) => (
-                        <div className="col-lg-3 col-md-6 mb-3" key={s.label}>
-                            <div
-                                className="card border-0 h-100 shadow-sm"
-                                style={{
-                                    borderRadius: '12px',
-                                    transition: 'all 0.2s ease',
-                                }}
-                                onMouseEnter={(e) => {
-                                    e.currentTarget.style.transform = 'translateY(-2px)';
-                                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
-                                }}
-                                onMouseLeave={(e) => {
-                                    e.currentTarget.style.transform = 'translateY(0)';
-                                    e.currentTarget.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
-                                }}
-                            >
-                                <div className="card-body p-4">
-                                    <div className="d-flex align-items-center">
-                                        <div
-                                            className={`rounded-circle d-flex align-items-center justify-content-center me-3`}
-                                            style={{
-                                                width: '48px',
-                                                height: '48px',
-                                                backgroundColor:
-                                                    s.variant === 'danger'
-                                                        ? '#dc3545'
-                                                        : idx === 0
-                                                          ? '#667eea'
-                                                          : idx === 1
-                                                            ? '#28a745'
-                                                            : idx === 2
-                                                              ? '#17a2b8'
-                                                              : '#ffc107',
-                                            }}
-                                        >
-                                            <i className={`bi ${s.icon} fs-5 text-white`}></i>
-                                        </div>
-                                        <div className="flex-grow-1">
-                                            <div
-                                                className="text-muted small mb-1"
-                                                style={{ fontSize: '0.85rem' }}
-                                            >
-                                                {s.label}
-                                            </div>
-                                            <div className="h4 mb-0" style={{ fontWeight: 600 }}>
-                                                {s.value}
-                                            </div>
-                                        </div>
-                                    </div>
-                                    {s.variant === 'danger' && s.value > 0 && (
-                                        <div
-                                            className="alert alert-danger py-2 px-3 mb-0 mt-3"
-                                            style={{ fontSize: '0.8rem', borderRadius: '8px' }}
-                                        >
-                                            <i className="bi bi-exclamation-triangle-fill me-1"></i>
-                                            Needs attention
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
+                <div className="row g-3 mb-4 dashboard-metric-grid">
+                    {agentStats.map((stat) => (
+                        <div className="col-lg-3 col-md-6" key={stat.label}>
+                            <DashboardMetricCard {...stat} />
                         </div>
                     ))}
                 </div>
@@ -361,374 +408,29 @@ export default function ClientflowDashboard() {
                 <div className="row">
                     {/* Tasks Section */}
                     <div className="col-lg-8 mb-4">
-                        <div className="card border-0 shadow-sm" style={{ borderRadius: '12px' }}>
-                            <div className="card-header bg-white border-0 pt-4 px-4 pb-0">
-                                <div className="d-flex justify-content-between align-items-center mb-3">
-                                    <h5
-                                        className="mb-0"
-                                        style={{ fontWeight: 600, fontSize: '1.2rem' }}
-                                    >
-                                        <i className="bi bi-list-check me-2 text-primary"></i>
-                                        My Tasks
-                                    </h5>
-                                    {tasksQuery.isError ? (
-                                        <span
-                                            className="badge bg-danger"
-                                            style={{
-                                                fontSize: '0.85rem',
-                                                padding: '0.4rem 0.9rem',
-                                                borderRadius: '20px',
-                                            }}
-                                        >
-                                            Error Loading
-                                        </span>
-                                    ) : (
-                                        <span
-                                            className="badge bg-primary"
-                                            style={{
-                                                fontSize: '0.85rem',
-                                                padding: '0.4rem 0.9rem',
-                                                borderRadius: '20px',
-                                            }}
-                                        >
-                                            {
-                                                tasks.filter((t: any) => t.status !== 'completed')
-                                                    .length
-                                            }{' '}
-                                            Active {tasks.length > 0 && `/ ${tasks.length} Total`}
-                                        </span>
-                                    )}
-                                </div>
-                            </div>
-                            <div className="card-body px-4 pb-4">
-                                {tasksQuery.isLoading ? (
-                                    <div className="text-center py-5">
-                                        <div
-                                            className="spinner-border text-primary"
-                                            style={{ width: '3rem', height: '3rem' }}
-                                        />
-                                        <p className="text-muted mt-3 mb-0">
-                                            Loading your tasks...
-                                        </p>
-                                    </div>
-                                ) : tasksQuery.isError ? (
-                                    <div className="text-center py-5">
-                                        <i className="bi bi-exclamation-triangle display-1 text-danger mb-3"></i>
-                                        <h5 className="text-muted mb-2">Error Loading Tasks</h5>
-                                        <p className="text-muted mb-3">
-                                            {tasksQuery.error instanceof Error
-                                                ? tasksQuery.error.message
-                                                : 'Unable to load tasks. Please try refreshing the page.'}
-                                        </p>
-                                        <button
-                                            className="btn btn-primary"
-                                            onClick={() => tasksQuery.refetch()}
-                                        >
-                                            <i className="bi bi-arrow-clockwise me-2"></i>
-                                            Retry
-                                        </button>
-                                    </div>
-                                ) : tasks.length === 0 ? (
-                                    <div className="text-center py-5">
-                                        <i className="bi bi-check-circle display-1 text-success mb-3"></i>
-                                        <h5 className="text-muted mb-2">All caught up!</h5>
-                                        <p className="text-muted mb-0">
-                                            You don't have any tasks assigned right now.
-                                        </p>
-                                    </div>
-                                ) : (
-                                    <div className="list-group list-group-flush">
-                                        {tasks
-                                            .filter((t: any) => t.status !== 'completed')
-                                            .slice(0, 10)
-                                            .map((task: any) => (
-                                                <div
-                                                    key={task.id}
-                                                    className="list-group-item border-0 px-0 py-3"
-                                                    onClick={() => handleTaskClick(task)}
-                                                    style={{
-                                                        cursor:
-                                                            task.metadata?.leadId || task.client?.id
-                                                                ? 'pointer'
-                                                                : 'default',
-                                                        borderBottom: '1px solid rgba(0,0,0,0.05)',
-                                                        transition: 'all 0.2s ease',
-                                                    }}
-                                                    onMouseEnter={(e) => {
-                                                        if (
-                                                            task.metadata?.leadId ||
-                                                            task.client?.id
-                                                        ) {
-                                                            e.currentTarget.style.background =
-                                                                'rgba(102, 126, 234, 0.05)';
-                                                            e.currentTarget.style.borderRadius =
-                                                                '12px';
-                                                            e.currentTarget.style.padding = '1rem';
-                                                        }
-                                                    }}
-                                                    onMouseLeave={(e) => {
-                                                        e.currentTarget.style.background =
-                                                            'transparent';
-                                                        e.currentTarget.style.padding = '0.75rem 0';
-                                                    }}
-                                                >
-                                                    <div className="d-flex justify-content-between align-items-start">
-                                                        <div className="flex-grow-1">
-                                                            <div className="d-flex align-items-center mb-2">
-                                                                {task.metadata?.leadId && (
-                                                                    <span
-                                                                        className="badge me-2"
-                                                                        style={{
-                                                                            background:
-                                                                                'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
-                                                                            fontSize: '0.75rem',
-                                                                            padding:
-                                                                                '0.35rem 0.75rem',
-                                                                            borderRadius: '12px',
-                                                                            fontWeight: 600,
-                                                                        }}
-                                                                    >
-                                                                        <i className="bi bi-person-plus-fill me-1"></i>
-                                                                        New Lead
-                                                                    </span>
-                                                                )}
-                                                                <span
-                                                                    className={`badge`}
-                                                                    style={{
-                                                                        background:
-                                                                            task.priority ===
-                                                                                'high' ||
-                                                                            task.priority ===
-                                                                                'urgent'
-                                                                                ? 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)'
-                                                                                : task.priority ===
-                                                                                    'normal'
-                                                                                  ? 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)'
-                                                                                  : 'linear-gradient(135deg, #a8edea 0%, #fed6e3 100%)',
-                                                                        fontSize: '0.75rem',
-                                                                        padding: '0.35rem 0.75rem',
-                                                                        borderRadius: '12px',
-                                                                        fontWeight: 600,
-                                                                        textTransform: 'capitalize',
-                                                                    }}
-                                                                >
-                                                                    {task.priority}
-                                                                </span>
-                                                            </div>
-                                                            <h6
-                                                                className="mb-2"
-                                                                style={{
-                                                                    fontWeight: 600,
-                                                                    fontSize: '1.05rem',
-                                                                }}
-                                                            >
-                                                                {task.title}
-                                                            </h6>
-                                                            <p
-                                                                className="text-muted mb-2"
-                                                                style={{ fontSize: '0.9rem' }}
-                                                            >
-                                                                {task.metadata?.leadId ? (
-                                                                    <>
-                                                                        <strong>Lead:</strong>{' '}
-                                                                        {task.metadata.leadData
-                                                                            ?.name || 'Unknown'}
-                                                                        {task.metadata.leadData
-                                                                            ?.cell &&
-                                                                            ` • ${task.metadata.leadData.cell}`}
-                                                                    </>
-                                                                ) : (
-                                                                    task.description ||
-                                                                    'No description'
-                                                                )}
-                                                            </p>
-                                                            {task.metadata?.leadId && (
-                                                                <div
-                                                                    className="d-inline-flex align-items-center"
-                                                                    style={{
-                                                                        color: '#667eea',
-                                                                        fontSize: '0.9rem',
-                                                                        fontWeight: 600,
-                                                                    }}
-                                                                >
-                                                                    <i className="bi bi-arrow-right-circle-fill me-2"></i>
-                                                                    Click to convert to client
-                                                                </div>
-                                                            )}
-                                                            {task.dueDate && (
-                                                                <div className="mt-2">
-                                                                    <small className="text-muted">
-                                                                        <i className="bi bi-calendar-event me-1"></i>
-                                                                        Due:{' '}
-                                                                        {new Date(
-                                                                            task.dueDate
-                                                                        ).toLocaleDateString()}
-                                                                    </small>
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        {tasks.filter((t: any) => t.status !== 'completed').length >
-                                            10 && (
-                                            <div className="text-center pt-3">
-                                                <button
-                                                    className="btn btn-link text-decoration-none"
-                                                    style={{ color: '#667eea', fontWeight: 600 }}
-                                                >
-                                                    View all{' '}
-                                                    {
-                                                        tasks.filter(
-                                                            (t: any) => t.status !== 'completed'
-                                                        ).length
-                                                    }{' '}
-                                                    tasks →
-                                                </button>
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-                            </div>
-                        </div>
+                        <DashboardTasksPanel
+                            tasks={tasks}
+                            isLoading={tasksQuery.isLoading}
+                            isError={tasksQuery.isError}
+                            error={tasksQuery.error}
+                            onRetry={() => tasksQuery.refetch()}
+                            onTaskClick={handleTaskClick}
+                        />
                     </div>
 
                     {/* Sidebar - Recent Activity & Quick Stats */}
                     <div className="col-lg-4 mb-4">
-                        {/* Inbox Section */}
-                        <div
-                            className="card border-0 shadow-sm mb-4"
-                            style={{ borderRadius: '12px' }}
-                        >
-                            <div className="card-header bg-white border-0 pt-4 px-4 pb-0">
-                                <h5
-                                    className="mb-3"
-                                    style={{ fontWeight: 600, fontSize: '1.2rem' }}
-                                >
-                                    <i className="bi bi-envelope me-2 text-primary"></i>
-                                    Recent Messages
-                                </h5>
-                            </div>
-                            <div className="card-body px-4 pb-4">
-                                {inboxQuery.isLoading ? (
-                                    <div className="text-center py-4">
-                                        <div className="spinner-border spinner-border-sm text-primary" />
-                                        <p className="text-muted mt-2 mb-0 small">Loading...</p>
-                                    </div>
-                                ) : inboxQuery.isError ? (
-                                    <div
-                                        className="alert alert-warning py-2 px-3 mb-0"
-                                        style={{ borderRadius: '12px', fontSize: '0.85rem' }}
-                                    >
-                                        <i className="bi bi-exclamation-triangle me-1"></i>
-                                        Unable to load messages
-                                    </div>
-                                ) : emails.length === 0 ? (
-                                    <div className="text-center py-4">
-                                        <i className="bi bi-inbox display-4 text-muted mb-2"></i>
-                                        <p className="text-muted mb-0 small">No messages</p>
-                                    </div>
-                                ) : (
-                                    <div className="list-group list-group-flush">
-                                        {emails.slice(0, 5).map((email: any, idx: number) => (
-                                            <div
-                                                key={email.uid || email.id || idx}
-                                                className="list-group-item border-0 px-3 py-3"
-                                                style={{
-                                                    cursor: 'pointer',
-                                                    borderBottom:
-                                                        idx < 4
-                                                            ? '1px solid rgba(0,0,0,0.08)'
-                                                            : 'none',
-                                                    transition: 'all 0.2s ease',
-                                                    borderRadius: '8px',
-                                                    marginBottom: idx < 4 ? '0.5rem' : '0',
-                                                }}
-                                                onMouseEnter={(e) => {
-                                                    e.currentTarget.style.background = '#f8f9fa';
-                                                }}
-                                                onMouseLeave={(e) => {
-                                                    e.currentTarget.style.background =
-                                                        'transparent';
-                                                }}
-                                            >
-                                                <div
-                                                    className="d-flex align-items-center gap-3"
-                                                    style={{ overflow: 'hidden' }}
-                                                >
-                                                    <div
-                                                        className="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0"
-                                                        style={{
-                                                            width: '44px',
-                                                            height: '44px',
-                                                            background: '#667eea',
-                                                            fontSize: '1rem',
-                                                            color: 'white',
-                                                            fontWeight: 600,
-                                                        }}
-                                                    >
-                                                        {(email.from || email.fromAddress || 'U')
-                                                            .charAt(0)
-                                                            .toUpperCase()}
-                                                    </div>
-                                                    <div
-                                                        className="flex-grow-1"
-                                                        style={{ minWidth: 0, overflow: 'hidden' }}
-                                                    >
-                                                        <div
-                                                            className="fw-semibold mb-1"
-                                                            style={{
-                                                                fontSize: '0.95rem',
-                                                                overflow: 'hidden',
-                                                                textOverflow: 'ellipsis',
-                                                                whiteSpace: 'nowrap',
-                                                            }}
-                                                            title={email.subject || '(No subject)'}
-                                                        >
-                                                            {email.subject || '(No subject)'}
-                                                        </div>
-                                                        <div
-                                                            className="text-muted small mb-1"
-                                                            style={{
-                                                                overflow: 'hidden',
-                                                                textOverflow: 'ellipsis',
-                                                                whiteSpace: 'nowrap',
-                                                            }}
-                                                            title={
-                                                                email.from ||
-                                                                email.fromAddress ||
-                                                                'Unknown'
-                                                            }
-                                                        >
-                                                            {email.from ||
-                                                                email.fromAddress ||
-                                                                'Unknown'}
-                                                        </div>
-                                                        <div
-                                                            className="text-muted"
-                                                            style={{ fontSize: '0.75rem' }}
-                                                        >
-                                                            {email.date
-                                                                ? new Date(
-                                                                      email.date
-                                                                  ).toLocaleDateString()
-                                                                : 'No date'}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
+                        <div className="mb-4">
+                            <DashboardMessagesPanel
+                                emails={emails}
+                                isLoading={inboxQuery.isLoading}
+                                isError={inboxQuery.isError}
+                            />
                         </div>
 
                         {/* Performance Metrics */}
                         {agentData && (
-                            <div
-                                className="card border-0 shadow-sm"
-                                style={{ borderRadius: '12px' }}
-                            >
+                            <div className="card dashboard-panel">
                                 <div className="card-header bg-white border-0 pt-4 px-4 pb-0">
                                     <h5
                                         className="mb-3"
@@ -822,111 +524,24 @@ export default function ClientflowDashboard() {
 
     // CEO Dashboard
     if (isCEO) {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const todayStr = today.toISOString().split('T')[0];
-
-        const thisWeekStart = new Date(today);
-        thisWeekStart.setDate(today.getDate() - today.getDay());
-        const thisWeekStartStr = thisWeekStart.toISOString().split('T')[0];
-
-        const thisMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-        const thisMonthStartStr = thisMonthStart.toISOString().split('T')[0];
-
-        // Fetch client stats
-        const clientStatsQuery = useQuery({
-            queryKey: ['client-stats'],
-            queryFn: async () => {
-                const token = session?.access_token;
-                const response = await apiClient.get('/clients/stats', {
-                    headers: { Authorization: `Bearer ${token}` },
-                });
-                return response.data?.data || response.data || {};
-            },
-            staleTime: 1000 * 60 * 5,
-        });
-
-        // Fetch ZoomConnect SMS stats
-        const smsStatsQuery = useQuery({
-            queryKey: ['zoomconnect-stats', thisMonthStartStr, todayStr],
-            queryFn: async () => {
-                const token = session?.access_token;
-                const response = await apiClient.get('/zoomconnect/stats', {
-                    params: { from: thisMonthStartStr, to: todayStr },
-                    headers: { Authorization: `Bearer ${token}` },
-                });
-                console.log('ZoomConnect API Response:', response.data);
-                console.log('Response structure:', JSON.stringify(response.data, null, 2));
-                // Extract data from envelope: {success: true, data: {...}}
-                return response.data?.data || response.data || {};
-            },
-            staleTime: 1000 * 60 * 5,
-        });
-
-        // Fetch commission settings
-        const commissionQuery = useQuery({
-            queryKey: ['commission-settings'],
-            queryFn: async () => {
-                const token = session?.access_token;
-                const response = await apiClient.get('/commission', {
-                    headers: { Authorization: `Bearer ${token}` },
-                });
-                const data = response.data?.data || response.data || {};
-                return { percentage: data.percentage || 10 };
-            },
-            staleTime: 1000 * 60 * 5,
-        });
-
-        // Fetch task stats
-        const taskStatsQuery = useQuery({
-            queryKey: ['task-stats'],
-            queryFn: async () => {
-                const token = session?.access_token;
-                const response = await apiClient.get('/tasks', {
-                    params: { limit: 1000 },
-                    headers: { Authorization: `Bearer ${token}` },
-                });
-                const tasks = response.data?.data || response.data || [];
-                const total = Array.isArray(tasks) ? tasks.length : 0;
-                const completed = Array.isArray(tasks)
-                    ? tasks.filter((t: any) => t.status === 'completed').length
-                    : 0;
-                const incomplete = total - completed;
-                return { total, completed, incomplete };
-            },
-            staleTime: 1000 * 60 * 5,
-        });
-
         const clientStats = clientStatsQuery.data || {};
         const smsStats = smsStatsQuery.data || {};
-        const commission = commissionQuery.data || { percentage: 10 };
         const taskStats = taskStatsQuery.data || { total: 0, completed: 0, incomplete: 0 };
 
         // Extract SMS statistics from nested structure
-        console.log('SMS Stats Data:', smsStats);
         const smsTotal = smsStats.grandTotal || smsStats.total || {};
-        console.log('SMS Total:', smsTotal);
         const smsDelivered = smsTotal.delivered || 0;
         const smsSent = smsTotal.sent || 0;
         const smsFailed = smsTotal.failed || 0;
 
         // Extract credit balance from user data
         const smsUsers = smsStats.users || [];
-        console.log('SMS Users:', smsUsers);
         const creditBalance = smsUsers.length > 0 ? smsUsers[0]?.user?.creditBalance || 0 : 0;
-        console.log('Credit Balance:', creditBalance);
 
         return (
-            <div className="container-fluid py-4">
+            <div className="dashboard-screen dashboard-screen--executive">
                 {/* Modern Gradient Header */}
-                <div
-                    className="mb-4 p-4 text-white"
-                    style={{
-                        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                        borderRadius: '12px',
-                        boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
-                    }}
-                >
+                <div className="mb-4 p-4 text-white dashboard-executive-header">
                     <div className="d-flex justify-content-between align-items-center">
                         <div>
                             <h2 className="mb-1">CEO Dashboard</h2>
@@ -956,7 +571,6 @@ export default function ClientflowDashboard() {
                                 className="card border-0 h-100"
                                 style={{
                                     borderRadius: '12px',
-                                    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
                                 }}
                             >
                                 <div className="card-body d-flex align-items-center">
@@ -993,7 +607,6 @@ export default function ClientflowDashboard() {
                                 className="card border-0 h-100"
                                 style={{
                                     borderRadius: '12px',
-                                    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
                                 }}
                             >
                                 <div className="card-body d-flex align-items-center">
@@ -1029,7 +642,6 @@ export default function ClientflowDashboard() {
                                 className="card border-0 h-100"
                                 style={{
                                     borderRadius: '12px',
-                                    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
                                 }}
                             >
                                 <div className="card-body d-flex align-items-center">
@@ -1071,7 +683,6 @@ export default function ClientflowDashboard() {
                                 className="card border-0 h-100"
                                 style={{
                                     borderRadius: '12px',
-                                    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
                                 }}
                             >
                                 <div className="card-body d-flex align-items-center">
@@ -1104,7 +715,6 @@ export default function ClientflowDashboard() {
                                 className="card border-0 h-100"
                                 style={{
                                     borderRadius: '12px',
-                                    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
                                 }}
                             >
                                 <div className="card-body d-flex align-items-center">
@@ -1137,7 +747,6 @@ export default function ClientflowDashboard() {
                                 className="card border-0 h-100"
                                 style={{
                                     borderRadius: '12px',
-                                    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
                                 }}
                             >
                                 <div className="card-body d-flex align-items-center">
@@ -1171,8 +780,7 @@ export default function ClientflowDashboard() {
                                 className="card border-0 h-100"
                                 style={{
                                     borderRadius: '12px',
-                                    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-                                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                                    background: 'var(--color-brand-teal)',
                                 }}
                             >
                                 <div className="card-body d-flex align-items-center text-white">
@@ -1220,7 +828,6 @@ export default function ClientflowDashboard() {
                                     className="card border-0 h-100"
                                     style={{
                                         borderRadius: '12px',
-                                        boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
                                     }}
                                 >
                                     <div className="card-body text-center">
@@ -1252,7 +859,6 @@ export default function ClientflowDashboard() {
                                     className="card border-0 h-100"
                                     style={{
                                         borderRadius: '12px',
-                                        boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
                                     }}
                                 >
                                     <div className="card-body text-center">
@@ -1284,7 +890,6 @@ export default function ClientflowDashboard() {
                                     className="card border-0 h-100"
                                     style={{
                                         borderRadius: '12px',
-                                        boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
                                     }}
                                 >
                                     <div className="card-body text-center">
@@ -1319,10 +924,7 @@ export default function ClientflowDashboard() {
                 {/* Quick Info */}
                 <div className="row">
                     <div className="col-12">
-                        <div
-                            className="alert alert-info border-0"
-                            style={{ borderRadius: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}
-                        >
+                        <div className="alert alert-info border-0 dashboard-info-panel">
                             <div className="d-flex align-items-start">
                                 <svg
                                     width="24"
@@ -1359,7 +961,7 @@ export default function ClientflowDashboard() {
 
     // Fallback for other roles
     return (
-        <div className="container py-4">
+        <div className="dashboard-screen dashboard-state">
             <div className="alert alert-info">
                 <h5>Dashboard</h5>
                 <p className="mb-0">Your role: {role}</p>

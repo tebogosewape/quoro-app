@@ -3,7 +3,6 @@ import globals from 'globals';
 import reactHooks from 'eslint-plugin-react-hooks';
 import reactRefresh from 'eslint-plugin-react-refresh';
 import tseslint from 'typescript-eslint';
-const path = require('path');
 
 export default tseslint.config(
     { ignores: ['dist'] },
@@ -14,7 +13,7 @@ export default tseslint.config(
             ecmaVersion: 2020,
             globals: globals.browser,
             parserOptions: {
-                tsconfigRootDir: __dirname,
+                tsconfigRootDir: import.meta.dirname,
             },
         },
         plugins: {

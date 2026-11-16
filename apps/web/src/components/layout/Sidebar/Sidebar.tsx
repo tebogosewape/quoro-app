@@ -1,9 +1,8 @@
 import { Nav, Accordion, Button } from 'react-bootstrap';
-import logo from '@/assets/logo.png';
 import './Sidebar.css';
 
 import { hasPermission } from '../../../utils/permissions';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../../stores/auth.store';
 import { useEffect, useState } from 'react';
 
@@ -14,6 +13,7 @@ type SidebarProps = {
 
 export default function Sidebar({ isOpen, onCloseSidebar }: SidebarProps) {
     const navigate = useNavigate();
+    const location = useLocation();
     const [activeAccordion, setActiveAccordion] = useState<string | null>(null);
     const { session } = useAuthStore();
 
@@ -25,12 +25,12 @@ export default function Sidebar({ isOpen, onCloseSidebar }: SidebarProps) {
     const isCEO = session?.user?.role === 'chief_executive_officer';
     const isTeamLeader = session?.user?.role === 'team_leader';
 
-    // Debug logging
-    console.log('Sidebar Debug:', {
-        hasSession: !!session,
-        userRole: session?.user?.role,
-        isTeamLeader,
-    });
+    useEffect(() => {
+        if (location.pathname.startsWith('/clients')) setActiveAccordion('clients');
+        else if (location.pathname.startsWith('/leads')) setActiveAccordion('leads');
+        else if (location.pathname.startsWith('/admin')) setActiveAccordion('admin');
+        else setActiveAccordion(null);
+    }, [location.pathname]);
 
     // Lock/unlock body scroll on mobile when sidebar opens
     useEffect(() => {
@@ -50,15 +50,16 @@ export default function Sidebar({ isOpen, onCloseSidebar }: SidebarProps) {
     return (
         <aside
             id="sidebar"
-            className={`sidebar surface-dark ${isOpen ? 'open' : ''}`}
+            className={`sidebar ${isOpen ? 'open' : ''}`}
             role="navigation"
             aria-label="Main navigation"
         >
-            <div className="sidebar-header-top d-flex justify-content-between align-items-center px-2">
+            <div className="sidebar-header-top">
+                <span className="sidebar-section-label">Navigation</span>
                 <Button
                     variant="link"
                     onClick={onCloseSidebar}
-                    className="d-md-none p-0 close-sidebar-btn text-secondary"
+                    className="d-md-none close-sidebar-btn"
                     aria-label="Close sidebar menu"
                 >
                     <svg
@@ -75,11 +76,6 @@ export default function Sidebar({ isOpen, onCloseSidebar }: SidebarProps) {
                         <line x1="6" y1="6" x2="18" y2="18" />
                     </svg>
                 </Button>
-            </div>
-
-            <div className="sidebar-header">
-                <img src={logo} alt="QFinance" className="sidebar-logo mb-5" />
-                <div className="sidebar-title">QUORA FINANCIAL SOLUTION</div>
             </div>
 
             <Nav className="flex-column sidebar-nav">

@@ -18,7 +18,7 @@ type Props = {
  */
 export default function TaskBoard({ items, onToggleDone }: Props) {
     return (
-        <div className="panel glass p-3">
+        <section className="card dashboard-panel p-3">
             <div className="d-flex justify-content-between align-items-center mb-2">
                 <h5 className="m-0">My To-Dos</h5>
                 <small className="text-muted">{items.filter((i) => !i.done).length} open</small>
@@ -27,8 +27,7 @@ export default function TaskBoard({ items, onToggleDone }: Props) {
                 {items.map((t) => (
                     <li
                         key={t.id}
-                        className="d-flex align-items-center justify-content-between py-2"
-                        style={{ borderBottom: '1px dashed var(--glass-border)' }}
+                        className="d-flex align-items-center justify-content-between py-2 dashboard-task-board-item"
                     >
                         <div className="d-flex align-items-center gap-2">
                             <input
@@ -56,7 +55,7 @@ export default function TaskBoard({ items, onToggleDone }: Props) {
                     </li>
                 ))}
             </ul>
-        </div>
+        </section>
     );
 }
 

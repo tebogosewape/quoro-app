@@ -1,11 +1,203 @@
-.nav-bar-icon {
-    width: 24px;
-    height: 24px;
-    border: 1px solid #ffffff;
-    border-radius: 50%;
+.app-navbar {
+    min-height: var(--navbar-height, 64px);
+    height: var(--navbar-height, 64px);
+    display: flex;
+    align-items: stretch;
+    flex: 0 0 var(--navbar-height, 64px);
+    position: relative;
+    z-index: 1045;
+    color: #ffffff;
+    background: var(--color-brand-teal);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.app-navbar__brand {
+    width: 248px;
+    flex: 0 0 248px;
+    display: flex;
+    align-items: center;
+    padding: 0 18px;
+    color: #ffffff;
+    text-decoration: none;
+    border-right: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.app-navbar__brand:hover {
+    color: #ffffff;
+}
+
+.app-navbar__brand:focus-visible,
+.app-navbar__user:focus-visible,
+.app-navbar__menu-button:focus-visible {
+    outline: 2px solid #ffffff !important;
+    outline-offset: -3px;
+    box-shadow: none !important;
+}
+
+.app-navbar__brand .qfinance-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    color: #ffffff;
+}
+
+.app-navbar__brand .qfinance-brand__mark {
+    width: 36px;
+    height: 36px;
+    flex: 0 0 36px;
+}
+
+.app-navbar__brand .qfinance-brand__copy {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.08rem;
+}
+
+.app-navbar__brand .qfinance-brand__name {
+    color: #ffffff;
+    font-size: 0.96rem;
+    font-weight: 750;
+    line-height: 1;
+    letter-spacing: 0.11em;
+}
+
+.app-navbar__brand .qfinance-brand__tagline {
+    color: rgba(255, 255, 255, 0.72);
+    font-size: 0.62rem;
+    font-weight: 500;
+    line-height: 1.1;
+}
+
+.app-navbar__content {
+    min-width: 0;
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 18px;
+}
+
+.app-navbar__menu-button {
+    width: 36px;
+    height: 36px;
+    flex: 0 0 36px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    font-size: 14px;
-    margin-right: 8px;
+    padding: 0 !important;
+    color: #ffffff !important;
+    background: transparent !important;
+    border: 1px solid rgba(255, 255, 255, 0.32) !important;
+    border-radius: 8px !important;
+    box-shadow: none !important;
+}
+
+.app-navbar__menu-button:hover {
+    background: rgba(255, 255, 255, 0.1) !important;
+}
+
+.app-navbar__section,
+.app-navbar__user-copy {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    line-height: 1.1;
+}
+
+.app-navbar__eyebrow {
+    color: rgba(255, 255, 255, 0.68);
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.app-navbar__title {
+    margin-top: 2px;
+    color: #ffffff;
+    font-size: 0.98rem;
+    font-weight: 650;
+}
+
+.app-navbar__user {
+    min-width: 0;
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 5px 8px;
+    color: #ffffff;
+    text-decoration: none;
+    border-radius: 8px;
+}
+
+.app-navbar__user:hover {
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.app-navbar__avatar {
+    width: 34px;
+    height: 34px;
+    flex: 0 0 34px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-brand-teal);
+    background: #ffffff;
+    border-radius: 50%;
+    font-size: 0.72rem;
+    font-weight: 750;
+    letter-spacing: 0.03em;
+}
+
+.app-navbar__user-name,
+.app-navbar__user-role {
+    max-width: 210px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.app-navbar__user-name {
+    font-size: 0.82rem;
+    font-weight: 650;
+}
+
+.app-navbar__user-role {
+    margin-top: 2px;
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 0.66rem;
+}
+
+@media (max-width: 767.98px) {
+    .app-navbar__brand {
+        width: auto;
+        flex-basis: auto;
+        padding: 0 12px;
+        border-right: 0;
+    }
+
+    .app-navbar__brand .qfinance-brand__mark {
+        width: 32px;
+        height: 32px;
+        flex-basis: 32px;
+    }
+
+    .app-navbar__brand .qfinance-brand__tagline,
+    .app-navbar__user-copy {
+        display: none;
+    }
+
+    .app-navbar__content {
+        padding: 0 10px 0 0;
+    }
+}
+
+@media (max-width: 480px) {
+    .app-navbar__section {
+        display: none;
+    }
 }

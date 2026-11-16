@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Container, Row, Col, Card, Form, Button, Alert, ProgressBar } from 'react-bootstrap';
+import { Row, Col, Form, Button, Alert, ProgressBar } from 'react-bootstrap';
 import { importLeadsFromFile, importLeadsFromPath, type LeadImportResponse } from '@/api/leads.api';
 
 export default function LeadsImport() {

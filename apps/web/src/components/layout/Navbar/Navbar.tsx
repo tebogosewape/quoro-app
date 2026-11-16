@@ -1,7 +1,9 @@
-import { Button, Container, Nav, Navbar } from 'react-bootstrap';
+import { Button } from 'react-bootstrap';
 import './Navbar.css';
 import { useAuthStore } from '../../../stores/auth.store';
 import { List as HamburgerIcon, XLg as CloseIcon } from 'react-bootstrap-icons';
+import { Link, useLocation } from 'react-router-dom';
+import { QFinanceBrand } from '../../auth/QFinanceBrand';
 
 interface AppNavbarProps {
     onToggleSidebar: () => void;
@@ -10,61 +12,64 @@ interface AppNavbarProps {
 
 export default function AppNavbar({ onToggleSidebar, isSidebarOpen }: AppNavbarProps) {
     const session = useAuthStore((state) => state.session);
+    const location = useLocation();
     const displayName = session
         ? `${session.user.firstName} ${session.user.lastName ?? ''}`.trim()
         : 'Guest';
+    const initials = session
+        ? `${session.user.firstName?.[0] ?? ''}${session.user.lastName?.[0] ?? ''}`.toUpperCase()
+        : 'G';
+    const roleParts = session?.user.role.split('_') ?? [];
+    const roleLabel = roleParts
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(' ');
+
+    const sectionTitle = (() => {
+        const path = location.pathname;
+        if (path.startsWith('/clients/new')) return 'New client';
+        if (path.startsWith('/clients/')) return 'Client details';
+        if (path.startsWith('/clients')) return 'Clients';
+        if (path.startsWith('/leads/import')) return 'Import leads';
+        if (path.startsWith('/leads/bulk-allocate')) return 'Bulk allocation';
+        if (path.startsWith('/leads')) return 'Leads';
+        if (path.startsWith('/admin')) return 'Administration';
+        if (path.startsWith('/team')) return 'Team management';
+        if (path.startsWith('/account')) return 'My profile';
+        return 'Dashboard';
+    })();
 
     return (
-        <Navbar
-            className="navbar-custom app-navbar shadow-sm"
-            variant="dark"
-            expand="lg"
-            style={{
-                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-            }}
-        >
-            <Container fluid>
+        <header className="app-navbar">
+            <Link to="/dashboard" className="app-navbar__brand" aria-label="QFinance dashboard">
+                <QFinanceBrand />
+            </Link>
+
+            <div className="app-navbar__content">
                 <Button
                     onClick={onToggleSidebar}
-                    className="d-md-none me-2 border-0"
+                    className="app-navbar__menu-button d-md-none"
                     aria-controls="sidebar"
                     aria-expanded={isSidebarOpen}
                     aria-label={isSidebarOpen ? 'Close navigation menu' : 'Open navigation menu'}
-                    style={{
-                        background: 'rgba(255, 255, 255, 0.2)',
-                        color: '#fff',
-                        borderRadius: '8px',
-                        padding: '8px 12px',
-                    }}
                 >
-                    {isSidebarOpen ? <CloseIcon size={24} /> : <HamburgerIcon size={24} />}
+                    {isSidebarOpen ? <CloseIcon size={20} /> : <HamburgerIcon size={20} />}
                 </Button>
 
-                <Navbar.Collapse id="basic-navbar-nav" className="justify-content-end">
-                    <Nav>
-                        <Nav.Link href="#profile" style={{ color: '#fff', fontWeight: 500 }}>
-                            <svg
-                                width="20"
-                                height="20"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                style={{
-                                    marginRight: '8px',
-                                    verticalAlign: 'middle',
-                                }}
-                            >
-                                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-                                <circle cx="12" cy="7" r="4" />
-                            </svg>
-                            Hello, {displayName}
-                        </Nav.Link>
-                    </Nav>
-                </Navbar.Collapse>
-            </Container>
-        </Navbar>
+                <div className="app-navbar__section" aria-live="polite">
+                    <span className="app-navbar__eyebrow">Workspace</span>
+                    <span className="app-navbar__title">{sectionTitle}</span>
+                </div>
+
+                <Link to="/account/profile" className="app-navbar__user">
+                    <span className="app-navbar__avatar" aria-hidden="true">
+                        {initials}
+                    </span>
+                    <span className="app-navbar__user-copy">
+                        <span className="app-navbar__user-name">{displayName}</span>
+                        <span className="app-navbar__user-role">{roleLabel}</span>
+                    </span>
+                </Link>
+            </div>
+        </header>
     );
 }

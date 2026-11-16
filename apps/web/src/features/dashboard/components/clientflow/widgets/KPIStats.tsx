@@ -19,7 +19,7 @@ export default function KPIStats({ items }: Props) {
         <div className="row g-3">
             {items.map((k) => (
                 <div className="col-12 col-sm-6 col-lg-3" key={k.id}>
-                    <div className="panel glass p-3 h-100">
+                    <div className="card dashboard-stat-card p-3 h-100">
                         <div className="d-flex justify-content-between align-items-start">
                             <div>
                                 <div className="text-muted" style={{ fontSize: 12 }}>

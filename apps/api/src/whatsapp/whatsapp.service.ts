@@ -42,7 +42,9 @@ export class WhatsappService implements OnModuleInit, OnModuleDestroy {
     async onModuleInit() {
         this.logger.log('Initializing WhatsApp service...');
         await this.initializeSession();
-        await this.initializeClient();
+        // WhatsApp Web may take minutes to launch Chromium or wait for authentication.
+        // It must not prevent unrelated API routes from becoming available.
+        void this.initializeClient();
     }
 
     async onModuleDestroy() {

@@ -47,7 +47,7 @@ async function bootstrap() {
             if (corsOrigins.includes(reqOrigin)) {
                 return callback(null, true);
             }
-            return callback(new Error('Not allowed by CORS'), false);
+            return callback(null, false);
         },
         methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
         allowedHeaders: ['Content-Type', 'Authorization', 'X-Trace-Id'],

@@ -20,7 +20,7 @@ export default defineConfig({
         port: 2100,
         host: true,
         // allow access from this dev host
-        allowedHosts: ['dev-qa.quorafinance.co.za'],
+        allowedHosts: ['localhost', 'dev-qa.quorafinance.co.za'],
         watch: {
             usePolling: true,
             interval: 300,
@@ -31,7 +31,7 @@ export default defineConfig({
             protocol: 'ws',
         },
         proxy: {
-            '/api': 'https://dev-api.quorafinance.co.za',
+            '/api': process.env.API_TARGET || 'http://localhost:2200',
         },
     },
 });

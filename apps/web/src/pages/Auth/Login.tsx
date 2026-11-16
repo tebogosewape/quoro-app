@@ -1,6 +1,12 @@
 import { Form, Button, Container, InputGroup } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faExclamationCircle, faEnvelope, faLock } from '@fortawesome/free-solid-svg-icons';
+import {
+    faEnvelope,
+    faExclamationCircle,
+    faEye,
+    faEyeSlash,
+    faLock,
+} from '@fortawesome/free-solid-svg-icons';
 import { Formik, Field, Form as FormikForm, ErrorMessage } from 'formik';
 import * as Yup from 'yup';
 
@@ -54,6 +60,7 @@ export default function Login() {
     const navigate = useNavigate();
     const [showError, setShowError] = useState(location.state?.error || '');
     const [apiError, setApiError] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
     const session = useAuthStore((state) => state.session);
     const hydrated = useAuthStore((state) => state.hydrated);
     const setSession = useAuthStore((state) => state.setSession);
@@ -139,7 +146,7 @@ export default function Login() {
     };
 
     return (
-        <div className="login-page-wrapper">
+        <div className="login-page-wrapper login-page-wrapper--sign-in">
             <div className="login-wrapper">
                 <AuthCardHeader
                     title="Welcome back"
@@ -148,7 +155,12 @@ export default function Login() {
 
                 <div className="login-form-wrapper">
                     <Container className="login-form-container">
-                        {showError && <div className="alert alert-danger">{showError}</div>}
+                        {showError && (
+                            <div className="alert alert-danger auth-error-alert" role="alert">
+                                <FontAwesomeIcon icon={faExclamationCircle} aria-hidden="true" />
+                                <span>{showError}</span>
+                            </div>
+                        )}
 
                         <Formik
                             initialValues={{ identifier: '', password: '' }}
@@ -157,8 +169,8 @@ export default function Login() {
                         >
                             {({ isSubmitting }) => (
                                 <FormikForm className="login-form">
-                                    {/* Identifier Field */}
-                                    <Form.Group className="mb-4">
+                                    <Form.Group className="mb-3" controlId="login-identifier">
+                                        <Form.Label>Email, username, or phone</Form.Label>
                                         <InputGroup>
                                             <InputGroup.Text className="input-icon">
                                                 <FontAwesomeIcon
@@ -169,8 +181,12 @@ export default function Login() {
                                             <Field
                                                 name="identifier"
                                                 type="text"
+                                                id="login-identifier"
                                                 className="form-control form-input"
-                                                placeholder="Email, username, or phone"
+                                                placeholder="Enter your email, username, or phone"
+                                                autoComplete="username"
+                                                autoCapitalize="none"
+                                                spellCheck="false"
                                             />
                                         </InputGroup>
                                         <ErrorMessage name="identifier">
@@ -186,8 +202,8 @@ export default function Login() {
                                         </ErrorMessage>
                                     </Form.Group>
 
-                                    {/* Password Field */}
-                                    <Form.Group className="mb-4">
+                                    <Form.Group className="mb-3" controlId="login-password">
+                                        <Form.Label>Password</Form.Label>
                                         <InputGroup>
                                             <InputGroup.Text className="input-icon">
                                                 <FontAwesomeIcon
@@ -197,10 +213,31 @@ export default function Login() {
                                             </InputGroup.Text>
                                             <Field
                                                 name="password"
-                                                type="password"
+                                                type={showPassword ? 'text' : 'password'}
+                                                id="login-password"
                                                 className="form-control form-input"
                                                 placeholder="Enter password"
+                                                autoComplete="current-password"
                                             />
+                                            <Button
+                                                type="button"
+                                                variant="light"
+                                                className="password-toggle"
+                                                aria-label={
+                                                    showPassword
+                                                        ? 'Hide password'
+                                                        : 'Show password'
+                                                }
+                                                aria-pressed={showPassword}
+                                                onClick={() =>
+                                                    setShowPassword((current) => !current)
+                                                }
+                                            >
+                                                <FontAwesomeIcon
+                                                    icon={showPassword ? faEyeSlash : faEye}
+                                                    aria-hidden="true"
+                                                />
+                                            </Button>
                                         </InputGroup>
                                         <ErrorMessage name="password">
                                             {(msg) => (
@@ -216,13 +253,13 @@ export default function Login() {
                                     </Form.Group>
 
                                     {apiError && (
-                                        <p className="text-center text-danger font-weight-bold">
+                                        <div className="auth-error-alert" role="alert">
                                             <FontAwesomeIcon
                                                 icon={faExclamationCircle}
-                                                className="me-2"
+                                                aria-hidden="true"
                                             />
-                                            {apiError}
-                                        </p>
+                                            <span>{apiError}</span>
+                                        </div>
                                     )}
 
                                     <div className="login-actions mt-4">
@@ -231,6 +268,7 @@ export default function Login() {
                                             type="submit"
                                             className="login-button"
                                             disabled={isSubmitting}
+                                            aria-busy={isSubmitting}
                                         >
                                             {isSubmitting ? 'Signing in…' : 'Log in'}
                                         </Button>

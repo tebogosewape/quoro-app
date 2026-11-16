@@ -17,7 +17,7 @@ export default function CalendarStrip({ items, onOpen }: Props) {
     const days: Array<[string, EventItem[]]> = Object.entries(grouped);
 
     return (
-        <div className="panel glass p-3">
+        <section className="card dashboard-panel p-3">
             <div className="d-flex justify-content-between align-items-center mb-2">
                 <h5 className="m-0">Schedule</h5>
                 <small className="text-muted">{items.length} upcoming</small>
@@ -25,20 +25,13 @@ export default function CalendarStrip({ items, onOpen }: Props) {
             <div className="row g-3">
                 {days.map(([day, list]) => (
                     <div className="col-12 col-md-6" key={day}>
-                        <div
-                            className="p-2"
-                            style={{ border: '1px solid var(--glass-border)', borderRadius: 12 }}
-                        >
+                        <div className="p-2 dashboard-schedule-day">
                             <div style={{ fontWeight: 700, marginBottom: 6 }}>{day}</div>
                             <ul className="list-unstyled m-0">
                                 {list.map((entry) => (
                                     <li
                                         key={entry.id}
-                                        className="d-flex justify-content-between py-1"
-                                        style={{
-                                            borderBottom: '1px dashed var(--glass-border)',
-                                            cursor: 'pointer',
-                                        }}
+                                        className="d-flex justify-content-between py-1 dashboard-schedule-item"
                                         onClick={() => onOpen?.(entry.id)}
                                     >
                                         <div>
@@ -65,6 +58,6 @@ export default function CalendarStrip({ items, onOpen }: Props) {
                     </div>
                 ))}
             </div>
-        </div>
+        </section>
     );
 }

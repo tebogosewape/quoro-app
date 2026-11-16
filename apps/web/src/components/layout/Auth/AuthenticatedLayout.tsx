@@ -20,10 +20,8 @@ export default function AuthenticatedLayout() {
     }, []);
 
     useEffect(() => {
-        if (isSidebarOpen && window.innerWidth < 768) {
-            closeSidebar();
-        }
-    }, [closeSidebar, isSidebarOpen, location.pathname]);
+        closeSidebar();
+    }, [closeSidebar, location.pathname]);
 
     useEffect(() => {
         if (isSidebarOpen && window.innerWidth < 768) {
@@ -46,9 +44,9 @@ export default function AuthenticatedLayout() {
     }, []);
 
     return (
-        <div className="d-flex flex-column vh-100">
+        <div className="authenticated-shell">
             <AppNavbar onToggleSidebar={toggleSidebar} isSidebarOpen={isSidebarOpen} />
-            <div className="d-flex flex-grow-1">
+            <div className="authenticated-shell__body">
                 <Sidebar isOpen={isSidebarOpen} onCloseSidebar={closeSidebar} />
 
                 {isSidebarOpen && (
@@ -62,14 +60,7 @@ export default function AuthenticatedLayout() {
                     ></div>
                 )}
 
-                <main
-                    className="flex-grow-1 main-content"
-                    style={{
-                        backgroundColor: '#f8f9fa',
-                        overflowY: 'auto',
-                        padding: '24px',
-                    }}
-                >
+                <main className="main-content">
                     <Outlet />
                 </main>
             </div>

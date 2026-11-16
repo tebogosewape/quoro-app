@@ -172,4 +172,11 @@ export class Client extends BaseEntity {
     // Notes and Communication
     @Column({ type: 'text', nullable: true })
     notes?: string;
+
+    // DebiCheck
+    @Column({ type: 'tinyint', width: 1, name: 'debi_check_consent_given', default: false })
+    debiCheckConsentGiven: boolean = false;
+
+    @Column({ type: 'varchar', length: 50, name: 'debi_check_mandate_id', nullable: true })
+    debiCheckMandateId?: string;
 }

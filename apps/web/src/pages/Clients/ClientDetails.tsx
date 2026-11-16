@@ -195,7 +195,7 @@ async function mapClientToDetailPayload(client: Client): Promise<ClientDetailPay
 
     return {
         id: client.id,
-        fileReference: client.fileReference,
+        fileReference: client.fileReference ?? undefined,
         name: `${client.firstName} ${client.lastName}`,
         phone: client.phoneNumber,
         email: client.email,
@@ -2808,7 +2808,7 @@ function WhatsAppChat({ clientId }: { clientId: string }) {
     );
 }
 
-function EmailLog({ clientId }: { clientId: string }) {
+export function EmailLog({ clientId }: { clientId: string }) {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [items, setItems] = useState<
@@ -3707,7 +3707,7 @@ function Field({ label, value }: { label: string; value: string }) {
     );
 }
 
-function Flag({ flag }: { flag: 'green' | 'amber' | 'red' }) {
+export function Flag({ flag }: { flag: 'green' | 'amber' | 'red' }) {
     const map = { green: '#08b494', amber: '#f6a500', red: '#ff7a7a' } as const;
     return (
         <span

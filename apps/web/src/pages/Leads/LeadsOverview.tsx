@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-    Container,
     Row,
     Col,
     Form,
@@ -9,7 +8,6 @@ import {
     Spinner,
     Badge,
     Table,
-    Card,
     Pagination,
 } from 'react-bootstrap';
 import { getLeads, type Lead, type LeadSearchQuery, formatPhoneNumber } from '@/api/leads.api';

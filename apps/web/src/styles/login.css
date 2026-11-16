@@ -1,23 +1,7 @@
 body.auth-page {
-    background:
-        radial-gradient(1200px 800px at 15% 10%, rgba(8, 180, 148, 0.14), transparent 60%),
-        radial-gradient(900px 600px at 85% 25%, rgba(1, 85, 90, 0.12), transparent 60%),
-        linear-gradient(180deg, #f5fbfa, #e3f2ef 55%, #f7fffd);
+    background: var(--admin-page, var(--surface-page));
     color: var(--color-neutral-700);
     position: relative;
-}
-
-body.auth-page::before {
-    content: '';
-    position: fixed;
-    inset: 0;
-    pointer-events: none;
-    background:
-        radial-gradient(480px 420px at 12% 18%, rgba(8, 180, 148, 0.22), transparent 62%),
-        radial-gradient(420px 420px at 88% 20%, rgba(12, 64, 104, 0.16), transparent 65%),
-        radial-gradient(420px 420px at 50% 92%, rgba(8, 180, 148, 0.18), transparent 68%);
-    opacity: 0.85;
-    z-index: -1;
 }
 
 body.auth-page #root {
@@ -33,8 +17,8 @@ body.auth-page #root {
 }
 
 .login-wrapper {
-    width: min(100%, 440px);
-    border-radius: 20px;
+    width: min(100%, 420px);
+    border-radius: var(--radius-md);
     overflow: hidden;
     background-color: var(--surface-card);
     border: 1px solid var(--surface-card-border);
@@ -46,8 +30,8 @@ body.auth-page #root {
 }
 
 .login-header {
-    background: linear-gradient(140deg, var(--color-brand-navy), var(--color-brand-aqua));
-    border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+    background: var(--color-brand-teal);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.14);
     padding: 2rem 2rem 1.75rem;
     display: flex;
     justify-content: center;
@@ -55,17 +39,40 @@ body.auth-page #root {
     position: relative;
 }
 
-.login-header::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: radial-gradient(520px 320px at 50% -120px, rgba(255, 255, 255, 0.32), transparent);
-    z-index: -1;
+.qfinance-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.8rem;
+    color: #ffffff;
 }
 
-.login-logo {
-    height: 82px;
-    object-fit: contain;
+.qfinance-brand__mark {
+    width: 62px;
+    height: 62px;
+    flex: 0 0 62px;
+}
+
+.qfinance-brand__copy {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.16rem;
+}
+
+.qfinance-brand__name {
+    color: #ffffff;
+    font-size: 1.42rem;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: 0.12em;
+}
+
+.qfinance-brand__tagline {
+    color: rgba(255, 255, 255, 0.78);
+    font-size: 0.7rem;
+    font-weight: 500;
+    line-height: 1.1;
+    letter-spacing: 0.02em;
 }
 
 .login-header-content {
@@ -77,11 +84,12 @@ body.auth-page #root {
     max-width: 320px;
 }
 
-.login-title {
+.login-header .login-title {
     font-size: 1.55rem;
     font-weight: 700;
     letter-spacing: -0.02em;
     margin: 1.2rem 0 0.25rem;
+    color: #ffffff;
 }
 
 .login-subtitle {
@@ -93,7 +101,7 @@ body.auth-page #root {
 
 .login-form-wrapper {
     padding: 28px 26px 30px;
-    background: linear-gradient(180deg, var(--surface-card) 0%, rgba(247, 250, 250, 1) 110%);
+    background: var(--surface-card);
 }
 
 .login-form-container {
@@ -108,7 +116,8 @@ body.auth-page #root {
     margin-bottom: 1.5rem;
 }
 
-.input-group {
+.login-form .input-group {
+    min-height: var(--control-height-md);
     align-items: stretch;
     border: 1px solid var(--input-border-default);
     border-radius: 12px;
@@ -116,40 +125,42 @@ body.auth-page #root {
     background-color: var(--surface-card);
     transition:
         border-color var(--transition-base),
-        box-shadow var(--transition-base),
         background-color var(--transition-base);
 }
 
-.input-group:focus-within {
+.login-form .input-group:focus-within {
     border-color: var(--input-border-strong);
-    box-shadow: 0 0 0 2px rgba(8, 180, 148, 0.18);
+    box-shadow: none;
+    outline: var(--focus-outline);
+    outline-offset: var(--focus-outline-offset);
     background-color: var(--input-bg-subtle);
 }
 
-.form-input {
-    padding: 0.68rem 0.9rem;
+.login-form .form-input {
+    min-height: calc(var(--control-height-md) - 2px);
+    padding: 0.4rem 0.7rem;
     border: none;
     font-size: 0.94rem;
     line-height: 1.45rem;
     background: transparent;
 }
 
-.form-input::placeholder {
+.login-form .form-input::placeholder {
     color: var(--input-placeholder);
     font-weight: 500;
     letter-spacing: 0.01em;
 }
 
-.input-group:focus-within .form-input::placeholder {
+.login-form .input-group:focus-within .form-input::placeholder {
     color: var(--input-placeholder-focus);
 }
 
-.form-input:focus {
+.login-form .form-input:focus {
     outline: none;
     box-shadow: none;
 }
 
-.input-icon {
+.login-form .input-icon {
     display: inline-flex;
     align-items: center;
     padding: 0 0.85rem;
@@ -158,77 +169,48 @@ body.auth-page #root {
     border-right: 1px solid var(--input-divider);
 }
 
-.input-group:focus-within .input-icon {
+.login-form .input-group:focus-within .input-icon {
     background-color: var(--input-bg-focus);
     border-color: var(--input-border-strong);
     color: var(--brand-aqua);
 }
 
 .login-button {
-    --auth-button-primary: var(--action-primary-start);
-    --auth-button-secondary: var(--action-primary-end);
-    --auth-button-primary-hover: var(--action-primary-hover-start);
-    --auth-button-secondary-hover: var(--action-primary-hover-end);
-    --auth-button-shadow: var(--action-primary-shadow);
-    --auth-button-shadow-hover: var(--action-primary-shadow-hover);
-    --auth-button-ring: var(--action-primary-ring);
-
     position: relative;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 0.45rem;
-    padding: 0.68rem 1.15rem;
+    min-height: var(--control-height-md);
+    padding: 0.4rem 0.85rem;
     font-weight: 600;
     font-size: 0.9rem;
     letter-spacing: 0.01em;
-    border-radius: 12px;
-    border: none !important;
-    background: linear-gradient(
-        135deg,
-        var(--auth-button-primary),
-        var(--auth-button-secondary)
-    ) !important;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--color-brand-teal) !important;
+    background: var(--color-brand-teal) !important;
     color: #ffffff !important;
     text-transform: none;
-    transition:
-        box-shadow 0.18s ease,
-        background 0.18s ease;
-    box-shadow: var(--auth-button-shadow);
-    overflow: hidden;
+    transition: background var(--transition-base), border-color var(--transition-base);
+    box-shadow: none;
     min-width: 132px;
-}
-
-.login-button::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(125deg, rgba(8, 180, 148, 0.22), transparent 60%);
-    opacity: 0;
-    transition: opacity 0.25s ease;
-    pointer-events: none;
+    text-decoration: none;
 }
 
 .login-button:hover:not(:disabled) {
-    background: linear-gradient(
-        135deg,
-        var(--auth-button-primary-hover),
-        var(--auth-button-secondary-hover)
-    ) !important;
-    box-shadow: var(--auth-button-shadow-hover);
-}
-
-.login-button:hover:not(:disabled)::before {
-    opacity: 1;
+    background: var(--color-brand-navy) !important;
+    border-color: var(--color-brand-navy) !important;
+    box-shadow: none;
 }
 
 .login-button:active:not(:disabled) {
-    box-shadow: var(--auth-button-shadow);
+    box-shadow: none;
 }
 
 .login-button:focus-visible {
-    outline: none;
-    box-shadow: var(--auth-button-shadow), var(--auth-button-ring);
+    outline: var(--focus-outline);
+    outline-offset: var(--focus-outline-offset);
+    box-shadow: none;
 }
 
 .login-button:disabled {
@@ -241,13 +223,35 @@ body.auth-page #root {
 
 [data-theme='light'] .btn-primary.login-button,
 [data-theme='light'] .btn.login-button {
-    background: linear-gradient(
-        135deg,
-        var(--auth-button-primary),
-        var(--auth-button-secondary)
-    ) !important;
+    background: var(--color-brand-teal) !important;
     color: #ffffff !important;
-    border: none !important;
+    border: 1px solid var(--color-brand-teal) !important;
+}
+
+.password-toggle,
+[data-theme='light'] .btn.password-toggle {
+    width: var(--control-height-md);
+    min-width: var(--control-height-md);
+    min-height: calc(var(--control-height-md) - 2px);
+    padding: 0;
+    color: var(--color-brand-teal) !important;
+    background: var(--input-bg-subtle) !important;
+    border: 0 !important;
+    border-left: 1px solid var(--input-divider) !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+}
+
+.password-toggle:hover {
+    color: var(--color-brand-navy) !important;
+    background: var(--input-bg-focus) !important;
+}
+
+.password-toggle:focus-visible {
+    position: relative;
+    z-index: 2;
+    outline: var(--focus-outline);
+    outline-offset: -3px;
 }
 
 .login-actions {
@@ -270,7 +274,8 @@ body.auth-page #root {
 }
 
 .reset-password-link:focus-visible {
-    outline: none;
+    outline: var(--focus-outline);
+    outline-offset: var(--focus-outline-offset);
     text-decoration: underline;
     color: var(--color-brand-aqua);
 }
@@ -293,27 +298,94 @@ body.auth-page #root {
     padding: 0.55rem 0.75rem;
 }
 
-.auth-alert {
-    border-radius: 20px;
-    border: 1px solid rgba(12, 34, 48, 0.08);
-    background-color: rgba(236, 248, 246, 0.95);
-    color: #0c2230;
-    box-shadow: 0 18px 28px rgba(12, 34, 48, 0.08);
+.auth-error-alert {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.55rem;
+    margin-bottom: 1rem;
+    padding: 0.65rem 0.75rem;
+    color: var(--feedback-error-text);
+    background: var(--feedback-error-bg);
+    border: 1px solid var(--feedback-error-border);
+    border-radius: var(--radius-sm);
+    font-size: 0.86rem;
+    line-height: 1.35rem;
 }
 
-.input-icon__fa {
+.auth-alert {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.65rem;
+    margin: 0;
+    padding: 0.75rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(11, 143, 117, 0.25);
+    background-color: rgba(11, 143, 117, 0.08);
+    color: var(--color-neutral-700);
+    box-shadow: none;
+}
+
+.auth-alert__icon {
+    flex: 0 0 auto;
+    margin-top: 0.15rem;
+    color: var(--color-success);
+}
+
+.auth-alert--danger {
+    border-color: var(--feedback-error-border);
+    background: var(--feedback-error-bg);
+    color: var(--feedback-error-text);
+}
+
+.auth-alert--danger .auth-alert__icon {
+    color: var(--feedback-error-text);
+}
+
+.auth-field-help {
+    margin-top: 0.45rem;
+    color: var(--admin-muted, var(--color-neutral-500));
+    font-size: 0.78rem;
+    line-height: 1.25rem;
+}
+
+.auth-result,
+.auth-actions-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.auth-secondary-link {
+    align-self: center;
+    color: var(--color-brand-teal);
+    font-size: 0.88rem;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.auth-secondary-link:hover {
+    color: var(--color-brand-navy);
+    text-decoration: underline;
+}
+
+.auth-secondary-link:focus-visible {
+    outline: var(--focus-outline);
+    outline-offset: var(--focus-outline-offset);
+    text-decoration: underline;
+}
+
+.login-form .input-icon__fa {
     font-size: 1rem;
     color: var(--brand-muted);
     transition: color 0.18s ease;
 }
 
-.input-group:focus-within .input-icon__fa {
+.login-form .input-group:focus-within .input-icon__fa {
     color: var(--brand-aqua);
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .login-button,
-    .login-button::before {
+    .login-button {
         transition: none;
     }
     .login-button:hover:not(:disabled) {
@@ -330,8 +402,14 @@ body.auth-page #root {
         padding: 2rem 1.5rem 1.75rem;
     }
 
-    .login-logo {
-        height: 72px;
+    .qfinance-brand__mark {
+        width: 56px;
+        height: 56px;
+        flex-basis: 56px;
+    }
+
+    .qfinance-brand__name {
+        font-size: 1.25rem;
     }
 
     .login-form-wrapper {
@@ -347,5 +425,43 @@ body.auth-page #root {
     .login-actions .reset-password-link {
         margin-left: 0;
         text-align: center;
+    }
+}
+
+@media (min-width: 900px) {
+    .login-page-wrapper--sign-in .login-wrapper,
+    .login-page-wrapper--auth-split .login-wrapper {
+        width: min(100%, 880px);
+        min-height: 480px;
+        display: grid;
+        grid-template-columns: minmax(310px, 0.86fr) minmax(430px, 1.14fr);
+    }
+
+    .login-page-wrapper--sign-in .login-header,
+    .login-page-wrapper--auth-split .login-header {
+        min-height: 100%;
+        padding: 3rem;
+        align-items: center;
+        border-right: 1px solid rgba(255, 255, 255, 0.14);
+        border-bottom: 0;
+    }
+
+    .login-page-wrapper--sign-in .login-header-content,
+    .login-page-wrapper--auth-split .login-header-content {
+        align-items: flex-start;
+        text-align: left;
+    }
+
+    .login-page-wrapper--sign-in .login-title,
+    .login-page-wrapper--auth-split .login-title {
+        margin-top: 2.5rem;
+        font-size: 1.8rem;
+    }
+
+    .login-page-wrapper--sign-in .login-form-wrapper,
+    .login-page-wrapper--auth-split .login-form-wrapper {
+        display: flex;
+        align-items: center;
+        padding: 3rem 3.25rem;
     }
 }

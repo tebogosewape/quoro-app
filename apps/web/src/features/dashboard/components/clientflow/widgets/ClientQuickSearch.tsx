@@ -71,7 +71,7 @@ export default function ClientQuickSearch({ onSearch }: Props) {
     const emptyState = hasSearched && results.length === 0 && !isSearching && !error;
 
     return (
-        <div className="panel glass p-3">
+        <section className="card dashboard-panel p-3">
             <form onSubmit={submit}>
                 <h6 className="mb-3">Search clients by…</h6>
                 <div className="row g-2">
@@ -197,7 +197,7 @@ export default function ClientQuickSearch({ onSearch }: Props) {
                     <small className="text-muted">Showing {results.length} result(s).</small>
                 </div>
             )}
-        </div>
+        </section>
     );
 }
 

@@ -4,35 +4,29 @@
 .btn-primary:active,
 .btn-primary:focus,
 .btn-primary:disabled {
-    background: linear-gradient(
-        135deg,
-        var(--action-primary-start),
-        var(--action-primary-end)
-    ) !important;
-    border: none !important;
+    background: var(--color-brand-teal) !important;
+    border: 1px solid var(--color-brand-teal) !important;
     color: #ffffff !important;
     font-weight: 600;
-    border-radius: var(--radius-lg) !important;
-    box-shadow: var(--action-primary-shadow);
+    min-height: var(--control-height-md);
+    padding: 0.4rem 0.85rem;
+    border-radius: var(--radius-sm) !important;
+    box-shadow: none;
     transition:
         background var(--transition-base),
-        box-shadow var(--transition-base),
-        transform var(--transition-fast);
+        border-color var(--transition-base);
 }
 
 .btn-primary:hover:not(:disabled) {
-    background: linear-gradient(
-        135deg,
-        var(--action-primary-hover-start),
-        var(--action-primary-hover-end)
-    ) !important;
-    box-shadow: var(--action-primary-shadow-hover);
-    transform: translateY(-1px);
+    background: var(--color-brand-navy) !important;
+    border-color: var(--color-brand-navy) !important;
+    box-shadow: none;
 }
 
 .btn-primary:focus-visible {
-    box-shadow: var(--action-primary-shadow), var(--action-primary-ring) !important;
-    outline: none;
+    box-shadow: none !important;
+    outline: var(--focus-outline);
+    outline-offset: var(--focus-outline-offset);
 }
 
 .btn-primary:disabled {
@@ -65,8 +59,10 @@
         background-color var(--transition-fast);
 }
 
-.input-surface:focus within,
+.input-surface:focus-within,
 .input-surface:focus-visible {
     border-color: var(--input-border-strong);
-    box-shadow: var(--focus-ring-strong);
+    box-shadow: none;
+    outline: var(--focus-outline);
+    outline-offset: var(--focus-outline-offset);
 }

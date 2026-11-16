@@ -6,6 +6,7 @@ import '@/styles/base/variables.css';
 import '@/styles/theme/index.css';
 import '@/styles/global.css';
 import '@/styles/surface-dark.css';
+import '@/styles/admin-template.css';
 import App from './App.tsx';
 import { AppProviders } from './providers/AppProviders';
 

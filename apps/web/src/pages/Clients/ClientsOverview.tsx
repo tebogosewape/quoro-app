@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Form, Button, Spinner, Badge, Table, Pagination } from 'react-bootstrap';
 import {
@@ -8,6 +8,8 @@ import {
     clientStatusEnum,
 } from '@/api/clients.api';
 import type { z } from 'zod';
+import { hasPermission } from '@/utils/permissions';
+import './ClientsOverview.css';
 
 /** Simple money helper (kept local so this file is drop-in) */
 const money = (n: number) =>
@@ -87,6 +89,7 @@ export default function ClientsOverview() {
     const [all, setAll] = useState<ClientListItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [retryRequest, setRetryRequest] = useState(0);
 
     // Filter State
     const [q, setQ] = useState('');
@@ -177,16 +180,16 @@ export default function ClientsOverview() {
         return () => {
             isMounted = false;
         };
-    }, [currentPage, q, status]);
+    }, [currentPage, q, retryRequest, status]);
 
     // Reset to page 1 when filters change
     useEffect(() => {
         setCurrentPage(1);
     }, [q, status]);
 
-    const agents = useMemo(() => Array.from(new Set(all.map((c) => c.agent))).sort(), [all]);
-
     // Note: list is already filtered/sorted by API
+
+    const canCreateClients = hasPermission('create-clients') || hasPermission('manage-clients');
 
     const statusBadgeVariant: Record<ClientListItem['status'], string> = {
         new: 'primary',
@@ -199,23 +202,20 @@ export default function ClientsOverview() {
     // Simple table headers without client-side sorting for now
 
     return (
-        <div className="container-fluid px-4 py-4">
-            {/* Modern Header Card with Gradient */}
+        <div className="clients-overview-screen container-fluid px-4 py-4">
+            {/* Compact page header */}
             <div
-                className="card border-0 shadow-sm mb-4"
+                className="clients-overview-header card mb-4"
                 style={{
-                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                    borderRadius: '16px',
+                    background: 'var(--color-brand-teal)',
+                    borderRadius: '10px',
                 }}
             >
-                <div className="card-body p-4">
+                <div className="card-body p-3">
                     <div className="row align-items-center">
-                        <div className="col-md-6">
+                        <div className="col-lg-6">
                             <div className="d-flex align-items-center">
-                                <div
-                                    className="bg-white bg-opacity-25 rounded-3 p-3 me-3"
-                                    style={{ backdropFilter: 'blur(10px)' }}
-                                >
+                                <div className="clients-overview-header__icon rounded-3 p-2 me-3">
                                     <svg
                                         width="32"
                                         height="32"
@@ -233,15 +233,15 @@ export default function ClientsOverview() {
                                     </svg>
                                 </div>
                                 <div>
-                                    <h2 className="text-white mb-1 fw-bold">Clients Overview</h2>
+                                    <h1 className="text-white mb-1 fw-bold">Clients Overview</h1>
                                     <p className="text-white text-opacity-75 mb-0">
                                         Manage all your clients and their accounts
                                     </p>
                                 </div>
                             </div>
                         </div>
-                        <div className="col-md-6">
-                            <div className="row g-3 text-white">
+                        <div className="col-lg-6 mt-3 mt-lg-0">
+                            <div className="clients-overview-header__summary row g-2 text-white">
                                 <div className="col-4">
                                     <div className="text-center">
                                         <div className="fs-3 fw-bold">{totalClients}</div>
@@ -251,16 +251,27 @@ export default function ClientsOverview() {
                                 <div className="col-4">
                                     <div className="text-center">
                                         <div className="fs-3 fw-bold">{activeClients}</div>
-                                        <div className="small opacity-75">Active</div>
+                                        <div className="small opacity-75">Active on page</div>
                                     </div>
                                 </div>
                                 <div className="col-4">
                                     <div className="text-center">
                                         <div className="fs-3 fw-bold">{newClients}</div>
-                                        <div className="small opacity-75">New</div>
+                                        <div className="small opacity-75">New on page</div>
                                     </div>
                                 </div>
                             </div>
+                            {canCreateClients && (
+                                <div className="text-lg-end mt-3">
+                                    <Button
+                                        type="button"
+                                        className="clients-overview-header__action"
+                                        onClick={() => navigate('/clients/new')}
+                                    >
+                                        New client
+                                    </Button>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -269,8 +280,9 @@ export default function ClientsOverview() {
             {/* Error Alert */}
             {error && (
                 <div
-                    className="alert alert-danger shadow-sm d-flex align-items-center justify-content-between mb-4"
-                    style={{ borderRadius: '12px' }}
+                    className="alert alert-danger d-flex align-items-center justify-content-between mb-4"
+                    style={{ borderRadius: '8px' }}
+                    role="alert"
                 >
                     <div className="d-flex align-items-center">
                         <svg
@@ -296,8 +308,9 @@ export default function ClientsOverview() {
                         onClick={() => {
                             setError(null);
                             setCurrentPage(1);
+                            setRetryRequest((request) => request + 1);
                         }}
-                        className="ms-2"
+                        className="ms-2 p-0"
                     >
                         Retry
                     </Button>
@@ -305,8 +318,8 @@ export default function ClientsOverview() {
             )}
 
             {/* Search and Filters Card */}
-            <div className="card border-0 shadow-sm mb-4" style={{ borderRadius: '12px' }}>
-                <div className="card-body p-4">
+            <div className="clients-overview-panel card mb-4">
+                <div className="card-body p-3">
                     <div className="row g-3 align-items-end">
                         {/* Search */}
                         <div className="col-md-4">
@@ -328,10 +341,10 @@ export default function ClientsOverview() {
                                 </svg>
                                 Search
                             </Form.Label>
-                            <div className="input-group shadow-sm">
+                            <div className="clients-overview-search input-group">
                                 <span
                                     className="input-group-text bg-white border-end-0"
-                                    style={{ borderRadius: '8px 0 0 8px' }}
+                                    style={{ borderRadius: '6px 0 0 6px' }}
                                 >
                                     <svg
                                         width="18"
@@ -353,7 +366,7 @@ export default function ClientsOverview() {
                                     placeholder="Search name, ID, phone, product..."
                                     disabled={loading}
                                     className="border-start-0"
-                                    style={{ borderRadius: '0 8px 8px 0' }}
+                                    style={{ borderRadius: '0 6px 6px 0' }}
                                 />
                             </div>
                         </div>
@@ -385,8 +398,7 @@ export default function ClientsOverview() {
                                     )
                                 }
                                 disabled={loading}
-                                className="shadow-sm"
-                                style={{ borderRadius: '8px' }}
+                                style={{ borderRadius: '6px' }}
                             >
                                 <option value="all">All statuses</option>
                                 <option value="new">New</option>
@@ -397,49 +409,17 @@ export default function ClientsOverview() {
                             </Form.Select>
                         </div>
 
-                        {/* Agent Filter */}
-                        <div className="col-md-3">
-                            <Form.Label className="fw-semibold mb-2">
-                                <svg
-                                    width="16"
-                                    height="16"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="2"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    className="me-2"
-                                    style={{ marginTop: '-3px' }}
-                                >
-                                    <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-                                    <circle cx="8.5" cy="7" r="4"></circle>
-                                    <line x1="20" y1="8" x2="20" y2="14"></line>
-                                    <line x1="23" y1="11" x2="17" y2="11"></line>
-                                </svg>
-                                Agent
-                            </Form.Label>
-                            <Form.Select
-                                disabled={loading || agents.length === 0}
-                                onChange={() => {}}
-                                className="shadow-sm"
-                                style={{ borderRadius: '8px' }}
-                            >
-                                <option value="all">All agents</option>
-                                {agents.map((a) => (
-                                    <option key={a} value={a}>
-                                        {a}
-                                    </option>
-                                ))}
-                            </Form.Select>
-                        </div>
-
                         {/* Results Count */}
-                        <div className="col-md-2 text-end">
+                        <div className="col-md-3 text-md-end">
                             <div className="text-muted small mb-2">Results</div>
                             <div className="fs-5 fw-semibold">
                                 {loading ? (
-                                    <Spinner animation="border" size="sm" />
+                                    <Spinner
+                                        animation="border"
+                                        size="sm"
+                                        role="status"
+                                        aria-label="Loading results"
+                                    />
                                 ) : (
                                     `${all.length}`
                                 )}
@@ -450,10 +430,13 @@ export default function ClientsOverview() {
             </div>
 
             {/* Table */}
-            <div className="card border-0 shadow-sm" style={{ borderRadius: '12px' }}>
-                <div style={{ overflowX: 'auto' }}>
+            <div className="clients-overview-panel clients-overview-table-card card">
+                <div className="clients-overview-table-scroll">
+                    <p className="clients-overview-table-hint mb-2 px-3 pt-3">
+                        Scroll horizontally to view all client details on smaller screens.
+                    </p>
                     <Table hover responsive className="mb-0">
-                        <thead style={{ background: '#f8f9fa', borderBottom: '2px solid #dee2e6' }}>
+                        <thead>
                             <tr>
                                 <th
                                     style={{
@@ -558,10 +541,12 @@ export default function ClientsOverview() {
                                     <td colSpan={8} className="text-center py-5">
                                         <Spinner
                                             animation="border"
+                                            role="status"
+                                            aria-label="Loading clients"
                                             style={{
                                                 width: '3rem',
                                                 height: '3rem',
-                                                color: '#667eea',
+                                                color: 'var(--color-brand-teal)',
                                             }}
                                         />
                                         <p className="text-muted mt-3 mb-0">Loading clients...</p>
@@ -579,7 +564,7 @@ export default function ClientsOverview() {
                                                 height="40"
                                                 viewBox="0 0 24 24"
                                                 fill="none"
-                                                stroke="#667eea"
+                                                stroke="var(--color-brand-teal)"
                                                 strokeWidth="2"
                                                 strokeLinecap="round"
                                                 strokeLinejoin="round"
@@ -598,14 +583,7 @@ export default function ClientsOverview() {
                                 </tr>
                             ) : (
                                 all.map((c) => (
-                                    <tr
-                                        key={c.id}
-                                        style={{
-                                            borderBottom: '1px solid #e9ecef',
-                                            transition: 'all 0.2s ease',
-                                        }}
-                                        className="client-row"
-                                    >
+                                    <tr key={c.id} className="client-row">
                                         <td style={{ padding: '1rem 0.75rem' }}>
                                             <div className="fw-semibold">{c.name}</div>
                                             <div className="small text-muted mt-1">
@@ -624,7 +602,9 @@ export default function ClientsOverview() {
                                                     <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
                                                 </svg>
                                                 {c.phone}
-                                                <span className="mx-1">•</span>
+                                                <span className="mx-1" aria-hidden="true">
+                                                    ·
+                                                </span>
                                                 <svg
                                                     width="12"
                                                     height="12"
@@ -685,12 +665,9 @@ export default function ClientsOverview() {
                                             <Button
                                                 size="sm"
                                                 onClick={() => navigate(`/clients/${c.id}`)}
-                                                className="shadow-sm"
+                                                className="clients-overview-open"
                                                 style={{
-                                                    borderRadius: '8px',
-                                                    background:
-                                                        'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                                                    border: 'none',
+                                                    borderRadius: '6px',
                                                 }}
                                             >
                                                 <svg
@@ -716,13 +693,6 @@ export default function ClientsOverview() {
                                 ))
                             )}
                         </tbody>
-                        <style>{`
-                            .client-row:hover {
-                                background-color: #f8f9fa;
-                                transform: translateY(-1px);
-                                box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-                            }
-                        `}</style>
                     </Table>
                 </div>
 
@@ -733,7 +703,7 @@ export default function ClientsOverview() {
                         style={{
                             borderTop: '1px solid #e9ecef',
                             background: '#f8f9fa',
-                            borderRadius: '0 0 12px 12px',
+                            borderRadius: '0 0 10px 10px',
                         }}
                     >
                         <div className="text-muted">

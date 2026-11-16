@@ -15,6 +15,8 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { listProducts } from '@/api/products';
 import { createClient, type CreateClientDto } from '@/api/clients.api';
 import { useAuthStore } from '@/stores/auth.store';
+import type { AuthSession } from '@/interfaces/AuthUser';
+import '@/styles/onboarding.css';
 
 type StepKey =
     | 'introduction'
@@ -94,6 +96,12 @@ type FormState = {
     debitOrderAgreement?: DebitOrderAgreement;
 };
 
+type LeadPrefill = {
+    name?: string;
+    cell?: string;
+    idNumber?: string;
+};
+
 // This will be replaced by API data
 const PRODUCTS_PLACEHOLDER: Product[] = [];
 
@@ -164,12 +172,12 @@ export default function OnboardingWizard() {
     const [state, setState] = useState<FormState>({
         personal: leadData
             ? {
-                  // Pre-fill from lead data if available
-                  firstNames: leadData.name?.split(' ')[0] || '',
-                  surname: leadData.name?.split(' ').slice(1).join(' ') || '',
-                  phone: leadData.cell || '',
-                  idNumber: leadData.idNumber || '',
-              }
+                // Pre-fill from lead data if available
+                firstNames: leadData.name?.split(' ')[0] || '',
+                surname: leadData.name?.split(' ').slice(1).join(' ') || '',
+                phone: leadData.cell || '',
+                idNumber: leadData.idNumber || '',
+            }
             : {},
         products: PRODUCTS_PLACEHOLDER,
     });
@@ -259,13 +267,13 @@ export default function OnboardingWizard() {
                             paymentOptions.length > 0
                                 ? paymentOptions
                                 : [
-                                      {
-                                          id: `${p.id}_default`,
-                                          label: 'Standard pricing - contact for details',
-                                          type: 'debit-order',
-                                          onceOff: 0,
-                                      },
-                                  ],
+                                    {
+                                        id: `${p.id}_default`,
+                                        label: 'Standard pricing - contact for details',
+                                        type: 'debit-order',
+                                        onceOff: 0,
+                                    },
+                                ],
                         selected: false,
                     };
                 });
@@ -424,7 +432,10 @@ export default function OnboardingWizard() {
     }
 
     async function submitAll() {
-        if (!canNext('products')) return;
+        if (!canNext('debit-order-agreement')) {
+            setShowValidation(true);
+            return;
+        }
         setBusy(true);
 
         // Log submission of product selection
@@ -442,37 +453,14 @@ export default function OnboardingWizard() {
         setSubmissionError(null);
 
         try {
-            console.log('[OnboardingWizard] handleFinish called');
-            console.log('[OnboardingWizard] Session:', session);
-            console.log('[OnboardingWizard] User:', session?.user);
-            console.log('[OnboardingWizard] User Role:', session?.user?.role);
-
-            // Log token expiry information
-            if (session?.issued_at && session?.expires_in) {
-                const now = Date.now();
-                const expiresAt = session.issued_at + session.expires_in * 1000;
-                const timeRemaining = expiresAt - now;
-                const minutesRemaining = Math.floor(timeRemaining / 60000);
-                console.log('[OnboardingWizard] Token expires in:', minutesRemaining, 'minutes');
-                console.log(
-                    '[OnboardingWizard] Token issued at:',
-                    new Date(session.issued_at).toLocaleString()
-                );
-                console.log(
-                    '[OnboardingWizard] Token expires at:',
-                    new Date(expiresAt).toLocaleString()
-                );
-            }
-
             // Check authentication first
             if (!session || !session.access_token) {
-                console.log('[OnboardingWizard] No session or access_token');
                 setSubmissionError(
                     'You must be logged in to create a client. Redirecting to login...'
                 );
                 setBusy(false);
                 setTimeout(() => {
-                    navigate('/auth/login');
+                    navigate('/login');
                 }, 2000);
                 return;
             }
@@ -483,11 +471,6 @@ export default function OnboardingWizard() {
             if (!p.surname || !p.firstNames || !p.idNumber || !p.phone || !p.email) {
                 throw new Error('Missing required personal information');
             }
-
-            console.log('[OnboardingWizard] Building client data...');
-            console.log('[OnboardingWizard] State.products:', state.products);
-            console.log('[OnboardingWizard] State.productInfo:', state.productInfo);
-            console.log('[OnboardingWizard] State.payment:', state.payment);
 
             // Build CreateClientDto from form state
             const clientData: CreateClientDto = {
@@ -536,17 +519,8 @@ export default function OnboardingWizard() {
                 leadId: leadId || undefined,
             };
 
-            console.log('[OnboardingWizard] Client data prepared:', clientData);
-            console.log(
-                '[OnboardingWizard] selectedProducts structure:',
-                JSON.stringify(clientData.selectedProducts, null, 2)
-            );
-            console.log('[OnboardingWizard] Calling createClient API...');
-
             // Call the API to create the client
             const createdClient = await createClient(clientData);
-
-            console.log('[OnboardingWizard] Client created successfully:', createdClient);
 
             // Log onboarding completion
             try {
@@ -583,7 +557,7 @@ export default function OnboardingWizard() {
                         'You must be logged in to create a client. Please log in and try again.';
                     // Optionally redirect to login after a delay
                     setTimeout(() => {
-                        navigate('/auth/login');
+                        navigate('/login');
                     }, 3000);
                 }
             }
@@ -614,21 +588,15 @@ export default function OnboardingWizard() {
     }
 
     return (
-        <div className="container-fluid py-3">
-            {/* Gradient Header */}
-            <div
-                className="card border-0 shadow-sm mb-4"
-                style={{
-                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                    borderRadius: '16px',
-                }}
-            >
-                <div className="card-body p-4 text-white">
+        <div className="onboarding-wizard container-fluid py-3">
+            {/* Compact wizard header */}
+            <div className="onboarding-header card mb-4">
+                <div className="card-body p-3 text-white">
                     <div className="d-flex align-items-center mb-3">
                         <button
+                            type="button"
                             className="btn btn-light btn-sm me-3"
                             onClick={() => navigate('/clients')}
-                            style={{ borderRadius: '8px' }}
                         >
                             <svg
                                 width="16"
@@ -661,10 +629,8 @@ export default function OnboardingWizard() {
                             <polyline points="17 11 19 13 23 9" />
                         </svg>
                         <div className="flex-grow-1">
-                            <h4 className="mb-0" style={{ fontWeight: 700 }}>
-                                New Client Onboarding
-                            </h4>
-                            <div className="opacity-90" style={{ fontSize: '0.95rem' }}>
+                            <h1 className="mb-0">New Client Onboarding</h1>
+                            <div className="opacity-90 onboarding-header__description">
                                 Complete all steps to register a new client
                             </div>
                         </div>
@@ -673,14 +639,7 @@ export default function OnboardingWizard() {
                     {/* Progress Stats */}
                     <div className="row g-3 mt-2">
                         <div className="col-md-4 col-6">
-                            <div
-                                className="text-center p-3"
-                                style={{
-                                    background: 'rgba(255, 255, 255, 0.15)',
-                                    borderRadius: '12px',
-                                    backdropFilter: 'blur(10px)',
-                                }}
-                            >
+                            <div className="onboarding-progress-stat text-center p-2">
                                 <div className="opacity-90" style={{ fontSize: '0.85rem' }}>
                                     Current Step
                                 </div>
@@ -690,14 +649,7 @@ export default function OnboardingWizard() {
                             </div>
                         </div>
                         <div className="col-md-4 col-6">
-                            <div
-                                className="text-center p-3"
-                                style={{
-                                    background: 'rgba(255, 255, 255, 0.15)',
-                                    borderRadius: '12px',
-                                    backdropFilter: 'blur(10px)',
-                                }}
-                            >
+                            <div className="onboarding-progress-stat text-center p-2">
                                 <div className="opacity-90" style={{ fontSize: '0.85rem' }}>
                                     Progress
                                 </div>
@@ -707,14 +659,7 @@ export default function OnboardingWizard() {
                             </div>
                         </div>
                         <div className="col-md-4 col-6">
-                            <div
-                                className="text-center p-3"
-                                style={{
-                                    background: 'rgba(255, 255, 255, 0.15)',
-                                    borderRadius: '12px',
-                                    backdropFilter: 'blur(10px)',
-                                }}
-                            >
+                            <div className="onboarding-progress-stat text-center p-2">
                                 <div className="opacity-90" style={{ fontSize: '0.85rem' }}>
                                     Status
                                 </div>
@@ -732,7 +677,7 @@ export default function OnboardingWizard() {
                 <div
                     className="alert alert-warning mb-3"
                     role="alert"
-                    style={{ borderRadius: '12px' }}
+                    style={{ borderRadius: '8px' }}
                 >
                     <svg
                         width="20"
@@ -753,7 +698,7 @@ export default function OnboardingWizard() {
                     <Button
                         variant="link"
                         className="p-0 ms-2"
-                        onClick={() => navigate('/auth/login')}
+                        onClick={() => navigate('/login')}
                         style={{ textDecoration: 'underline' }}
                     >
                         Click here to log in
@@ -761,99 +706,47 @@ export default function OnboardingWizard() {
                 </div>
             )}
 
-            <div className="row">
-                {/* Modern Vertical Step Navigation */}
-                <div className="col-md-3">
-                    <div className="card border-0 shadow-sm mb-3" style={{ borderRadius: '16px' }}>
+            <div className="row g-3">
+                {/* Responsive step navigation */}
+                <div className="col-lg-3">
+                    <div className="wizard-sidebar cf-tabs-container card mb-3">
                         <div className="card-body p-3">
-                            <div className="d-flex flex-column gap-3">
+                            <div className="cf-tabs" aria-label="Onboarding steps">
                                 {STEPS.map((s, i) => {
                                     const active = s.key === current;
+                                    const done = i < index;
 
                                     return (
                                         <button
                                             key={s.key}
                                             type="button"
-                                            className="text-start border-0 p-3 position-relative"
+                                            className={`cf-tab ${active ? 'active' : ''} ${done ? 'done' : ''}`}
                                             onClick={() => setCurrent(s.key)}
-                                            style={{
-                                                background: active
-                                                    ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
-                                                    : 'transparent',
-                                                color: active ? '#fff' : '#2c3e50',
-                                                cursor: 'pointer',
-                                                transition: 'all 0.3s ease',
-                                                borderRadius: '12px',
-                                                fontWeight: active ? 600 : 500,
-                                                boxShadow: active
-                                                    ? '0 4px 12px rgba(102, 126, 234, 0.3)'
-                                                    : 'none',
-                                            }}
-                                            onMouseEnter={(e) => {
-                                                if (!active) {
-                                                    e.currentTarget.style.background = '#f8f9fa';
-                                                    e.currentTarget.style.transform =
-                                                        'translateX(4px)';
-                                                }
-                                            }}
-                                            onMouseLeave={(e) => {
-                                                if (!active) {
-                                                    e.currentTarget.style.background =
-                                                        'transparent';
-                                                    e.currentTarget.style.transform =
-                                                        'translateX(0)';
-                                                }
-                                            }}
+                                            aria-current={active ? 'step' : undefined}
                                         >
-                                            <div className="d-flex align-items-center gap-3">
-                                                <div
-                                                    className="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0"
-                                                    style={{
-                                                        width: '48px',
-                                                        height: '48px',
-                                                        background: active
-                                                            ? 'rgba(255, 255, 255, 0.25)'
-                                                            : 'rgba(102, 126, 234, 0.1)',
-                                                        color: active ? '#fff' : '#667eea',
-                                                        fontSize: '1.2rem',
-                                                    }}
-                                                >
-                                                    <FontAwesomeIcon icon={s.icon} />
-                                                </div>
-                                                <div className="flex-grow-1">
-                                                    <div
-                                                        style={{
-                                                            fontSize: '0.75rem',
-                                                            opacity: 0.8,
-                                                            marginBottom: '2px',
-                                                        }}
+                                            <span className="cf-tab-icon" aria-hidden="true">
+                                                <FontAwesomeIcon icon={s.icon} />
+                                            </span>
+                                            <span className="cf-tab-label">
+                                                <span className="cf-tab-label-number">
+                                                    Step {i + 1}
+                                                </span>
+                                                <span className="cf-tab-label-text">{s.label}</span>
+                                            </span>
+                                            {active && (
+                                                <span className="flex-shrink-0" aria-hidden="true">
+                                                    <svg
+                                                        width="18"
+                                                        height="18"
+                                                        viewBox="0 0 24 24"
+                                                        fill="none"
+                                                        stroke="currentColor"
+                                                        strokeWidth="2"
                                                     >
-                                                        Step {i + 1}
-                                                    </div>
-                                                    <div
-                                                        style={{
-                                                            fontSize: '0.95rem',
-                                                            lineHeight: '1.3',
-                                                        }}
-                                                    >
-                                                        {s.label}
-                                                    </div>
-                                                </div>
-                                                {active && (
-                                                    <div className="flex-shrink-0">
-                                                        <svg
-                                                            width="20"
-                                                            height="20"
-                                                            viewBox="0 0 24 24"
-                                                            fill="none"
-                                                            stroke="currentColor"
-                                                            strokeWidth="2"
-                                                        >
-                                                            <polyline points="9 18 15 12 9 6" />
-                                                        </svg>
-                                                    </div>
-                                                )}
-                                            </div>
+                                                        <polyline points="9 18 15 12 9 6" />
+                                                    </svg>
+                                                </span>
+                                            )}
                                         </button>
                                     );
                                 })}
@@ -863,158 +756,148 @@ export default function OnboardingWizard() {
                 </div>
 
                 {/* step body */}
-                <div className="col-md-9">
-                    <div className="card border-0 shadow-sm" style={{ borderRadius: '12px' }}>
-                        <div className="card-body p-3">
-                            {current === 'introduction' && (
-                                <StepIntroduction
-                                    canContinue={canNext('introduction')}
-                                    onNext={goNext}
-                                    leadData={leadData}
-                                    session={session}
-                                />
-                            )}
-                            {current === 'personal' && (
-                                <StepPersonal
-                                    value={state.personal}
-                                    onChange={(p) => {
-                                        setState((prev) => ({
-                                            ...prev,
-                                            personal: { ...prev.personal, ...p },
-                                        }));
-                                        // Clear validation errors for fields being updated
-                                        if (showValidation) {
-                                            const updatedErrors = { ...validationErrors };
-                                            Object.keys(p).forEach((key) => {
-                                                delete updatedErrors[key];
-                                            });
-                                            setValidationErrors(updatedErrors);
-                                        }
-                                    }}
-                                    canContinue={canNext('personal')}
-                                    onBack={goBack}
-                                    onNext={goNext}
-                                    showValidation={showValidation}
-                                    validationErrors={validationErrors}
-                                />
-                            )}
-                            {current === 'products' && (
-                                <StepProducts
-                                    products={state.products}
-                                    onToggle={(id, sel) => {
-                                        console.log(`Main onToggle - Product ${id} set to ${sel}`);
-                                        setState((prev) => {
-                                            const updated = {
-                                                ...prev,
-                                                products: prev.products.map((p) =>
-                                                    p.id === id ? { ...p, selected: sel } : p
-                                                ),
-                                            };
-                                            console.log(
-                                                'Main onToggle - Updated state:',
-                                                updated.products
-                                            );
-                                            return updated;
+                <div className="wizard-content col-lg-9">
+                    <div className="wizard-panel">
+                        {current === 'introduction' && (
+                            <StepIntroduction
+                                canContinue={canNext('introduction')}
+                                onNext={goNext}
+                                leadData={leadData}
+                                session={session}
+                            />
+                        )}
+                        {current === 'personal' && (
+                            <StepPersonal
+                                value={state.personal}
+                                onChange={(p) => {
+                                    setState((prev) => ({
+                                        ...prev,
+                                        personal: { ...prev.personal, ...p },
+                                    }));
+                                    // Clear validation errors for fields being updated
+                                    if (showValidation) {
+                                        const updatedErrors = { ...validationErrors };
+                                        Object.keys(p).forEach((key) => {
+                                            delete updatedErrors[key];
                                         });
-                                    }}
-                                    canContinue={canNext('products')}
-                                    onBack={goBack}
-                                    onNext={goNext}
-                                    busy={busy}
-                                    loading={loadingProducts}
-                                    error={productError}
-                                    showValidation={showValidation}
-                                />
-                            )}
-                            {current === 'product-info' && (
-                                <StepProductInfo
-                                    products={state.products}
-                                    value={state.productInfo || {}}
-                                    onChange={(pi) =>
-                                        setState((prev) => ({
-                                            ...prev,
-                                            productInfo: { ...prev.productInfo, ...pi },
-                                        }))
+                                        setValidationErrors(updatedErrors);
                                     }
-                                    canContinue={canNext('product-info')}
-                                    onBack={goBack}
-                                    onNext={goNext}
-                                    busy={busy}
-                                    showValidation={showValidation}
-                                />
-                            )}
-                            {current === 'banking' && (
-                                <StepBanking
-                                    value={state.banking || {}}
-                                    onChange={(b) => {
-                                        setState((prev) => ({
-                                            ...prev,
-                                            banking: { ...prev.banking, ...b },
-                                        }));
-                                        // Clear validation errors for fields being updated
-                                        if (showValidation) {
-                                            const updatedErrors = { ...validationErrors };
-                                            Object.keys(b).forEach((key) => {
-                                                delete updatedErrors[key];
-                                            });
-                                            setValidationErrors(updatedErrors);
-                                        }
-                                    }}
-                                    canContinue={canNext('banking')}
-                                    onBack={goBack}
-                                    onNext={goNext}
-                                    busy={busy}
-                                    showValidation={showValidation}
-                                    validationErrors={validationErrors}
-                                />
-                            )}
-                            {current === 'payment' && (
-                                <StepPayment
-                                    products={state.products}
-                                    value={state.payment || {}}
-                                    onChange={(p) =>
-                                        setState((prev) => ({
-                                            ...prev,
-                                            payment: { ...prev.payment, ...p },
-                                        }))
+                                }}
+                                canContinue={canNext('personal')}
+                                onBack={goBack}
+                                onNext={goNext}
+                                showValidation={showValidation}
+                                validationErrors={validationErrors}
+                            />
+                        )}
+                        {current === 'products' && (
+                            <StepProducts
+                                products={state.products}
+                                onToggle={(id, sel) =>
+                                    setState((prev) => ({
+                                        ...prev,
+                                        products: prev.products.map((p) =>
+                                            p.id === id ? { ...p, selected: sel } : p
+                                        ),
+                                    }))
+                                }
+                                canContinue={canNext('products')}
+                                onBack={goBack}
+                                onNext={goNext}
+                                busy={busy}
+                                loading={loadingProducts}
+                                error={productError}
+                                showValidation={showValidation}
+                            />
+                        )}
+                        {current === 'product-info' && (
+                            <StepProductInfo
+                                products={state.products}
+                                value={state.productInfo || {}}
+                                onChange={(pi) =>
+                                    setState((prev) => ({
+                                        ...prev,
+                                        productInfo: { ...prev.productInfo, ...pi },
+                                    }))
+                                }
+                                canContinue={canNext('product-info')}
+                                onBack={goBack}
+                                onNext={goNext}
+                                busy={busy}
+                                showValidation={showValidation}
+                            />
+                        )}
+                        {current === 'banking' && (
+                            <StepBanking
+                                value={state.banking || {}}
+                                onChange={(b) => {
+                                    setState((prev) => ({
+                                        ...prev,
+                                        banking: { ...prev.banking, ...b },
+                                    }));
+                                    // Clear validation errors for fields being updated
+                                    if (showValidation) {
+                                        const updatedErrors = { ...validationErrors };
+                                        Object.keys(b).forEach((key) => {
+                                            delete updatedErrors[key];
+                                        });
+                                        setValidationErrors(updatedErrors);
                                     }
-                                    canContinue={canNext('payment')}
-                                    onBack={goBack}
-                                    onNext={goNext}
-                                    busy={busy}
-                                    showValidation={showValidation}
-                                />
-                            )}
-                            {current === 'debit-order-agreement' && (
-                                <StepDebitOrderAgreement
-                                    value={state.debitOrderAgreement || {}}
-                                    onChange={(d) =>
-                                        setState((prev) => ({
-                                            ...prev,
-                                            debitOrderAgreement: {
-                                                ...prev.debitOrderAgreement,
-                                                ...d,
-                                            },
-                                        }))
-                                    }
-                                    customerName={`${state.personal.firstNames || ''} ${state.personal.surname || ''}`.trim()}
-                                    canContinue={canNext('debit-order-agreement')}
-                                    onBack={goBack}
-                                    onNext={submitAll}
-                                    busy={busy}
-                                    showValidation={showValidation}
-                                />
-                            )}
-                            {current === 'confirm' && (
-                                <StepConfirm
-                                    data={state}
-                                    onBack={() => setCurrent('debit-order-agreement')}
-                                    onFinish={handleFinish}
-                                    busy={busy}
-                                    error={submissionError}
-                                />
-                            )}
-                        </div>
+                                }}
+                                canContinue={canNext('banking')}
+                                onBack={goBack}
+                                onNext={goNext}
+                                busy={busy}
+                                showValidation={showValidation}
+                                validationErrors={validationErrors}
+                            />
+                        )}
+                        {current === 'payment' && (
+                            <StepPayment
+                                products={state.products}
+                                value={state.payment || {}}
+                                onChange={(p) =>
+                                    setState((prev) => ({
+                                        ...prev,
+                                        payment: { ...prev.payment, ...p },
+                                    }))
+                                }
+                                canContinue={canNext('payment')}
+                                onBack={goBack}
+                                onNext={goNext}
+                                busy={busy}
+                                showValidation={showValidation}
+                            />
+                        )}
+                        {current === 'debit-order-agreement' && (
+                            <StepDebitOrderAgreement
+                                value={state.debitOrderAgreement || {}}
+                                onChange={(d) =>
+                                    setState((prev) => ({
+                                        ...prev,
+                                        debitOrderAgreement: {
+                                            ...prev.debitOrderAgreement,
+                                            ...d,
+                                        },
+                                    }))
+                                }
+                                customerName={`${state.personal.firstNames || ''} ${state.personal.surname || ''}`.trim()}
+                                canContinue={canNext('debit-order-agreement')}
+                                onBack={goBack}
+                                onNext={submitAll}
+                                busy={busy}
+                                showValidation={showValidation}
+                            />
+                        )}
+                        {current === 'confirm' && (
+                            <StepConfirm
+                                data={state}
+                                onBack={() => setCurrent('debit-order-agreement')}
+                                onFinish={handleFinish}
+                                busy={busy}
+                                error={submissionError}
+                            />
+                        )}
                     </div>
                 </div>
             </div>
@@ -1032,8 +915,8 @@ function StepIntroduction({
 }: {
     canContinue: boolean;
     onNext: () => void;
-    leadData?: any;
-    session?: any;
+    leadData?: LeadPrefill;
+    session?: AuthSession | null;
 }) {
     return (
         <>
@@ -1052,7 +935,7 @@ function StepIntroduction({
                     >
                         <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
                     </svg>
-                    Introduction Script - Read to Client
+                    Step 1: Introduction Script - Read to Client
                 </h5>
                 <p className="text-muted">
                     Please read the following script to the client before proceeding with the
@@ -1060,16 +943,7 @@ function StepIntroduction({
                 </p>
             </div>
 
-            <div
-                className="card border-0"
-                style={{
-                    backgroundColor: '#f8f9fa',
-                    borderRadius: '12px',
-                    padding: '24px',
-                    maxHeight: '600px',
-                    overflowY: 'auto',
-                }}
-            >
+            <div className="wizard-script">
                 {/* Greeting */}
                 <div className="mb-4">
                     <h6 className="fw-bold text-primary mb-3">Opening Greeting</h6>
@@ -1226,12 +1100,7 @@ function StepIntroduction({
                     variant="primary"
                     onClick={onNext}
                     disabled={!canContinue}
-                    style={{
-                        borderRadius: '8px',
-                        padding: '10px 30px',
-                        fontWeight: 600,
-                        minWidth: '120px',
-                    }}
+                    style={{ minWidth: '120px' }}
                 >
                     Continue to Personal Details
                     <svg
@@ -1272,7 +1141,7 @@ function StepPersonal({
 }) {
     return (
         <>
-            <h5 className="mb-3">1: Your personal details</h5>
+            <h5 className="mb-3">Step 2: Your personal details</h5>
             {showValidation && !canContinue && (
                 <div className="alert alert-danger mb-3" role="alert">
                     <strong>Please fix the following errors:</strong>
@@ -1458,11 +1327,10 @@ function StepPersonal({
                     Back
                 </Button>
                 <Button
-                    disabled={!canContinue}
                     onClick={onNext}
                     type="button"
                     style={{
-                        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                        background: 'var(--color-brand-teal)',
                         border: 'none',
                         color: 'white',
                         borderRadius: '8px',
@@ -1497,13 +1365,8 @@ function StepProducts({
     error?: string | null;
     showValidation: boolean;
 }) {
-    // Get the currently selected product
-    const selectedProduct = products.find((p) => p.selected);
-
     // Handle radio button selection - only one product at a time
     const handleSelect = (productId: string) => {
-        console.log(`StepProducts - Selecting product ${productId}`);
-
         // Deselect all products first, then select the clicked one
         products.forEach((p) => {
             if (p.id === productId) {
@@ -1514,14 +1377,9 @@ function StepProducts({
         });
     };
 
-    useEffect(() => {
-        console.log('StepProducts - Products:', products);
-        console.log('StepProducts - Selected product:', selectedProduct?.name || 'None');
-    }, [products, selectedProduct]);
-
     return (
         <>
-            <h5 className="mb-3">2: Select a product</h5>
+            <h5 className="mb-3">Step 3: Select a product</h5>
             <p className="text-muted mb-4">
                 Please select <strong>one product</strong> for this client. You can add additional
                 products after the initial onboarding.
@@ -1566,7 +1424,6 @@ function StepProducts({
                     <Col md={12} key={p.id}>
                         <div
                             className={`cf-prod card h-100 ${p.selected ? 'border-primary' : ''}`}
-                            style={{ cursor: 'pointer' }}
                             onClick={() => !loading && handleSelect(p.id)}
                         >
                             <div className="card-body">
@@ -1614,11 +1471,11 @@ function StepProducts({
                     Back
                 </Button>
                 <Button
-                    disabled={!canContinue || busy}
+                    disabled={busy || loading}
                     onClick={onNext}
                     type="button"
                     style={{
-                        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                        background: 'var(--color-brand-teal)',
                         border: 'none',
                         color: 'white',
                         borderRadius: '8px',
@@ -1656,7 +1513,7 @@ function StepProductInfo({
 
     return (
         <>
-            <h5 className="mb-3">3: Product-Specific Information</h5>
+            <h5 className="mb-3">Step 4: Product-Specific Information</h5>
 
             {hasCIR && (
                 <div className="mb-4">
@@ -1666,7 +1523,7 @@ function StepProductInfo({
                             continuing.
                         </div>
                     )}
-                    <div className="card border-0 shadow-sm p-3" style={{ borderRadius: '12px' }}>
+                    <div className="wizard-section-card p-3">
                         <div className="fw-bold mb-3">Credit Interpretation Report (Experian)</div>
                         <Form.Label>
                             Name 3 accounts that you are currently paying?
@@ -1691,7 +1548,7 @@ function StepProductInfo({
             )}
 
             {!hasCIR && (
-                <div className="card border-0 shadow-sm p-3" style={{ borderRadius: '12px' }}>
+                <div className="wizard-section-card p-3">
                     <div className="text-muted">
                         No product-specific information required for the selected product(s).
                     </div>
@@ -1708,11 +1565,11 @@ function StepProductInfo({
                     Back
                 </Button>
                 <Button
-                    disabled={!canContinue || busy}
+                    disabled={busy}
                     onClick={onNext}
                     type="button"
                     style={{
-                        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                        background: 'var(--color-brand-teal)',
                         border: 'none',
                         color: 'white',
                         borderRadius: '8px',
@@ -1769,7 +1626,7 @@ function StepPayment({
 
     return (
         <>
-            <h5 className="mb-3">4: Payment Details</h5>
+            <h5 className="mb-3">Step 6: Payment Details</h5>
             <p className="text-muted mb-4">
                 Please select a payment option for each chosen product:
             </p>
@@ -1784,11 +1641,7 @@ function StepPayment({
             {/* Payment Options per Product */}
             <div className="mb-4">
                 {selectedProducts.map((product) => (
-                    <div
-                        key={product.id}
-                        className="card border-0 shadow-sm p-3 mb-3"
-                        style={{ borderRadius: '12px' }}
-                    >
+                    <div key={product.id} className="wizard-section-card p-3 mb-3">
                         <div className="fw-bold mb-3">{product.name}</div>
                         <Form.Label>
                             Payment option <span className="text-danger">*</span>
@@ -1818,7 +1671,7 @@ function StepPayment({
             </div>
 
             {/* First Payment Month */}
-            <div className="card border-0 shadow-sm p-3 mb-4" style={{ borderRadius: '12px' }}>
+            <div className="wizard-section-card p-3 mb-4">
                 <Form.Label>
                     First payment month <span className="text-danger">*</span>
                 </Form.Label>
@@ -1840,7 +1693,7 @@ function StepPayment({
             </div>
 
             {/* Quote Summary */}
-            <div className="card border-0 shadow-sm p-3 mb-4" style={{ borderRadius: '12px' }}>
+            <div className="wizard-section-card p-3 mb-4">
                 <div className="fw-bold mb-3">Quote Summary</div>
                 <div className="table-responsive">
                     <table className="table table-sm mb-0">
@@ -1877,8 +1730,8 @@ function StepPayment({
                                             {summary?.onceOff
                                                 ? `R ${summary.onceOff.toLocaleString()}`
                                                 : summary?.monthly
-                                                  ? `R ${summary.monthly.toLocaleString()}`
-                                                  : '-'}
+                                                    ? `R ${summary.monthly.toLocaleString()}`
+                                                    : '-'}
                                         </td>
                                     </tr>
                                 );
@@ -1894,7 +1747,7 @@ function StepPayment({
             </div>
 
             {/* Agreements */}
-            <div className="card border-0 shadow-sm p-3 mb-4" style={{ borderRadius: '12px' }}>
+            <div className="wizard-section-card p-3 mb-4">
                 <div className="fw-bold mb-3">Agreements</div>
                 <Form.Group className="mb-3">
                     <Form.Check
@@ -1937,11 +1790,11 @@ function StepPayment({
                     Back
                 </Button>
                 <Button
-                    disabled={!canContinue || busy}
+                    disabled={busy}
                     onClick={onNext}
                     type="button"
                     style={{
-                        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                        background: 'var(--color-brand-teal)',
                         border: 'none',
                         color: 'white',
                         borderRadius: '8px',
@@ -1979,7 +1832,7 @@ function StepDebitOrderAgreement({
 
     return (
         <>
-            <h5 className="mb-3">Debit Order Agreement</h5>
+            <h5 className="mb-3">Step 7: Debit Order Agreement</h5>
 
             {showValidation && !canContinue && (
                 <div className="alert alert-danger mb-3" role="alert">
@@ -1988,14 +1841,7 @@ function StepDebitOrderAgreement({
                 </div>
             )}
 
-            <div
-                className="card border-0 shadow-sm p-4 mb-4"
-                style={{
-                    borderRadius: '12px',
-                    maxHeight: '500px',
-                    overflowY: 'auto',
-                }}
-            >
+            <div className="wizard-section-card wizard-agreement p-3 mb-4">
                 <div className="mb-4">
                     <p className="mb-3">
                         I, <strong>{customerName || '[Customer Name]'}</strong>, hereby authorize{' '}
@@ -2174,11 +2020,11 @@ function StepDebitOrderAgreement({
                     Back
                 </Button>
                 <Button
-                    disabled={!canContinue || busy}
+                    disabled={busy}
                     onClick={onNext}
                     type="button"
                     style={{
-                        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                        background: 'var(--color-brand-teal)',
                         border: 'none',
                         color: 'white',
                         borderRadius: '8px',
@@ -2252,7 +2098,7 @@ function StepBanking({
 
     return (
         <>
-            <h5 className="mb-3">5: Banking Details</h5>
+            <h5 className="mb-3">Step 5: Banking Details</h5>
             {showValidation && !canContinue && (
                 <div className="alert alert-danger mb-3" role="alert">
                     <strong>Please fix the following errors:</strong>
@@ -2373,11 +2219,11 @@ function StepBanking({
                     Back
                 </Button>
                 <Button
-                    disabled={!canContinue || busy}
+                    disabled={busy}
                     onClick={onNext}
                     type="button"
                     style={{
-                        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                        background: 'var(--color-brand-teal)',
                         border: 'none',
                         color: 'white',
                         borderRadius: '8px',
@@ -2406,18 +2252,12 @@ function StepConfirm({
 }) {
     const chosen = data.products.filter((p) => p.selected);
 
-    // Debug: Log products state to console
-    useEffect(() => {
-        console.log('StepConfirm - All products:', data.products);
-        console.log('StepConfirm - Selected products:', chosen);
-    }, [data.products, chosen]);
-
     return (
         <>
-            <h5 className="mb-3">6: Confirm</h5>
+            <h5 className="mb-3">Step 8: Confirm</h5>
 
             {error && (
-                <div className="alert alert-danger mb-3" style={{ borderRadius: '12px' }}>
+                <div className="alert alert-danger mb-3" role="alert">
                     <svg
                         width="20"
                         height="20"
@@ -2442,7 +2282,7 @@ function StepConfirm({
 
             <Row className="g-3">
                 <Col lg={6}>
-                    <div className="card border-0 shadow-sm p-3" style={{ borderRadius: '12px' }}>
+                    <div className="wizard-section-card p-3">
                         <div className="fw-bold mb-2">Personal</div>
                         <div>
                             <b>Name:</b> {data.personal.firstNames} {data.personal.surname}
@@ -2471,7 +2311,7 @@ function StepConfirm({
                     </div>
                 </Col>
                 <Col lg={6}>
-                    <div className="card border-0 shadow-sm p-3" style={{ borderRadius: '12px' }}>
+                    <div className="wizard-section-card p-3">
                         <div className="fw-bold mb-2">Products</div>
                         <ul className="m-0 ps-3">
                             {chosen.map((p) => (
@@ -2486,10 +2326,7 @@ function StepConfirm({
             {chosen.some((p) => p.id === 'cir') && (
                 <Row className="g-3 mt-2">
                     <Col lg={6}>
-                        <div
-                            className="card border-0 shadow-sm p-3"
-                            style={{ borderRadius: '12px' }}
-                        >
+                        <div className="wizard-section-card p-3">
                             <div className="fw-bold mb-2">
                                 Credit Interpretation Report (Experian)
                             </div>
@@ -2508,7 +2345,7 @@ function StepConfirm({
 
             <Row className="g-3 mt-2">
                 <Col lg={6}>
-                    <div className="card border-0 shadow-sm p-3" style={{ borderRadius: '12px' }}>
+                    <div className="wizard-section-card p-3">
                         <div className="fw-bold mb-2">Banking Details</div>
                         <div>
                             <b>Bank:</b> {data.banking?.bankName || '-'}
@@ -2534,7 +2371,7 @@ function StepConfirm({
 
             <Row className="g-3 mt-2">
                 <Col lg={6}>
-                    <div className="card border-0 shadow-sm p-3" style={{ borderRadius: '12px' }}>
+                    <div className="wizard-section-card p-3">
                         <div className="fw-bold mb-2">Payment Details</div>
                         <div>
                             <b>Payment Method:</b>
@@ -2564,7 +2401,7 @@ function StepConfirm({
                     </div>
                 </Col>
                 <Col lg={6}>
-                    <div className="card border-0 shadow-sm p-3" style={{ borderRadius: '12px' }}>
+                    <div className="wizard-section-card p-3">
                         <div className="fw-bold mb-2">Debit Order Agreement</div>
                         <div>
                             <b>Payment Date:</b>{' '}
@@ -2626,7 +2463,7 @@ function StepConfirm({
                     disabled={busy}
                     type="button"
                     style={{
-                        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                        background: 'var(--color-brand-teal)',
                         border: 'none',
                         color: 'white',
                         borderRadius: '8px',

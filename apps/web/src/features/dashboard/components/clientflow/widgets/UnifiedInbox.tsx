@@ -20,7 +20,7 @@ const Icon = ({ ch }: { ch: Message['channel'] }) => {
  */
 export default function UnifiedInbox({ items, onOpen }: Props) {
     return (
-        <div className="panel glass p-3 h-100">
+        <section className="card dashboard-panel p-3 h-100">
             <div className="d-flex justify-content-between align-items-center mb-2">
                 <h5 className="m-0">Inbox</h5>
                 <small className="text-muted">{items.filter((i) => i.unread).length} unread</small>
@@ -31,7 +31,6 @@ export default function UnifiedInbox({ items, onOpen }: Props) {
                         key={m.id}
                         className="py-2 d-flex align-items-start gap-2"
                         style={{
-                            borderBottom: '1px dashed var(--glass-border)',
                             cursor: 'pointer',
                         }}
                         onClick={() => onOpen?.(m.id)}
@@ -62,6 +61,6 @@ export default function UnifiedInbox({ items, onOpen }: Props) {
                     </li>
                 ))}
             </ul>
-        </div>
+        </section>
     );
 }

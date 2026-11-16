@@ -1,5 +1,5 @@
 import React from 'react';
-import logo from '@/assets/logo.png';
+import { QFinanceBrand } from './QFinanceBrand';
 
 interface AuthCardHeaderProps {
     title: string;
@@ -15,7 +15,7 @@ export const AuthCardHeader: React.FC<AuthCardHeaderProps> = ({
     return (
         <div className="login-header">
             <div className="login-header-content">
-                {showLogo && <img src={logo} alt="QMART ZAMBIA" className="login-logo" />}
+                {showLogo && <QFinanceBrand />}
                 <h1 className="login-title">{title}</h1>
                 {subtitle ? <p className="login-subtitle">{subtitle}</p> : null}
             </div>

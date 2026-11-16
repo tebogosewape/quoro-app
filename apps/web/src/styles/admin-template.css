@@ -1,0 +1,239 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
+
+:root {
+    --admin-page: #f4f8f8;
+    --admin-sidebar: #edf4f3;
+    --admin-card: #ffffff;
+    --admin-heading: #0c2230;
+    --admin-copy: #52646d;
+    --admin-muted: #7c8c93;
+    --admin-border: rgba(12, 64, 104, 0.09);
+    --admin-border-strong: rgba(1, 85, 90, 0.18);
+    --admin-shadow: 0 4px 14px rgba(12, 34, 48, 0.06);
+    --admin-radius: 12px;
+    --dashboard-info: var(--color-brand-navy);
+    --dashboard-success: var(--color-success);
+    --dashboard-warning: var(--color-warning);
+    --dashboard-danger: var(--color-danger);
+    --dashboard-finance: var(--color-finance);
+    --dashboard-review: var(--color-review);
+    --dashboard-processing: var(--color-processing);
+    --navbar-height: 64px;
+    --sidebar-width: 260px;
+    --theme-font-family-sans: 'Poppins', 'Segoe UI', sans-serif;
+}
+
+[data-theme='light'] body {
+    color: var(--admin-copy);
+    background: var(--admin-page);
+}
+
+.app-shell {
+    min-height: 100vh;
+    display: flex;
+    background: var(--admin-page);
+}
+
+.app-workspace {
+    min-width: 0;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.main-content {
+    width: 100%;
+    min-height: calc(100vh - var(--navbar-height));
+    max-height: none;
+    overflow: visible;
+    padding: 1.25rem 1.5rem 2rem;
+    background: var(--admin-page);
+}
+
+[data-theme='light'] h1,
+[data-theme='light'] h2,
+[data-theme='light'] h3,
+[data-theme='light'] h4,
+[data-theme='light'] h5,
+[data-theme='light'] h6 {
+    color: var(--admin-heading);
+    font-weight: 600;
+}
+
+[data-theme='light'] .text-muted {
+    color: var(--admin-muted) !important;
+}
+
+[data-theme='light'] .glass,
+[data-theme='light'] .panel,
+[data-theme='light'] .card {
+    color: var(--admin-copy);
+    background: var(--admin-card);
+    backdrop-filter: none;
+    border: 1px solid var(--admin-border);
+    border-radius: var(--admin-radius);
+    box-shadow: var(--admin-shadow);
+}
+
+[data-theme='light'] .panel,
+[data-theme='light'] .card-body {
+    padding: 1rem !important;
+}
+
+[data-theme='light'] .form-control,
+[data-theme='light'] .form-select {
+    min-height: var(--control-height-md);
+    padding: 0.4rem 0.7rem;
+    color: var(--admin-heading);
+    background: #fbfdfd;
+    border: 1px solid var(--admin-border-strong);
+    border-radius: var(--radius-sm) !important;
+    box-shadow: none;
+}
+
+[data-theme='light'] .form-control::placeholder {
+    color: #7f9097;
+}
+
+[data-theme='light'] .form-control:focus,
+[data-theme='light'] .form-select:focus {
+    background: #fff;
+    border-color: var(--color-brand-aqua);
+    box-shadow: none;
+    outline: var(--focus-outline);
+    outline-offset: var(--focus-outline-offset);
+}
+
+[data-theme='light'] .btn-primary {
+    min-height: var(--control-height-md);
+    padding: 0.4rem 0.85rem;
+    color: #fff !important;
+    background: var(--color-brand-teal) !important;
+    border: 1px solid var(--color-brand-teal) !important;
+    border-radius: var(--radius-sm) !important;
+    box-shadow: none;
+    font-weight: 600;
+}
+
+[data-theme='light'] .btn-primary:hover {
+    background: var(--color-brand-navy) !important;
+    border-color: var(--color-brand-navy) !important;
+    box-shadow: none;
+    transform: none;
+}
+
+[data-theme='light'] .btn-light {
+    min-height: var(--control-height-md);
+    color: var(--admin-heading);
+    background: #f8fbfb;
+    border-color: var(--admin-border-strong);
+    box-shadow: none;
+}
+
+[data-theme='light'] .table {
+    --bs-table-bg: transparent;
+    --bs-table-color: var(--admin-copy);
+    margin: 0;
+}
+
+[data-theme='light'] .table thead th {
+    padding: 0.7rem 0.8rem;
+    color: var(--admin-muted);
+    background: #f7faf9;
+    border-bottom: 1px solid var(--admin-border-strong);
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.045em;
+    text-transform: uppercase;
+}
+
+[data-theme='light'] .table tbody td {
+    padding: 0.72rem 0.8rem;
+    border-bottom: 1px solid var(--admin-border);
+}
+
+[data-theme='light'] .table tbody tr:hover {
+    background: rgba(8, 180, 148, 0.035);
+}
+
+[data-theme='light'] .badge {
+    padding: 0.35rem 0.55rem;
+    border: 1px solid currentColor;
+    border-radius: 6px;
+    font-weight: 500;
+}
+
+.dashboard-container,
+.dashboard-container > .container-fluid,
+.main-content > .container-fluid {
+    padding: 0;
+}
+
+.kpi-card {
+    min-height: 112px;
+    overflow: hidden;
+    border-top: 3px solid var(--kpi-tone, var(--dashboard-info)) !important;
+}
+
+.kpi-card--info { --kpi-tone: var(--dashboard-info); --kpi-tint: rgba(12, 64, 104, 0.09); }
+.kpi-card--success { --kpi-tone: var(--dashboard-success); --kpi-tint: rgba(11, 143, 117, 0.1); }
+.kpi-card--warning { --kpi-tone: var(--dashboard-warning); --kpi-tint: rgba(196, 123, 18, 0.11); }
+.kpi-card--danger { --kpi-tone: var(--dashboard-danger); --kpi-tint: rgba(196, 69, 69, 0.1); }
+.kpi-card--finance { --kpi-tone: var(--dashboard-finance); --kpi-tint: rgba(166, 107, 20, 0.1); }
+
+.kpi-card-label,
+.kpi-card-supporting,
+.kpi-card-delta {
+    color: var(--admin-muted);
+    font-size: 0.72rem;
+}
+
+.kpi-card-value {
+    color: var(--admin-heading);
+    font-size: clamp(1.2rem, 2vw, 1.5rem);
+    font-weight: 700;
+}
+
+.kpi-card-delta--positive { color: var(--dashboard-success); }
+.kpi-card-delta--negative { color: var(--dashboard-danger); }
+.kpi-card-delta--neutral { color: var(--dashboard-finance); }
+
+.kpi-card-icon,
+.inbox-channel-icon {
+    width: 40px;
+    height: 40px;
+    flex: 0 0 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--kpi-tone, var(--color-brand-teal));
+    background: var(--kpi-tint, rgba(8, 180, 148, 0.09));
+    border-radius: 9px;
+}
+
+.inbox-channel-icon {
+    width: 32px;
+    height: 32px;
+    flex-basis: 32px;
+}
+
+.dashboard-status-dot {
+    width: 0.65rem;
+    height: 0.65rem;
+    display: inline-block;
+    background: var(--dashboard-success);
+    border: 3px solid rgba(11, 143, 117, 0.16);
+    border-radius: 50%;
+}
+
+@media (max-width: 991.98px) {
+    .main-content {
+        padding: 1rem;
+    }
+}
+
+@media (max-width: 767.98px) {
+    .main-content {
+        padding: 0.75rem;
+    }
+}
