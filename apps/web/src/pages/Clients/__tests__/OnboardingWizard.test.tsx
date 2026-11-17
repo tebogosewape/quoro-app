@@ -6,10 +6,21 @@ import { MemoryRouter, useLocation } from 'react-router-dom';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AuthSession } from '@/interfaces/AuthUser';
 
-const { listProductsMock, createClientMock, logOnboardingStepMock, authState } = vi.hoisted(() => ({
+const {
+    listProductsMock,
+    createClientMock,
+    updateClientMock,
+    checkClientIdNumberMock,
+    logOnboardingStepMock,
+    attemptNuPayMandateMock,
+    authState,
+} = vi.hoisted(() => ({
     listProductsMock: vi.fn(),
     createClientMock: vi.fn(),
+    updateClientMock: vi.fn(),
+    checkClientIdNumberMock: vi.fn(),
     logOnboardingStepMock: vi.fn(),
+    attemptNuPayMandateMock: vi.fn(),
     authState: { session: null as AuthSession | null },
 }));
 
@@ -19,7 +30,13 @@ vi.mock('@/api/products', () => ({
 
 vi.mock('@/api/clients.api', () => ({
     createClient: createClientMock,
+    updateClient: updateClientMock,
+    checkClientIdNumber: checkClientIdNumberMock,
     logOnboardingStep: logOnboardingStepMock,
+}));
+
+vi.mock('@/api/debicheck.api', () => ({
+    attemptNuPayMandate: attemptNuPayMandateMock,
 }));
 
 vi.mock('@/stores/auth.store', () => ({
@@ -100,6 +117,32 @@ const changeValue = async (
     });
 };
 
+const completeValidPersonalDetails = async (idNumber = '9001015009087') => {
+    await selectStep('Your personal details');
+    const inputs = Array.from(
+        container.querySelectorAll<HTMLInputElement>('.wizard-panel input.form-control')
+    );
+    await changeValue(inputs[0], 'Mokoena');
+    await changeValue(inputs[1], 'Naledi');
+    await changeValue(inputs[2], idNumber);
+    await changeValue(inputs[3], '0821234567');
+    const addresses = Array.from(
+        container.querySelectorAll<HTMLTextAreaElement>('.wizard-panel textarea')
+    );
+    await changeValue(addresses[0], '1 Main Road, Pretoria');
+    await changeValue(addresses[1], 'PO Box 10, Pretoria');
+};
+
+const continueFromPersonalDetails = async () => {
+    await clickAction('Next');
+    await vi.waitFor(() => expect(checkClientIdNumberMock).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() =>
+        expect(container.querySelector('[aria-current="step"]')?.textContent).toContain(
+            'Select product'
+        )
+    );
+};
+
 beforeAll(async () => {
     Reflect.set(window, 'IS_REACT_ACT_ENVIRONMENT', true);
     OnboardingWizard = (await import('../OnboardingWizard')).default;
@@ -109,7 +152,22 @@ beforeEach(() => {
     authState.session = session;
     listProductsMock.mockReset().mockResolvedValue(productsResponse);
     createClientMock.mockReset();
+    updateClientMock.mockReset().mockImplementation(async (_clientId, updates) => ({
+        id: 'created-client-1',
+        firstName: 'Naledi',
+        lastName: 'Mokoena',
+        ...updates,
+    }));
+    checkClientIdNumberMock.mockReset().mockResolvedValue({ exists: false });
     logOnboardingStepMock.mockReset().mockResolvedValue(undefined);
+    attemptNuPayMandateMock.mockReset().mockResolvedValue({
+        mandateStatus: 'pending_auth',
+        mandateId: 'MANDATE-1',
+        mandateReference: 'CONTRACT-1',
+        mandateRequestTranId: 'REQUEST-1',
+        mandateAttemptedAt: '2026-11-17T09:00:00.000Z',
+        mandateCollectionDay: '15',
+    });
     consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     container = document.createElement('div');
     document.body.appendChild(container);
@@ -146,11 +204,56 @@ describe('OnboardingWizard', () => {
         expect(container.querySelector('[aria-current="step"]')?.textContent).toContain(
             'Your personal details'
         );
+        expect(checkClientIdNumberMock).not.toHaveBeenCalled();
+    });
+
+    it('blocks product selection when the ID number already belongs to a client', async () => {
+        checkClientIdNumberMock.mockResolvedValue({ exists: true });
+        await renderWizard();
+        await completeValidPersonalDetails();
+        await clickAction('Next');
+
+        await vi.waitFor(() => expect(checkClientIdNumberMock).toHaveBeenCalledTimes(1));
+        expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+            'A client with this ID number already exists'
+        );
+        expect(container.querySelector('[aria-current="step"]')?.textContent).toContain(
+            'Your personal details'
+        );
+    });
+
+    it('does not let direct step navigation bypass the duplicate-ID check', async () => {
+        checkClientIdNumberMock.mockResolvedValue({ exists: true });
+        await renderWizard();
+        await completeValidPersonalDetails();
+        await selectStep('Select product');
+
+        await vi.waitFor(() => expect(checkClientIdNumberMock).toHaveBeenCalledTimes(1));
+        expect(container.querySelector('[aria-current="step"]')?.textContent).toContain(
+            'Your personal details'
+        );
+        expect(container.textContent).toContain('A client with this ID number already exists');
+    });
+
+    it('fails closed when the ID-number check cannot reach the API', async () => {
+        checkClientIdNumberMock.mockRejectedValue(new Error('Network unavailable'));
+        await renderWizard();
+        await completeValidPersonalDetails();
+        await clickAction('Next');
+
+        await vi.waitFor(() => expect(checkClientIdNumberMock).toHaveBeenCalledTimes(1));
+        expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+            'We could not verify this ID number'
+        );
+        expect(container.querySelector('[aria-current="step"]')?.textContent).toContain(
+            'Your personal details'
+        );
     });
 
     it('keeps product selection clear and advances through the existing workflow', async () => {
         await renderWizard();
-        await selectStep('Select product');
+        await completeValidPersonalDetails();
+        await continueFromPersonalDetails();
         await vi.waitFor(() => expect(container.textContent).toContain('Credit Health Review'));
 
         const productCard = container.querySelector<HTMLElement>('.cf-prod');
@@ -175,7 +278,8 @@ describe('OnboardingWizard', () => {
 
     it('uses the live product code to collect required credit account history', async () => {
         await renderWizard();
-        await selectStep('Select product');
+        await completeValidPersonalDetails();
+        await continueFromPersonalDetails();
         await vi.waitFor(() => expect(container.textContent).toContain('Credit Health Review'));
 
         expect(container.textContent).toContain('CAR');
@@ -205,12 +309,31 @@ describe('OnboardingWizard', () => {
     it('shows the product API failure instead of an empty product selector', async () => {
         listProductsMock.mockRejectedValue(new Error('Product service unavailable'));
         await renderWizard();
-        await selectStep('Select product');
+        await completeValidPersonalDetails();
+        await continueFromPersonalDetails();
 
         await vi.waitFor(() =>
             expect(container.textContent).toContain('Product service unavailable')
         );
         expect(container.textContent).toContain('Error loading products');
+    });
+
+    it('retries a stale product failure when Step 3 opens and from its recovery action', async () => {
+        listProductsMock
+            .mockRejectedValueOnce(new Error('API starting'))
+            .mockRejectedValueOnce(new Error('API still starting'))
+            .mockResolvedValueOnce(productsResponse);
+        await renderWizard();
+        await completeValidPersonalDetails();
+        await continueFromPersonalDetails();
+
+        await vi.waitFor(() => expect(listProductsMock).toHaveBeenCalledTimes(2));
+        await vi.waitFor(() => expect(container.textContent).toContain('API still starting'));
+        await clickAction('Try again');
+
+        await vi.waitFor(() => expect(listProductsMock).toHaveBeenCalledTimes(3));
+        await vi.waitFor(() => expect(container.textContent).toContain('Credit Health Review'));
+        expect(container.textContent).not.toContain('Error loading products');
     });
 
     it('shows product loading and empty states explicitly', async () => {
@@ -221,7 +344,8 @@ describe('OnboardingWizard', () => {
             })
         );
         await renderWizard();
-        await selectStep('Select product');
+        await completeValidPersonalDetails();
+        await continueFromPersonalDetails();
 
         expect(container.textContent).toContain('Loading available products');
         await act(async () => resolveProducts?.({ products: [] }));
@@ -232,6 +356,8 @@ describe('OnboardingWizard', () => {
 
     it('shows banking validation without allowing the step to advance', async () => {
         await renderWizard();
+        await completeValidPersonalDetails();
+        await continueFromPersonalDetails();
         await selectStep('Banking details');
         await clickAction('Next');
 
@@ -256,6 +382,14 @@ describe('OnboardingWizard', () => {
     });
 
     it('preserves the complete client, product, payment, banking and consent submission', async () => {
+        listProductsMock.mockResolvedValue({
+            products: [
+                {
+                    ...productsResponse.products[0],
+                    requires_mandate: true,
+                },
+            ],
+        });
         createClientMock.mockResolvedValue({
             id: 'created-client-1',
             firstName: 'Naledi',
@@ -278,7 +412,13 @@ describe('OnboardingWizard', () => {
         await changeValue(addresses[0], '1 Main Road, Pretoria');
         await changeValue(addresses[1], 'PO Box 10, Pretoria');
 
-        await selectStep('Select product');
+        await clickAction('Next');
+        await vi.waitFor(() => expect(checkClientIdNumberMock).toHaveBeenCalledTimes(1));
+        await vi.waitFor(() =>
+            expect(container.querySelector('[aria-current="step"]')?.textContent).toContain(
+                'Select product'
+            )
+        );
         await vi.waitFor(() => expect(container.textContent).toContain('Credit Health Review'));
         await act(async () => container.querySelector<HTMLElement>('.cf-prod')?.click());
 
@@ -331,9 +471,32 @@ describe('OnboardingWizard', () => {
                     expect.objectContaining({
                         productId: 'product-1',
                         paymentOptionId: 'product-1_once_off',
+                        mandateStatus: 'pending',
+                        mandateCollectionDay: '15',
                     }),
                 ],
                 paymentInfo: expect.objectContaining({ firstPaymentMonth: 'first' }),
+                debiCheckConsentGiven: true,
+            })
+        );
+        expect(attemptNuPayMandateMock).toHaveBeenCalledTimes(1);
+        expect(attemptNuPayMandateMock).toHaveBeenCalledWith(
+            expect.objectContaining({
+                collectionDay: '15',
+                selection: expect.objectContaining({ productId: 'product-1' }),
+            })
+        );
+        expect(updateClientMock).toHaveBeenCalledWith(
+            'created-client-1',
+            expect.objectContaining({
+                debiCheckConsentGiven: true,
+                selectedProducts: [
+                    expect.objectContaining({
+                        productId: 'product-1',
+                        mandateStatus: 'pending_auth',
+                        mandateId: 'MANDATE-1',
+                    }),
+                ],
             })
         );
         await vi.waitFor(() =>

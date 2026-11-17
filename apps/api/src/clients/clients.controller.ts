@@ -25,6 +25,7 @@ import { AuthenticatedUser, CurrentUser, JwtAuthGuard, Roles, RolesGuard } from 
 import { UserRole } from '@/entities/user.entity';
 import { AuditService } from '@/modules/audit/audit.service';
 import { GenerateCreditReportDto } from './dto/generate-credit-report.dto';
+import { CheckClientIdDto } from './dto/check-client-id.dto';
 
 @ApiTags('Clients')
 @Controller('clients')
@@ -123,6 +124,22 @@ export class ClientsController {
         return {
             success: true,
             data: stats,
+            meta: { timestamp: new Date().toISOString() },
+        };
+    }
+
+    /**
+     * Check whether an ID number is already linked to a client.
+     * The response intentionally does not expose client details.
+     */
+    @Post('check-id-number')
+    @ApiOperation({ summary: 'Check whether a client ID number already exists' })
+    @HttpCode(HttpStatus.OK)
+    async checkIdNumber(@Body() dto: CheckClientIdDto) {
+        const exists = await this.clientsService.idNumberExists(dto.idNumber);
+        return {
+            success: true,
+            data: { exists },
             meta: { timestamp: new Date().toISOString() },
         };
     }

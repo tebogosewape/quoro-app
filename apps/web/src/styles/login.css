@@ -50,6 +50,7 @@ body.auth-page #root {
     width: 62px;
     height: 62px;
     flex: 0 0 62px;
+    color: var(--color-brand-aqua);
 }
 
 .qfinance-brand__copy {
@@ -65,6 +66,10 @@ body.auth-page #root {
     font-weight: 700;
     line-height: 1;
     letter-spacing: 0.12em;
+}
+
+.qfinance-brand__accent {
+    color: var(--color-brand-aqua);
 }
 
 .qfinance-brand__tagline {
@@ -191,7 +196,9 @@ body.auth-page #root {
     background: var(--color-brand-teal) !important;
     color: #ffffff !important;
     text-transform: none;
-    transition: background var(--transition-base), border-color var(--transition-base);
+    transition:
+        background var(--transition-base),
+        border-color var(--transition-base);
     box-shadow: none;
     min-width: 132px;
     text-decoration: none;

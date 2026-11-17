@@ -3,6 +3,34 @@ import { ClientStatus } from '@/entities/client.entity';
 import { BadRequestException } from '@nestjs/common';
 
 describe('ClientsService client directory', () => {
+    it('checks ID numbers across the client repository without exposing client data', async () => {
+        const clientRepository = {
+            findOne: jest
+                .fn()
+                .mockResolvedValueOnce({ id: 'existing-client' })
+                .mockResolvedValueOnce(null),
+        };
+        const service = new ClientsService(
+            clientRepository as never,
+            {} as never,
+            {} as never,
+            {} as never,
+            {} as never,
+            {} as never,
+            {} as never,
+            {} as never,
+            {} as never
+        );
+
+        await expect(service.idNumberExists('9001015009087')).resolves.toBe(true);
+        await expect(service.idNumberExists('9101015009088')).resolves.toBe(false);
+        expect(clientRepository.findOne).toHaveBeenNthCalledWith(1, {
+            select: { id: true },
+            where: { idNumber: '9001015009087' },
+            withDeleted: true,
+        });
+    });
+
     it('resolves file, product and assigned-agent data for the client list', async () => {
         const client = {
             id: '803e284e-d178-4f5b-b76f-81a376398e31',

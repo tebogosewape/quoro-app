@@ -1,9 +1,9 @@
 # QMAPI Theme Migration Master TODO
 
-**Status:** Screens 1-15 accepted; Screen 16 is in progress
+**Status:** Screen 18 accepted; Screens 6 and 7 reopened for client-journey corrections; CEO Dashboard parked
 **Visual reference:** `C:\Projects\ViteRect\quora-web-app`  
 **Functional authority:** `C:\Projects\ViteRect\qmapi`  
-**Last updated:** 16 November 2026
+**Last updated:** 17 November 2026
 
 This is the authoritative checklist for the QMAPI theme migration. Work must be completed in the order below, one screen implementation at a time. While the user is away from the machine, a screen may advance to the batch-review queue after its implementation and automated checks pass; its manual acceptance items remain open. The next screen may then be implemented. All queued manual, responsive, usability and visual checks will be completed together when the user returns.
 
@@ -93,6 +93,24 @@ These are the standard building blocks for every screen. Reuse an existing compo
 ### Authenticated shell revision - 15 November 2026
 
 User review rejected the previous logged-in header/sidebar presentation. The shared shell now uses a flat QFinance deep-green header, compact wordmark, route context, user identity/role treatment, compact permission-aware navigation and restrained active states. The oversized sidebar branding block, purple gradient, glass styling, hover movement and nested horizontal page scrollbar were removed. The mobile drawer self-closing defect was repaired. Browser checks found no document or main-content horizontal overflow at 320, 375, 768, 1024 and 1440 targets; lint, type-check, all 43 web tests and the production build pass. The user locked this in as the production theme on 15 November 2026 with the wording `this is the theme we going with`.
+
+**Sidebar footer refinement (17 November 2026):** The oversized alert-like Logout card and
+detached version strip were replaced with one compact shared footer. Sign out is now a proper
+34 px neutral button with a restrained danger hover state, solid keyboard focus and the existing
+session-clear/navigation behaviour. The build identifier is integrated below it as the quiet,
+right-aligned label `QFinance v0.1`. Sidebar lint, web type-check, Screen 16's five focused tests
+and the production build pass.
+
+**Official two-green logo alignment (17 November 2026):** The reusable QFinance wordmark now
+reflects the official deep teal `#01555a` and aqua-green `#08b494` identity instead of flattening
+the full name to white. On the deep-teal application header, the Q mark and `FIN` use aqua while
+`ANCE` and the tagline retain readable white contrast. The non-brand horizontal stroke was
+removed from the Q mark. Lint, type-check, focused User Management tests and production build pass.
+
+**Restrained sidebar aqua treatment (17 November 2026):** Aqua-green `#08b494` is limited to
+the 3 px current-route indicator and selected navigation icon. Active text remains deep teal and
+the selected background uses the near-white `#effaf7`; normal and hover states remain neutral.
+This keeps the sidebar suitable for sustained daily use while linking it to the official logo.
 
 - [x] Preserve a solid accessible focus indicator.
 - [x] Verify shared colours: navy `#0c4068`, dark teal `#01555a`, accent `#08b494`.
@@ -402,18 +420,77 @@ I like it`. Screen 5 is complete.
 - [x] Remove glow from the stepper, cards, selected states and buttons.
 - [x] Ensure selected states remain clear through borders, fills and icons.
 - [x] Compact-control implementation check passed across all eight steps.
-- [x] Mobile 320/375 check passed across all eight steps.
-- [x] Tablet 768 check passed across all eight steps.
-- [x] Desktop 1024/1440 check passed across all eight steps.
-- [x] Overflow, step navigation and content-density checks passed.
-- [x] Keyboard/focus check passed.
+- [ ] Mobile 320/375 recheck passed across all eight refined steps.
+- [ ] Tablet 768 recheck passed across all eight refined steps.
+- [x] Desktop 1024/1440 recheck passed across all eight refined steps.
+- [ ] Final overflow, step navigation and content-density recheck passed.
+- [ ] Final keyboard/focus recheck passed.
 - [x] Validation/loading/error states passed.
 - [x] Full onboarding functional regression passed.
-- [x] Theme look-and-feel review passed.
+- [ ] Refined theme look-and-feel review passed.
 - [x] Automated checks/build passed.
-- [x] Manual acceptance recorded; Screen 6 complete.
+- [ ] Manual re-acceptance recorded; Screen 6 refinement complete.
+
+### Reopened onboarding workflow TODO - implementation order pending
+
+- [ ] **Personal Details email validation:** validate required and malformed email addresses inline on
+      Step 2 and block Next/direct step navigation before Product Selection. The Confirm step must only
+      display an email that already passed Personal Details validation; it must not be the first place an
+      email error appears.
+- [ ] Add focused coverage for valid, empty and malformed email values, including direct-navigation
+      bypass prevention and preservation of the corrected email through final submission.
+- [x] **NuPay mandate hand-off:** preserve the Debit Order Details data during onboarding and initiate
+      the NuPay mandate only after final confirmation has successfully created the client and file
+      reference. Do not create a NuPay mandate merely by clicking Next on the agreement step.
+- [x] Retain `requires_mandate` from the selected product, map only NuPay-supported bank/account values,
+      collect the missing branch/schedule inputs, persist mandate-consent evidence and store the returned
+      mandate ID/status/reference without creating duplicates on retry.
+- [ ] For the current controlled flow test, leave the existing DebiCheck routes without JWT as explicitly
+      requested. Record JWT plus `debicheck.send` enforcement as a mandatory post-flow-test security task;
+      the unauthenticated route must not be treated as production-ready.
+- [x] Validate NuPay business result codes even when the provider returns HTTP 200, and cover success,
+      rejection, timeout, retry/idempotency and client-created-but-mandate-failed states without making an
+      unapproved live provider call.
+
+**NuPay hand-off implementation (17 November 2026):** Both final onboarding submission and the Client
+Details Add Product journey now create/link the local record first and only then initiate a mandate for a
+`requires_mandate` product. NuPay success requires business result code `500000`; any validation,
+provider, timeout or persistence error leaves the client/product intact with a saved `pending` mandate,
+stable contract reference, collection day, attempt timestamp and diagnostic message. Successful initiation
+is stored as `pending_auth` with the mandate ID and request references. Existing mandate IDs are not
+re-initiated. The API now rejects non-success NuPay business codes before persisting a mandate ID and no
+longer writes the Base64 authentication value to debug logs. No live NuPay request was made during this
+implementation. The intentionally deferred JWT/`debicheck.send` task above remains open until the controlled
+flow test is signed off.
 
 **Product-linking repair and final acceptance (16 November 2026):** The product selector now preserves the live product code, uses a compact two-column operational layout, and correctly requests CAR account history instead of comparing a database UUID with the obsolete hard-coded `cir` ID. Client creation now rejects duplicate, inactive or missing product links, and operational agent roles can load product records. Focused frontend and backend regression tests, both type-checks and scoped lint checks pass. Tebogo confirmed Screen 6 with the wording `Screen 6 is confirmed, please proceed`.
+
+**Visual refinement reopened (17 November 2026):** Tebogo reported that the full onboarding screen still
+did not look completely cleaned up. The remaining legacy Bootstrap header, oversized progress cards,
+nested script/agreement scrolling and overlay-style sticky action rows were removed. The wizard now
+uses a compact white operational header with a progress rule, 36 px fields, 34 px actions, flat section
+panels, normal page scrolling and a reduced mobile header/step selector. All eight steps were inspected
+at desktop width; representative responsive checks passed without document or panel overflow. Nine
+focused onboarding tests, scoped lint, web type-check and the production build pass. Final manual
+phone/tablet and keyboard review remains open because Windows stopped browser-control access during the
+last all-step breakpoint sweep.
+
+**Duplicate ID gate (17 November 2026):** Personal Details now verifies the complete 13-digit ID
+against a dedicated authenticated API endpoint before Product Selection can open. The endpoint returns
+only an existence boolean, checks active and soft-deleted client rows, and does not expose client data.
+Invalid details, an existing ID or an unavailable verification API all keep the user on Personal Details;
+changing the ID invalidates the previous result, stale responses are ignored, and direct step navigation
+cannot bypass the gate. The database unique constraint and final-create duplicate handling remain the
+race-condition safety net. Twelve focused onboarding tests, four client-service tests, scoped lint, both
+type-checks and both production builds pass. Live verification requires the API/web containers to be
+rebuilt after Docker Desktop access is restored.
+
+**Product-load recovery (17 November 2026):** Live review exposed a startup race: products were
+prefetched only once when the wizard mounted, so a temporary API outage remained frozen even when the
+later ID check proved the API had recovered. Entering Product Selection now automatically retries a
+failed initial request, and the error panel provides an in-place compact `Try again` action instead of
+requiring a full-page refresh. Thirteen focused onboarding tests, scoped lint, web type-check and the
+production build pass.
 
 ## Screen 7 - Client Details
 
@@ -449,7 +526,7 @@ I like it`. Screen 5 is complete.
 - [x] Preserve Experian requests, report view/download, sensitive-data masking and permissions.
 - [x] Preserve products, income/expenses, correspondence, tasks, notes and audit behaviour.
 - [x] Remove glow from header, tabs, panels, badges, modals and report actions.
-- [x] Use compact controls throughout all panels and modals.
+- [ ] Rework the remaining oversized controls, cards and spacing across the current Client Details workspace.
 - [ ] Mobile 320/375 check passed for every panel and modal.
 - [ ] Tablet 768 check passed for every panel and modal.
 - [ ] Desktop 1024/1440 check passed for every panel and modal.
@@ -457,13 +534,57 @@ I like it`. Screen 5 is complete.
 - [ ] Keyboard/focus check passed.
 - [x] Loading/empty/error states passed.
 - [ ] Full client profile functional and permission regression passed.
-- [x] Theme look-and-feel review passed.
+- [ ] Revised theme look-and-feel review passed.
 - [x] Automated checks/build passed.
-- [x] Manual acceptance recorded; Screen 7 complete.
+- [ ] Manual re-acceptance recorded after the Client Details revision.
+
+### Reopened Client Details TODO - implementation order pending
+
+- [x] **Add Product journey:** replace the current one-row product/payment controls with a professional,
+      wide responsive modal journey beginning at Select a product. Reuse the applicable onboarding stages
+      for product-specific information, payment, mandate/debit-order details and final confirmation while
+      reusing the existing client's personal and banking data instead of recapturing it unnecessarily.
+- [x] Show only active products not already linked to the client, require an explicit valid payment option,
+      keep the API's missing/inactive/duplicate-product checks as the final backend safeguard, and show a
+      clear temporary warning when linking without a credit report while Experian UAT is unavailable.
+- [ ] **Restore the credit-report hard gate after Experian recovery:** once valid Experian UAT access is
+      confirmed, prevent product linking until the report has been requested and reviewed. Identify clients
+      with linked products and no `creditReportViewedAt` value for controlled follow-up before closing this item.
+- [ ] Keep the modal suitable for daily use: compact 34-40 px controls, a restrained stepper, stable actions,
+      clear loading/empty/error/validation states, keyboard focus and responsive layouts at 320, 375, 768,
+      1024 and 1440 widths.
+- [ ] **Client Details density/rebranding:** reduce the oversized summary tiles and contact strip; compact
+      the tab navigation, Add Product toolbar, product records, To-do List and Notes/System/Financial Log
+      widgets; remove the nested tab-area scrollbar; and keep the main workspace plus right rail aligned,
+      readable and free of clipping or document-level horizontal overflow.
+- [ ] Preserve the accepted authenticated shell, live client values, permissions, masking, Experian,
+      communications, tasks, notes, financial records and audit behaviour while changing presentation.
+- [ ] Add focused functional and responsive regression coverage, rerun scoped lint/type-check/build and
+      return Screen 7 for explicit visual and usability re-acceptance before marking it complete again.
 
 **Implementation repair (16 November 2026):** The 3,700-line profile was changed incrementally rather than replaced. The purple gradient, glass classes, glow-era borders, mock labels and oversized controls were removed from the screen. The profile header, tabs, product records, financial panels, communications, tasks, notes and credit-report modal now use compact QFinance operational surfaces. Product addition now requires and stores an explicit payment option, CAR links require three account names, inactive/missing/duplicate product links are rejected by the API, agent-style roles are limited to assigned clients, full ID values are masked for agents in both the header and Client tab, tasks use user-entered titles, and notes are persisted through the existing client record. The Client tab was refined into compact Personal, Contact/Address and Banking groups with associated labels, 36 px controls and responsive one/two/three-column layouts. Six focused Client Details tests and three client-service regression tests pass; both type-checks, scoped lint and the production build pass. The compact Client-tab layout has no page overflow at 320, 375, 768, 1024 or 1440 widths. Retained full permission-role and integration follow-ups remain listed separately; final visual acceptance is recorded below.
 
 **Final Client Details acceptance (16 November 2026):** Tebogo approved the refined Screen 7 presentation with the wording `Screen 7 approved, lets move on to screen 8`. The separate Experian UAT credential blocker and any retained role/integration follow-ups remain documented and are not represented as fixed by the theme approval.
+
+**Reopened (17 November 2026):** Live review found that the current Client Details workspace still uses
+oversized summary, product-linking and right-rail components. Tebogo also requested that Add Product become
+a proper onboarding-style modal journey beginning at product selection. The previous acceptance remains in
+the audit history but no longer closes the revised Screen 7 scope.
+
+**Add Product implementation (17 November 2026):** The inline product/payment toolbar was replaced with a
+four-stage Product, Details, Payment and Review modal. It lists only active unlinked products, captures CAR
+accounts only when applicable, reuses current client banking data, records the selected payment option and
+first-payment month, retains the credit-report and banking prerequisites, and requires mandate-preparation
+confirmation where applicable. Confirmation updates `selectedProducts` plus merged `paymentInfo`, fetches the
+client again and reports success only when the exact product/payment link is returned. Six focused Client
+Details tests, four client-service validation tests, scoped lint, web type-check and the production build pass.
+Live visual, responsive and physical refresh verification remain in the user-review checklist.
+
+**Temporary Experian exception (17 November 2026):** Because Experian UAT currently rejects valid enquiry
+attempts with `-103`, the Add Product review no longer blocks confirmation solely because no report exists.
+It displays a prominent warning and continues to enforce product, payment, CAR-account, banking and mandate
+requirements. This is a controlled temporary exception, not removal of the business rule; restoring the hard
+gate and reviewing clients linked during the exception are open tasks above and in `EXPERIAN_UAT_FOLLOW_UP.md`.
 
 ## Screen 8 - Leads Overview
 
@@ -873,20 +994,53 @@ visual approval must not be represented as functional WhatsApp approval.
 
 ### TODO
 
-- [ ] Theme the page, table and modal as one coherent screen.
-- [ ] Preserve create/edit, search, sort, pagination and permissions.
-- [ ] Remove glow from status, row selection, modal and actions.
-- [ ] Compact-control check passed in page and modal.
+- [x] Theme the page, table and modal as one coherent screen.
+- [x] Preserve create/edit, search, sort, pagination and permissions.
+- [x] Remove glow from status, row selection, modal and actions.
+- [x] Compact-control check passed in page and modal.
 - [ ] Mobile 320/375 check passed.
 - [ ] Tablet 768 check passed.
 - [ ] Desktop 1024/1440 check passed.
 - [ ] Overflow/table/modal checks passed.
 - [ ] Keyboard/focus check passed.
-- [ ] Loading/empty/error/validation states passed.
+- [x] Loading/empty/error/validation states passed.
 - [ ] CRUD and permission regression passed.
-- [ ] Theme look-and-feel review passed.
-- [ ] Automated checks/build passed.
-- [ ] Manual acceptance recorded; Screen 16 complete.
+- [x] Theme look-and-feel review passed.
+- [x] Automated checks/build passed.
+- [x] Manual acceptance recorded; Screen 16 complete.
+
+**Implementation ready for review (16 November 2026):** Replaced the oversized gradient
+summary card, loose Bootstrap controls, decorative row movement and large badges with a compact
+QFinance user directory. The page now provides 36 px search/role/status/page-size controls,
+real server-side role and status filters, dense sortable desktop rows, dedicated mobile user
+cards, restrained semantic badges and compact pagination. The create/edit modal groups identity
+and access fields, uses 36 px controls, formats stored role slugs for people, retains validation
+and surfaces API submission failures inside the modal. Existing list, create, update and delete
+API calls, debounce, sorting, pagination and route permission remain intact. Five focused tests,
+scoped lint, web type-check and the production build pass. Live CRUD mutation, role permission,
+breakpoint, overflow, keyboard and final theme acceptance remain open for user review.
+
+**Add-user modal refinement (16 November 2026):** The first review found the create-user
+dialog too wide, vertically heavy and visually dominated by large fields; its footer could also
+fall below the visible viewport. The dialog is now capped at 780 px, uses compact 34 px controls,
+three-column desktop groups, two-column tablet groups and one-column mobile groups. Identity and
+access fields sit in restrained bordered sections, the modal body scrolls independently with the
+action footer retained, and browser credential autofill is disabled for the new identity and
+temporary password fields. Five focused tests, scoped lint, type-check and the production build
+continue to pass.
+
+**Final modal sizing correction (17 November 2026):** Live review showed that the close
+control still followed the header content instead of the dialog edge and that the 34 px modal
+controls still felt oversized at the user's display scale. The close control is now independently
+anchored to the top-right, with reserved header space so it cannot overlap the title. The dialog
+is capped at 700 px; inputs, selects and footer actions use a compact 30 px height; labels now
+override the global 14 px form rule; and section, body and footer spacing is tighter. Five focused
+tests, scoped lint, web type-check and the production build pass.
+
+**Manual acceptance (17 November 2026):** Tebogo approved Screen 16 with the wording
+`I'm happy with this, screen 16 approved`. The remaining multi-role CRUD, permission and full
+breakpoint checks stay listed for the final consolidated regression and are not represented as
+completed by this visual approval.
 
 ## Screen 17 - Product Management
 
@@ -906,20 +1060,41 @@ visual approval must not be represented as functional WhatsApp approval.
 
 ### TODO
 
-- [ ] Theme the page, table and product form together.
-- [ ] Preserve create/edit, search, filtering, sorting and pagination.
-- [ ] Remove glow from cards, badges, modal and actions.
-- [ ] Compact-control check passed in page and modal.
-- [ ] Mobile 320/375 check passed.
-- [ ] Tablet 768 check passed.
-- [ ] Desktop 1024/1440 check passed.
-- [ ] Overflow/table/modal checks passed.
-- [ ] Keyboard/focus check passed.
-- [ ] Loading/empty/error/validation states passed.
+- [x] Theme the page, table and product form together.
+- [x] Preserve create/edit, search, filtering, sorting and pagination.
+- [x] Remove glow from cards, badges, modal and actions.
+- [x] Compact-control check passed in page and modal.
+- [x] Mobile 320/375 check passed.
+- [x] Tablet 768 check passed.
+- [x] Desktop 1024/1440 check passed.
+- [x] Overflow/table/modal checks passed.
+- [x] Keyboard/focus check passed.
+- [x] Loading/empty/error/validation states passed.
 - [ ] CRUD and permission regression passed.
-- [ ] Theme look-and-feel review passed.
-- [ ] Automated checks/build passed.
-- [ ] Manual acceptance recorded; Screen 17 complete.
+- [x] Theme look-and-feel review passed.
+- [x] Automated checks/build passed.
+- [x] Manual acceptance recorded; Screen 17 complete.
+
+**Implementation ready for review (17 November 2026):** Replaced the purple gradient summary,
+large shadowed controls, animated table rows and oversized badges with a compact QFinance product
+catalogue. The screen now provides debounced server search, category/status/page-size filters,
+local page sorting, accurate result counts, compact desktop actions, responsive product cards and
+clear loading, empty, success and API-error states. The product dialog resets correctly between
+create/edit operations, validates required fields, keeps partially entered JSON stable, reports
+invalid JSON without crashing and includes the previously omitted capture-restrictions editor.
+Write controls are shown only to the backend's actual `admin` and `manager` write roles; other
+authorised roles receive a clean read-only catalogue rather than guaranteed 403 actions.
+
+Browser checks passed at 320, 375, 768, 1024 and 1440 px with no document, page or toolbar
+overflow. Cards are used through 1024 px because the shared 248 px sidebar makes a desktop table
+unusable at tablet/small-desktop widths; the dense table returns at 1440 px. The Add Product modal,
+live category filtering and solid aqua keyboard focus were verified, and the browser logged no
+errors. Five focused tests, scoped lint, web type-check and the production build pass. Live safe
+CRUD mutation, destructive confirmation and multi-role verification remain open for user review.
+
+**Accepted (17 November 2026):** `Looks good let's move on to the next screen.` Visual acceptance
+closes Screen 17's rebranding gate. Safe live CRUD, destructive confirmation and multi-role checks
+remain part of the final functional regression.
 
 ## Screen 18 - Commission Settings
 
@@ -939,20 +1114,39 @@ visual approval must not be represented as functional WhatsApp approval.
 
 ### TODO
 
-- [ ] Apply the accepted settings/table/modal theme.
-- [ ] Preserve viewing, management permissions and rule calculations.
-- [ ] Remove glow from financial values, badges, modal and actions.
-- [ ] Compact-control check passed in page and modal.
-- [ ] Mobile 320/375 check passed.
-- [ ] Tablet 768 check passed.
-- [ ] Desktop 1024/1440 check passed.
-- [ ] Overflow/table/modal checks passed.
-- [ ] Keyboard/focus check passed.
-- [ ] Loading/empty/error/validation states passed.
+- [x] Apply the accepted settings/table/modal theme.
+- [x] Preserve viewing, management permissions and rule calculations.
+- [x] Remove glow from financial values, badges, modal and actions.
+- [x] Compact-control check passed in page and modal.
+- [x] Mobile 320/375 check passed.
+- [x] Tablet 768 check passed.
+- [x] Desktop 1024/1440 check passed.
+- [x] Overflow/table/modal checks passed.
+- [x] Keyboard/focus check passed.
+- [x] Loading/empty/error/validation states passed.
 - [ ] Rule and permission regression passed.
-- [ ] Theme look-and-feel review passed.
-- [ ] Automated checks/build passed.
-- [ ] Manual acceptance recorded; Screen 18 complete.
+- [x] Theme look-and-feel review passed.
+- [x] Automated checks/build passed.
+- [x] Manual acceptance recorded; Screen 18 complete.
+
+**Implementation ready for review (17 November 2026):** Replaced the oversized purple-gradient
+screen with a compact QFinance commission directory. The page now includes summary counters,
+search, category/configuration filters, fixed/percentage/unconfigured badges, a responsive table
+and phone/tablet cards, plus explicit loading, empty, API-error, success and permission states.
+Zero-value rules are handled correctly instead of being treated as missing. The compact editor
+keeps existing fixed and percentage rules stable, validates percentage limits and previews the
+result before save. Write actions now match the API's actual Admin/Manager roles; other authorised
+roles receive a professional read-only view.
+
+Responsive browser checks passed across 320, 375, 768, 1024 and 1440 target widths without page or
+toolbar overflow. Search filtering, result counts and solid aqua keyboard focus were verified on
+the live page. A clean reload logged no current runtime errors. Six focused tests, scoped lint,
+web type-check and the production build pass. A safe live rule update and multi-role verification
+remain open for final functional regression.
+
+**Accepted (17 November 2026):** `Screen 18 approved`. The commission footer spacing defect reported
+during review was corrected and verified as `Showing 9 of 9 active products`. Safe rule-save and
+multi-role checks remain in the final functional regression.
 
 ---
 

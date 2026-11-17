@@ -323,12 +323,24 @@ export class DebicheckService {
                 authenticationType: 'REAL TIME',
                 mac: '',
             });
-            this.logger.debug(`initiateMandate payload → ${JSON.stringify(payload)}`);
+            const safePayload = { ...payload, auth: '[redacted]' };
+            this.logger.debug(`initiateMandate payload ${JSON.stringify(safePayload)}`);
             const { data } = await this.http.post<MandateOperationResponseDto>(
                 '/mandate_initiation',
                 payload
             );
-            this.logger.debug(`initiateMandate response ← ${JSON.stringify(data)}`);
+            this.logger.debug(`initiateMandate response ${JSON.stringify(data)}`);
+
+            if (data.ResultCode !== '500000') {
+                this.logger.warn(
+                    `NuPay rejected mandate initiation for ${dto.clientReference}: ` +
+                        `${data.ResultCode || 'unknown'} - ${data.Status || 'No status supplied'}`
+                );
+                throw new BadRequestException(
+                    `NuPay rejected mandate initiation: ${data.ResultCode || 'unknown result code'} - ` +
+                        `${data.Status || 'No status supplied'}`
+                );
+            }
 
             // Persist mandate ID to the client record when clientId is provided
             const mandateId = data.referenceNumbers?.mandateID ?? data.mandate_id;
@@ -350,6 +362,7 @@ export class DebicheckService {
 
             return data;
         } catch (err) {
+            if (err instanceof BadRequestException) throw err;
             this.handleError(err, 'initiateMandate');
         }
     }

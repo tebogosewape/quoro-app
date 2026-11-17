@@ -14,6 +14,7 @@ const {
     listProductsMock,
     listTasksMock,
     createTaskMock,
+    attemptNuPayMandateMock,
 } = vi.hoisted(() => ({
     getClientByIdMock: vi.fn(),
     updateClientMock: vi.fn(),
@@ -21,6 +22,7 @@ const {
     listProductsMock: vi.fn(),
     listTasksMock: vi.fn(),
     createTaskMock: vi.fn(),
+    attemptNuPayMandateMock: vi.fn(),
 }));
 
 vi.mock('@/api/clients.api', () => ({
@@ -42,6 +44,9 @@ vi.mock('@/api/whatsapp.api', () => ({
         getMessages: vi.fn().mockResolvedValue({ data: [] }),
         sendMessage: vi.fn().mockResolvedValue({ data: {} }),
     },
+}));
+vi.mock('@/api/debicheck.api', () => ({
+    attemptNuPayMandate: attemptNuPayMandateMock,
 }));
 vi.mock('@/stores/auth.store', () => ({
     useAuthStore: (selector: (state: unknown) => unknown) =>
@@ -69,7 +74,13 @@ const client = {
     monthlyIncome: 25000,
     monthlyExpenses: 12000,
     totalDebt: 50000,
+    bankName: 'Test Bank',
+    accountType: 'Cheque',
+    accountHolder: 'Naledi Mokoena',
+    accountNumber: '1234567890',
+    branchCode: '250655',
     selectedProducts: [],
+    paymentInfo: null,
     creditReportViewedAt: '2026-11-16T10:00:00.000Z',
     createdAt: '2026-11-16T08:00:00.000Z',
     updatedAt: '2026-11-16T10:00:00.000Z',
@@ -92,6 +103,7 @@ const activeProduct = {
 let ClientDetails: ComponentType;
 let container: HTMLDivElement;
 let root: Root;
+let persistedClient = { ...client };
 
 const changeValue = async (
     control: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement,
@@ -105,6 +117,38 @@ const changeValue = async (
         setter?.call(control, value);
         control.dispatchEvent(new Event('change', { bubbles: true }));
     });
+};
+
+const clickButton = async (label: string) => {
+    const button = Array.from(document.body.querySelectorAll<HTMLButtonElement>('button')).find(
+        (candidate) => candidate.textContent?.includes(label)
+    );
+    if (!button) throw new Error(`Button not found: ${label}`);
+    await act(async () => button.click());
+};
+
+const openProductJourney = async (productName: string) => {
+    await clickButton('Add product');
+    await vi.waitFor(() =>
+        expect(document.body.querySelector('.client-product-journey')).not.toBeNull()
+    );
+    const productOption = Array.from(
+        document.body.querySelectorAll<HTMLButtonElement>('.client-product-option')
+    ).find((option) => option.textContent?.includes(productName));
+    if (!productOption) throw new Error(`Product option not found: ${productName}`);
+    await act(async () => productOption.click());
+};
+
+const selectMandateSchedule = async (month = 'first', day = '25') => {
+    const firstPaymentMonth = document.body.querySelector<HTMLSelectElement>(
+        'select[aria-label="First payment month"]'
+    );
+    const collectionDay = document.body.querySelector<HTMLSelectElement>(
+        'select[aria-label="Monthly collection day"]'
+    );
+    if (!firstPaymentMonth || !collectionDay) throw new Error('Mandate schedule not rendered');
+    await changeValue(firstPaymentMonth, month);
+    await changeValue(collectionDay, day);
 };
 
 beforeAll(async () => {
@@ -121,8 +165,12 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
-    getClientByIdMock.mockReset().mockResolvedValue(client);
-    updateClientMock.mockReset().mockResolvedValue(client);
+    persistedClient = { ...client };
+    getClientByIdMock.mockReset().mockImplementation(async () => persistedClient);
+    updateClientMock.mockReset().mockImplementation(async (_clientId, updates) => {
+        persistedClient = { ...persistedClient, ...updates };
+        return persistedClient;
+    });
     downloadCreditReportMock.mockReset().mockResolvedValue(new Blob(['%PDF-1.4']));
     vi.mocked(window.URL.createObjectURL).mockReturnValue('blob:credit-report');
     vi.mocked(window.URL.revokeObjectURL).mockImplementation(() => undefined);
@@ -149,6 +197,14 @@ beforeEach(() => {
         dueDate: '2026-11-19T12:00:00.000Z',
         createdAt: '2026-11-16T12:00:00.000Z',
         updatedAt: '2026-11-16T12:00:00.000Z',
+    });
+    attemptNuPayMandateMock.mockReset().mockResolvedValue({
+        mandateStatus: 'pending_auth',
+        mandateId: 'MANDATE-1',
+        mandateReference: 'CONTRACT-1',
+        mandateRequestTranId: 'REQUEST-1',
+        mandateAttemptedAt: '2026-11-17T09:00:00.000Z',
+        mandateCollectionDay: '25',
     });
     container = document.createElement('div');
     document.body.appendChild(container);
@@ -177,6 +233,12 @@ describe('ClientDetails module', () => {
         expect(container.textContent).not.toContain('9001015009087');
         expect(container.querySelector('.client-profile-header')).not.toBeNull();
         expect(container.querySelector('.client-primary-tabs')).not.toBeNull();
+        expect(container.querySelectorAll('.client-profile-stats > .client-profile-stat')).toHaveLength(
+            5
+        );
+        expect(container.querySelector('aside.client-right-rail')).not.toBeNull();
+        expect(container.querySelector('.client-task-panel')).not.toBeNull();
+        expect(container.querySelector('.client-notes-panel')).not.toBeNull();
     });
 
     it('links an added product to an explicit payment option', async () => {
@@ -189,35 +251,140 @@ describe('ClientDetails module', () => {
                 </MemoryRouter>
             );
         });
+        await vi.waitFor(() => expect(container.textContent).toContain('Add product'));
+
+        await openProductJourney('Debt Review Removal - Single Application');
+        await clickButton('Continue');
+        await clickButton('Continue');
+        const paymentOption = document.body.querySelector<HTMLButtonElement>(
+            '.client-payment-option'
+        );
+        await act(async () => paymentOption?.click());
+        await selectMandateSchedule('first', '25');
+        await clickButton('Continue');
+        const mandateConfirmation = document.body.querySelector<HTMLInputElement>(
+            '#confirm-product-mandate'
+        );
+        await act(async () => mandateConfirmation?.click());
+        await clickButton('Confirm and link product');
+
+        await vi.waitFor(() => expect(updateClientMock).toHaveBeenCalledTimes(2));
+        expect(updateClientMock).toHaveBeenNthCalledWith(
+            1,
+            client.id,
+            expect.objectContaining({
+                selectedProducts: [
+                    expect.objectContaining({
+                        productId: 'product-1',
+                        paymentOptionId: 'product-1_once_off',
+                        mandateStatus: 'pending',
+                        mandateCollectionDay: '25',
+                    }),
+                ],
+                paymentInfo: {
+                    firstPaymentMonth: 'first',
+                    selectedPaymentOptions: {
+                        'product-1': 'product-1_once_off',
+                    },
+                },
+                debiCheckConsentGiven: true,
+            })
+        );
+        expect(attemptNuPayMandateMock).toHaveBeenCalledTimes(1);
         await vi.waitFor(() =>
-            expect(container.textContent).toContain('Debt Review Removal - Single Application')
+            expect(container.textContent).toContain('awaiting customer authorisation')
         );
+        await vi.waitFor(() => expect(container.textContent).toContain('All products linked'));
+        expect(persistedClient.selectedProducts).toEqual([
+            expect.objectContaining({
+                productId: 'product-1',
+                paymentOptionId: 'product-1_once_off',
+            }),
+        ]);
+    });
 
-        const productSelect = container.querySelector<HTMLSelectElement>(
-            'select[aria-label="Product to add"]'
-        );
-        const paymentSelect = container.querySelector<HTMLSelectElement>(
-            'select[aria-label="Payment option"]'
-        );
-        if (!productSelect || !paymentSelect) throw new Error('Product controls not rendered');
-        await changeValue(productSelect, 'product-1');
-        await changeValue(paymentSelect, 'product-1_once_off');
+    it('does not send DebiCheck consent when the selected product has no mandate', async () => {
+        listProductsMock.mockResolvedValue({
+            products: [{ ...activeProduct, requires_mandate: false }],
+            total: 1,
+            page: 1,
+            limit: 100,
+            totalPages: 1,
+        });
+        await act(async () => {
+            root.render(
+                <MemoryRouter initialEntries={[`/clients/${client.id}`]}>
+                    <Routes>
+                        <Route path="/clients/:id" element={<ClientDetails />} />
+                    </Routes>
+                </MemoryRouter>
+            );
+        });
+        await vi.waitFor(() => expect(container.textContent).toContain('Add product'));
 
-        const addButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find(
-            (button) => button.textContent?.includes('Add product')
+        await openProductJourney('Debt Review Removal - Single Application');
+        await clickButton('Continue');
+        await clickButton('Continue');
+        const paymentOption = document.body.querySelector<HTMLButtonElement>(
+            '.client-payment-option'
         );
-        await act(async () => addButton?.click());
+        await act(async () => paymentOption?.click());
+        await clickButton('Continue');
+        await clickButton('Confirm and link product');
 
         await vi.waitFor(() => expect(updateClientMock).toHaveBeenCalledTimes(1));
-        expect(updateClientMock).toHaveBeenCalledWith(client.id, {
-            selectedProducts: [
-                {
-                    productId: 'product-1',
-                    paymentOptionId: 'product-1_once_off',
-                    cirAccounts: undefined,
-                },
-            ],
+        const updatePayload = updateClientMock.mock.calls[0]?.[1];
+        expect(updatePayload).not.toHaveProperty('debiCheckConsentGiven');
+        expect(attemptNuPayMandateMock).not.toHaveBeenCalled();
+    });
+
+    it('warns but allows product linking while Experian UAT is unavailable', async () => {
+        persistedClient = { ...client, creditReportViewedAt: null };
+        attemptNuPayMandateMock.mockResolvedValueOnce({
+            mandateStatus: 'pending',
+            mandateError: 'NuPay unavailable',
+            mandateAttemptedAt: '2026-11-17T09:00:00.000Z',
+            mandateCollectionDay: '25',
         });
+        await act(async () => {
+            root.render(
+                <MemoryRouter initialEntries={[`/clients/${client.id}`]}>
+                    <Routes>
+                        <Route path="/clients/:id" element={<ClientDetails />} />
+                    </Routes>
+                </MemoryRouter>
+            );
+        });
+        await vi.waitFor(() => expect(container.textContent).toContain('Add product'));
+
+        await openProductJourney('Debt Review Removal - Single Application');
+        await clickButton('Continue');
+        await clickButton('Continue');
+        const paymentOption = document.body.querySelector<HTMLButtonElement>(
+            '.client-payment-option'
+        );
+        await act(async () => paymentOption?.click());
+        await selectMandateSchedule('first', '25');
+        await clickButton('Continue');
+
+        expect(document.body.textContent).toContain('Temporary credit-report exception');
+        const mandateConfirmation = document.body.querySelector<HTMLInputElement>(
+            '#confirm-product-mandate'
+        );
+        await act(async () => mandateConfirmation?.click());
+        const confirmButton = Array.from(
+            document.body.querySelectorAll<HTMLButtonElement>('button')
+        ).find((button) => button.textContent?.includes('Confirm and link product'));
+        expect(confirmButton?.disabled).toBe(false);
+        await act(async () => confirmButton?.click());
+
+        await vi.waitFor(() => expect(updateClientMock).toHaveBeenCalledTimes(2));
+        await vi.waitFor(() =>
+            expect(container.textContent).toContain('mandate is pending and can be retried later')
+        );
+        expect(persistedClient.selectedProducts?.[0]).toEqual(
+            expect.objectContaining({ mandateStatus: 'pending', mandateError: 'NuPay unavailable' })
+        );
     });
 
     it('creates the task entered by the user instead of a hard-coded placeholder', async () => {
@@ -276,38 +443,45 @@ describe('ClientDetails module', () => {
         });
         await vi.waitFor(() => expect(container.textContent).toContain('Credit Assessment'));
 
-        const productSelect = container.querySelector<HTMLSelectElement>(
-            'select[aria-label="Product to add"]'
-        );
-        const paymentSelect = container.querySelector<HTMLSelectElement>(
-            'select[aria-label="Payment option"]'
-        );
-        if (!productSelect || !paymentSelect) throw new Error('Product controls not rendered');
-        await changeValue(productSelect, 'product-1');
-        await changeValue(paymentSelect, 'product-1_once_off');
+        await openProductJourney('Credit Assessment and Report');
+        await clickButton('Continue');
 
         const accounts = Array.from(
-            container.querySelectorAll<HTMLInputElement>('input[aria-label^="Current account"]')
+            document.body.querySelectorAll<HTMLInputElement>(
+                'input[aria-label^="Current account"]'
+            )
         );
         expect(accounts).toHaveLength(3);
         await changeValue(accounts[0], 'Vehicle finance');
         await changeValue(accounts[1], 'Home loan');
         await changeValue(accounts[2], 'Retail account');
-        const addButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find(
-            (button) => button.textContent?.includes('Add product')
+        await clickButton('Continue');
+        const paymentOption = document.body.querySelector<HTMLButtonElement>(
+            '.client-payment-option'
         );
-        await act(async () => addButton?.click());
+        await act(async () => paymentOption?.click());
+        await selectMandateSchedule('second', '25');
+        await clickButton('Continue');
+        const mandateConfirmation = document.body.querySelector<HTMLInputElement>(
+            '#confirm-product-mandate'
+        );
+        await act(async () => mandateConfirmation?.click());
+        await clickButton('Confirm and link product');
 
-        await vi.waitFor(() => expect(updateClientMock).toHaveBeenCalledTimes(1));
-        expect(updateClientMock).toHaveBeenCalledWith(client.id, {
-            selectedProducts: [
-                expect.objectContaining({
-                    productId: 'product-1',
-                    paymentOptionId: 'product-1_once_off',
-                    cirAccounts: ['Vehicle finance', 'Home loan', 'Retail account'],
-                }),
-            ],
-        });
+        await vi.waitFor(() => expect(updateClientMock).toHaveBeenCalledTimes(2));
+        expect(updateClientMock).toHaveBeenNthCalledWith(
+            1,
+            client.id,
+            expect.objectContaining({
+                selectedProducts: [
+                    expect.objectContaining({
+                        productId: 'product-1',
+                        paymentOptionId: 'product-1_once_off',
+                        cirAccounts: ['Vehicle finance', 'Home loan', 'Retail account'],
+                    }),
+                ],
+            })
+        );
     });
 
     it('requires consent and submits one Experian enquiry with the selected purpose', async () => {

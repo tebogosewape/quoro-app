@@ -1,7 +1,7 @@
 # QMAPI Pending User Reviews
 
 **Purpose:** Queue rebranding checks that Tebogo will perform together when he returns to the machine.
-**Last updated:** 16 November 2026
+**Last updated:** 17 November 2026
 
 This register supplements [`THEME_MIGRATION_TODO.md`](THEME_MIGRATION_TODO.md). The master TODO remains the authoritative implementation plan and screen order. This file does not replace its acceptance gates.
 
@@ -24,8 +24,8 @@ This register supplements [`THEME_MIGRATION_TODO.md`](THEME_MIGRATION_TODO.md). 
 | Shared authenticated shell        | All logged-in routes   | Approved                | 15 November 2026 | 15 November 2026 |
 | Screen 4 - Dashboard              | `/dashboard`           | Ready for retest        | 16 November 2026 | -                |
 | Screen 5 - Clients Overview       | `/clients`             | Approved                | 15 November 2026 | 16 November 2026 |
-| Screen 6 - New Client Onboarding  | `/clients/new`         | Approved                | 15 November 2026 | 16 November 2026 |
-| Screen 7 - Client Details         | `/clients/:id`         | Approved                | 16 November 2026 | 16 November 2026 |
+| Screen 6 - New Client Onboarding  | `/clients/new`         | Changes requested       | 17 November 2026 | -                |
+| Screen 7 - Client Details         | `/clients/:id`         | Changes requested       | 17 November 2026 | -                |
 | Screen 8 - Leads Overview         | `/leads`               | Approved                | 16 November 2026 | 16 November 2026 |
 | Screen 9 - Leads Import           | `/leads/import`        | Approved                | 16 November 2026 | 16 November 2026 |
 | Screen 10 - Bulk Lead Allocation  | `/leads/bulk-allocate` | Approved                | 16 November 2026 | 16 November 2026 |
@@ -33,7 +33,10 @@ This register supplements [`THEME_MIGRATION_TODO.md`](THEME_MIGRATION_TODO.md). 
 | Screen 12 - Team Lead Dashboard   | `/team/dashboard`      | Approved                | 16 November 2026 | 16 November 2026 |
 | Screen 13 - Account Profile       | `/account/profile`     | Approved                | 16 November 2026 | 16 November 2026 |
 | Screen 14 - Role Management       | `/admin/roles`         | Approved                | 16 November 2026 | 16 November 2026 |
-| Screen 15 - WhatsApp Admin        | `/admin/whatsapp`      | Ready for visual review | 16 November 2026 | -                |
+| Screen 15 - WhatsApp Admin        | `/admin/whatsapp`      | Visual approved / parked| 16 November 2026 | 16 November 2026 |
+| Screen 16 - User Management       | `/admin/users`         | Approved                | 16 November 2026 | 17 November 2026 |
+| Screen 17 - Product Management    | `/admin/products`      | Approved                | 17 November 2026 | 17 November 2026 |
+| Screen 18 - Commission Settings   | `/admin/commission-settings` | Approved                | 17 November 2026 | 17 November 2026 |
 
 ## Shared authenticated shell
 
@@ -53,6 +56,8 @@ This register supplements [`THEME_MIGRATION_TODO.md`](THEME_MIGRATION_TODO.md). 
 - [x] Browser breakpoint checks found no document or main-content horizontal overflow at 320, 375, 768, 1024 or 1440 targets.
 - [x] Screen-scoped lint, web type-check, all 43 web tests and the production build pass.
 - [x] Reduced the sidebar navigation and submenu type scale for sustained daily use.
+- [x] Replaced the oversized Logout card and detached version strip with a compact shared footer,
+      a proper 34 px Sign out button and a quiet `QFinance v0.1` build label.
 
 ### Tests Tebogo must complete
 
@@ -66,6 +71,21 @@ This register supplements [`THEME_MIGRATION_TODO.md`](THEME_MIGRATION_TODO.md). 
 
 **Issues found:** The prior header used an unrelated purple gradient, the sidebar branding consumed excessive vertical space, navigation styles mixed incompatible light/dark rules, hover movement felt dated, and the mobile drawer closed immediately because its route effect depended on its open state. These issues were repaired. The follow-up sidebar typography reduction was accepted as part of the locked production theme.  
 **Acceptance wording:** `this is the theme we going with` and prior feedback `much better`, recorded 15 November 2026.
+
+**Post-acceptance refinement (17 November 2026):** During the Screen 16 review, the shared
+sidebar footer still looked like an oversized warning action and left the version disconnected at
+the bottom edge. Both are now one compact professional footer. Logout behaviour is unchanged;
+lint, type-check, the five focused User Management tests and the production build pass. Visual
+confirmation of this refinement remains part of the current Screen 16 review.
+
+**Brand alignment (17 November 2026):** The shared header/authentication wordmark now exposes
+both official QFinance greens. The Q mark and `FIN` use aqua-green on the deep-teal shell, while
+the rest of the name and tagline stay white for contrast. The extra line inside the Q was removed
+because it is absent from the supplied official logo reference.
+
+**Sidebar brand refinement (17 November 2026):** Aqua-green is used only on the active-route
+indicator and selected icon, supported by a near-white aqua background. Navigation text stays
+deep teal and inactive states remain neutral to preserve the approved professional density.
 
 ## Screen 4 — Dashboard
 
@@ -221,7 +241,7 @@ This register supplements [`THEME_MIGRATION_TODO.md`](THEME_MIGRATION_TODO.md). 
 
 ## Screen 6 - New Client Onboarding
 
-**Status:** Approved
+**Status:** Changes requested; implementation order pending
 **Route:** `/clients/new`  
 **Implementation authority:** [`THEME_MIGRATION_TODO.md`](THEME_MIGRATION_TODO.md#screen-6---new-client-onboarding)  
 **Test accounts:** Use an account with client-creation permission from [`TEST_USERS.md`](TEST_USERS.md); do not duplicate credentials here.
@@ -236,7 +256,7 @@ This register supplements [`THEME_MIGRATION_TODO.md`](THEME_MIGRATION_TODO.md). 
 - [x] Product loading, empty and API-error states have focused coverage.
 - [x] Missing-session recovery now uses the real `/login` route instead of the non-existent `/auth/login` route.
 - [x] Debug output that exposed session and onboarding form data in the browser console was removed.
-- [x] Eight focused onboarding tests passed, including a complete submission-payload regression.
+- [x] Thirteen focused onboarding tests passed, including duplicate-ID, direct-navigation, product-load recovery, unavailable-verification and complete submission-payload regressions.
 - [x] Screen-scoped lint and web type-check passed.
 - [x] The normal full web suite passed: 10 files and 43 tests.
 - [x] Production build passed; only the existing mixed-import and large-chunk warnings remain.
@@ -249,14 +269,23 @@ This register supplements [`THEME_MIGRATION_TODO.md`](THEME_MIGRATION_TODO.md). 
 - [ ] Confirm the header shows the correct current step, progress percentage and step name while navigating.
 - [ ] Step 1 - Introduction: confirm lead and signed-in agent details appear correctly when onboarding starts from a lead.
 - [ ] Step 2 - Personal: submit empty and invalid values, confirm useful errors, then verify all personal and address fields accept valid data.
+- [ ] Step 2 - Personal: confirm an empty or malformed email is rejected inline and blocks Next/direct navigation before Product Selection.
+- [ ] Step 2 - Personal: correct the email and confirm that validated value reaches Confirm and final submission without a new email-format error.
 - [ ] Step 2 - Personal: toggle “Postal address is the same as physical address” and confirm the postal value behaves correctly.
+- [ ] Step 2 - Personal: enter a known existing client ID and confirm Product Selection stays blocked with the duplicate message.
+- [ ] Step 2 - Personal: enter a new valid ID and confirm the availability message appears before Product Selection opens.
+- [ ] Step 2 - Personal: change a previously verified ID and confirm it must be checked again; also confirm direct Step 3 navigation cannot bypass the check.
+- [ ] With the API unavailable, confirm the wizard fails closed on Personal Details and provides a retryable verification error.
 - [ ] Step 3 - Products: confirm live active products and operational pricing options load from the API.
+- [ ] Step 3 - Products: if the initial API request fails, confirm entering the step retries automatically and `Try again` recovers without refreshing the wizard.
 - [ ] Step 3 - Products: select a product and confirm the selected border, fill and radio state are obvious without glow.
 - [ ] Step 4 - Product information: for CIR, confirm all three account fields are required; for other products, confirm the no-extra-information state.
 - [ ] Step 5 - Banking: confirm bank, account type, holder and account-number validation; verify the optional balance remains optional.
 - [ ] Step 6 - Payment: confirm payment options match the selected product and the quote summary calculates the expected amounts.
 - [ ] Step 6 - Payment: confirm first-payment-month and agreement selections remain intact when moving backward and forward.
 - [ ] Step 7 - Debit Order Agreement: read the full agreement, select a payment date and verify all three required consent checkboxes.
+- [ ] For a product requiring a mandate, confirm final client creation occurs before NuPay initiation and the returned mandate identifiers/status are stored once.
+- [ ] Safely simulate NuPay rejection/timeout and confirm the created client remains visible with a recoverable mandate-failed/pending state and no duplicate retry.
 - [ ] Step 8 - Confirm: verify personal, product, CIR, banking, payment and consent summaries match the entered values.
 - [ ] Step 8 - Confirm: confirm the bank account is masked except for its last four digits.
 - [ ] Using disposable local test data, finish one onboarding and confirm the client is created once and navigation opens the correct client record.
@@ -284,15 +313,28 @@ This register supplements [`THEME_MIGRATION_TODO.md`](THEME_MIGRATION_TODO.md). 
 
 ### Review outcome
 
-- [x] All user-side checks passed.
-- [x] Manual acceptance recorded in the master TODO.
+- [ ] Refined look-and-feel approved across all eight steps.
+- [ ] Final phone/tablet and keyboard recheck passed.
+- [x] Prior functional acceptance remains recorded in the master TODO.
 
 **Issues found:** The live product UUID was incorrectly compared with the obsolete hard-coded `cir` ID, so CAR-specific account information could be skipped. The selector was also visually too large. Product-code handling, API link validation, role access and the compact selector were repaired before approval.
 **Acceptance wording:** `Screen 6 is confirmed, please proceed`, recorded 16 November 2026.
 
+**Refinement requested (17 November 2026):** `the screen still don't look fully cleaned up`. The
+remaining legacy Bootstrap header and oversized progress cards were replaced with a compact operational
+header. Nested content scrolling and overlay-style sticky actions were removed, controls were normalised
+to the compact scale and the mobile header/step navigation were reduced. Nine focused tests, scoped lint,
+type-check and production build pass. Refined visual re-acceptance is pending.
+
+**Duplicate-ID verification added (17 November 2026):** Product Selection is now gated by a dedicated
+authenticated ID-existence check. It covers soft-deleted rows, returns no client details, invalidates a
+result when the ID changes and fails closed when verification is unavailable. Twelve focused frontend
+tests, four client-service tests, scoped lint, both type-checks and both builds pass. Docker Desktop denied
+pipe access, so rebuild the API/web containers before completing the live checklist above.
+
 ## Screen 7 - Client Details
 
-**Status:** Approved
+**Status:** Changes requested; implementation order pending
 **Route:** `/clients/:id`
 **Implementation authority:** [`THEME_MIGRATION_TODO.md`](THEME_MIGRATION_TODO.md#screen-7---client-details)
 **Test accounts:** Use the applicable role branches from [`TEST_USERS.md`](TEST_USERS.md); do not duplicate credentials here.
@@ -309,13 +351,25 @@ This register supplements [`THEME_MIGRATION_TODO.md`](THEME_MIGRATION_TODO.md). 
 - [x] The Client-tab field grid was checked at 320, 375, 768, 1024 and 1440 widths with no page-level overflow.
 - [x] Six focused Client Details tests and three client-service tests passed, including CAR account requirements.
 - [x] Web/API type-checks, screen-scoped lint and the web production build passed.
+- [x] The inline Add Product controls were replaced with a four-stage Product, Details, Payment and Review journey.
+- [x] Add Product now merges payment metadata, reloads the client and verifies the exact persisted product/payment link before reporting success.
+- [x] NuPay hand-off now runs only after local client creation/product linking; provider rejection or timeout preserves the linked record with a pending mandate state.
+- [x] NuPay result code validation, mandate identifiers/status persistence and credential-safe API logging are covered by focused frontend and backend tests without a live provider call.
 
 ### Tests Tebogo must complete at the machine
 
+- [ ] Confirm the Add Product action opens the new wide responsive journey at Select a product and never asks for existing personal information again.
+- [ ] Complete the Add Product journey through applicable product information, payment, debit-order/mandate and confirmation steps, then verify the product remains linked after refresh.
+- [ ] With a mandate-required product, verify a successful NuPay response shows `Awaiting customer authorisation` and remains attached after refresh.
+- [ ] Safely force a NuPay rejection or timeout and verify the product remains linked, the mandate shows `Pending`, and its diagnostic message is available for follow-up.
+- [ ] Confirm products already linked to the client are excluded and the temporary Experian exception appears as a warning rather than blocking the link.
+- [ ] Confirm the summary row, contact strip, tabs, product area, To-do List and Notes/System/Financial Log rail are compact and professionally aligned.
+- [ ] Confirm the tab workspace no longer introduces the visible nested scrollbar shown in the rejected review.
 - [ ] Open one assigned client as Agent, Sales Agent and Debt Review Specialist; confirm unassigned client URLs are rejected.
 - [ ] Confirm the profile header shows the correct QFN reference, masked ID, income, product count and contact data.
 - [ ] Add a product with a payment option and confirm it remains linked after refresh.
-- [ ] Confirm a product cannot be added before the credit report has been reviewed.
+- [ ] While Experian UAT remains blocked, confirm a product can be linked without a report only after the temporary exception warning is shown.
+- [ ] After Experian access is restored, confirm the hard credit-report prerequisite is reinstated and blocks product linking until review.
 - [ ] Edit personal and banking fields and confirm saved values survive refresh.
 - [ ] Add, complete and refresh a follow-up task.
 - [ ] Add a note and confirm it remains after refresh.
@@ -330,11 +384,17 @@ This register supplements [`THEME_MIGRATION_TODO.md`](THEME_MIGRATION_TODO.md). 
 
 ### Review outcome
 
-- [x] Theme and usability review accepted; retained integration follow-ups remain documented.
-- [x] Manual acceptance recorded in the master TODO.
+- [ ] Revised theme and usability review accepted.
+- [ ] Manual re-acceptance recorded in the master TODO.
 
 **Issues found:** Visual refinement requested for oversized, loosely organised Client-tab fields. Personal, contact/address and banking information were regrouped with compact 36 px controls before approval. The Experian UAT `-103` credential blocker remains a separate documented integration follow-up.
 **Acceptance wording:** `Screen 7 approved, lets move on to screen 8`, recorded 16 November 2026.
+
+**Changes requested (17 November 2026):** The live screen still contains oversized summary tiles,
+product-linking controls, product cards and right-rail widgets. Add Product must become a professional
+onboarding-style modal journey beginning at Select a product. This revision is grouped with the Personal
+Details email-validation correction and the post-client-creation NuPay mandate hand-off. JWT protection for
+the DebiCheck route is explicitly deferred only until the controlled flow test is complete.
 
 ## Screen 8 - Leads Overview
 
@@ -674,11 +734,156 @@ This register supplements [`THEME_MIGRATION_TODO.md`](THEME_MIGRATION_TODO.md). 
 **Blocker:** The Chromium profile-lock error disappeared, but the session remains at Connecting/Awaiting QR scan and Client Details reports that WhatsApp is not ready. Functional diagnosis is parked until the end of rebranding at Tebogo's request.
 **Acceptance wording:** `I have review Screen 15 looks professional, now let's move on to the next screen`, recorded 16 November 2026 as visual approval only.
 
+## Screen 16 - User Management
+
+**Status:** Approved; final regression items remain open
+**Route:** `/admin/users`
+**Implementation authority:** [`THEME_MIGRATION_TODO.md`](THEME_MIGRATION_TODO.md#screen-16---user-management)
+**Test accounts:** Use an account with `roles.manage` from [`TEST_USERS.md`](TEST_USERS.md); do not duplicate credentials here.
+
+### Automated evidence completed
+
+- [x] Replaced the gradient summary and oversized controls with a compact QFinance operations layout.
+- [x] Added server-side role and status filters while preserving debounced search and pagination.
+- [x] Added dense sortable desktop rows and dedicated mobile user cards.
+- [x] Rebuilt create/edit presentation with compact grouped fields and inline API errors.
+- [x] Preserved list, create, update and delete API contracts and the existing protected route.
+- [x] Added loading, empty, page-error, modal-validation and modal-submission states.
+- [x] Five focused User Management tests pass.
+- [x] Scoped lint, web type-check and the production build pass.
+
+### Tests Tebogo must complete at the machine
+
+- [ ] Confirm the page header, filters, table density, badges and pagination look professional at desktop width.
+- [ ] Search by name/email/employee number and verify the result count and page reset.
+- [ ] Filter by role and status, combine filters, then clear them.
+- [ ] Sort User, Employee no., Role, Status, Department and Last login in both directions.
+- [ ] Open Add user and confirm compact field sizing, readable grouping and validation messages.
+- [ ] Create one safe test user, edit it, then delete it after confirming the warning.
+- [ ] Confirm an API failure remains readable without closing the modal or losing the directory.
+- [ ] Verify a user without `roles.manage` cannot open `/admin/users`.
+- [ ] Check 320, 375, 768, 1024 and 1440 widths for card/table switching, clipping and page overflow.
+- [ ] Keyboard through filters, sorting, row actions, modal fields and pagination with visible non-glow focus.
+
+### Review outcome
+
+- [ ] All user-side checks passed.
+- [x] Manual acceptance recorded in the master TODO.
+
+**Acceptance wording:** `I'm happy with this, screen 16 approved`, recorded 17 November 2026.
+
+**Changes requested (16 November 2026):** The directory list was accepted, but the Add user
+modal was rejected as too large and not sufficiently polished. It was refined into a narrower,
+denser responsive dialog with visible actions and protection against the logged-in user's saved
+credentials being autofilled into a new account. Status returned to ready for visual retest after
+focused tests, lint, type-check and the production build passed.
+
+**Ready for second retest (17 November 2026):** The close control is fixed to the top-right
+corner, modal width is reduced to 700 px, fields/selects/actions are 30 px high, global label
+inflation is overridden inside the dialog, and internal spacing is denser. Five focused tests,
+scoped lint, type-check and the production build pass.
+
+## Screen 17 - Product Management
+
+**Status:** Approved
+**Route:** `/admin/products`
+**Implementation authority:** [`THEME_MIGRATION_TODO.md`](THEME_MIGRATION_TODO.md#screen-17---product-management)
+**Test accounts:** Use Admin for CRUD and another `roles.manage` account for read-only verification from [`TEST_USERS.md`](TEST_USERS.md).
+
+### Automated and browser evidence completed
+
+- [x] Replaced the purple gradient, large controls, hover movement and oversized badges.
+- [x] Added compact server search plus category, status and page-size filters.
+- [x] Added dense sortable desktop rows and responsive product cards through 1024 px.
+- [x] Rebuilt Add/Edit Product as a compact grouped form with stable JSON editing.
+- [x] Added required-field, invalid-JSON, API-error, loading, empty and success states.
+- [x] Added the missing capture-restrictions configuration field.
+- [x] Prevented non-Admin/Manager roles from seeing write controls the API rejects.
+- [x] Confirmed no document, page or toolbar overflow at 320, 375, 768, 1024 and 1440 px.
+- [x] Confirmed modal layout, live category filtering and visible keyboard focus in browser.
+- [x] Browser console has no errors.
+- [x] Five focused Product Management tests, scoped lint, type-check and production build pass.
+
+### Tests Tebogo must complete
+
+- [ ] Confirm the desktop table and the 320/375/768/1024 card layouts look professional.
+- [ ] Confirm the Add/Edit Product dialog is compact, readable and not vertically wasteful.
+- [ ] Search by code, name and description; combine category/status filters and clear them.
+- [ ] Sort Code, Product, Category and Status in both directions and test pagination/page size.
+- [ ] Create one safe product, edit every standard field, then validate its saved values.
+- [ ] Test valid and invalid JSON in all four advanced configuration fields.
+- [ ] Change the safe product through Active, Inactive and Archived.
+- [ ] Delete only the safe test product and verify the confirmation prevents accidental deletion.
+- [ ] Sign in as Admin and confirm all write controls work without 403 responses.
+- [ ] Sign in with another `roles.manage` role and confirm the catalogue is correctly read-only.
+- [ ] Confirm long product names and descriptions wrap or truncate without hiding actions.
+
+### Review outcome
+
+- [ ] Safe CRUD and multi-role checks passed.
+- [x] Look-and-feel approved.
+- [x] Manual acceptance recorded in the master TODO.
+
+**Acceptance wording:** `Looks good let's move on to the next screen`, recorded 17 November 2026.
+
+Safe live CRUD, destructive confirmation and multi-role checks remain in the final functional
+regression; they do not reopen the approved Screen 17 visual rebranding gate.
+
+## Screen 18 - Commission Settings
+
+**Status:** Approved; live rule-save regression remains open
+**Route:** `/admin/commission-settings`
+**Implementation authority:** [`THEME_MIGRATION_TODO.md`](THEME_MIGRATION_TODO.md#screen-18---commission-settings)
+**Test accounts:** Use Admin or Manager for rule editing and CEO for the read-only view from [`TEST_USERS.md`](TEST_USERS.md).
+
+### Automated and browser evidence completed
+
+- [x] Replaced the purple gradient, oversized controls and decorative movement with the accepted QFinance theme.
+- [x] Added compact search, category and configured/unconfigured filters with accurate result counts.
+- [x] Added a dense desktop rule table and responsive product-rule cards for smaller widths.
+- [x] Added clear fixed, percentage, custom and unconfigured rule badges.
+- [x] Correctly renders zero fixed commission instead of treating it as unconfigured.
+- [x] Rebuilt the editor as a compact fixed/percentage form with validation and a live preview.
+- [x] Limited write controls to the API's actual Admin/Manager roles and retained a clean read-only view.
+- [x] Added loading, empty, API-error, success and permission-denied states.
+- [x] Confirmed no document or toolbar overflow across 320, 375, 768, 1024 and 1440 target widths.
+- [x] Confirmed live search filtering, result counts and visible keyboard focus.
+- [x] Fresh browser reload has no current runtime errors.
+- [x] Six focused tests, scoped lint, type-check and production build pass.
+
+### Tests Tebogo must complete
+
+- [ ] Confirm the desktop table and responsive cards look professional and remain easy to scan.
+- [ ] Confirm the controls, badges and summary counters are compact and readable.
+- [ ] Search by product code/name; combine category and configuration filters, then clear them.
+- [ ] Sign in as Admin or Manager and confirm Edit rule opens the compact editor.
+- [ ] Safely save one fixed rule, including a zero value, and verify the persisted display.
+- [ ] Safely save one percentage rule and confirm values above 100 are rejected.
+- [ ] Sign in as CEO and confirm the catalogue is read-only with no edit actions.
+- [ ] Confirm long product names and all rule states remain readable on phone and tablet widths.
+
+### Review outcome
+
+- [ ] Safe rule-save and multi-role checks passed.
+- [x] Look-and-feel approved.
+- [x] Manual acceptance recorded in the master TODO.
+
+**Acceptance wording:** `Screen 18 approved`, recorded 17 November 2026 after the footer-spacing correction.
+
 ## Completed reviews
 
 Move an entry to this section only after its status is `Approved`. Keep the checklist and recorded acceptance as the audit trail.
 
 - Screen 4 - Dashboard (`/dashboard`) was finally approved 16 November 2026 after the Recent Messages and My Tasks revisions.
+- Screen 16 - User Management (`/admin/users`) was visually approved 17 November 2026 after the
+  compact Add User modal and shared sidebar-footer refinements. Open functional and breakpoint
+  checks remain in the final regression list.
+- Screen 17 - Product Management (`/admin/products`) was visually approved 17 November 2026 after
+  the compact catalogue, responsive cards and Add/Edit Product refinement. Safe live CRUD and
+  multi-role checks remain in the final regression list.
+- Screen 18 - Commission Settings (`/admin/commission-settings`) was visually approved 17 November
+  2026 after the compact commission directory, responsive cards and footer-spacing correction. Safe
+  rule-save and multi-role checks remain in the final regression list.
 - Screen 5 - Clients Overview (`/clients`) was approved 16 November 2026 after the compact-directory and client-data repairs.
 - Screen 6 - New Client Onboarding (`/clients/new`) was approved 16 November 2026 after the compact product selector and product-link validation repairs.
 - Screen 7 - Client Details (`/clients/:id`) was approved 16 November 2026 after the compact information-group refinement.

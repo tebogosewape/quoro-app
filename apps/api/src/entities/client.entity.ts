@@ -143,6 +143,13 @@ export class Client extends BaseEntity {
         productId: string;
         paymentOptionId: string;
         cirAccounts?: string[];
+        mandateStatus?: string;
+        mandateId?: string;
+        mandateReference?: string;
+        mandateRequestTranId?: string;
+        mandateError?: string;
+        mandateAttemptedAt?: string;
+        mandateCollectionDay?: string;
     }>;
 
     // Payment Information

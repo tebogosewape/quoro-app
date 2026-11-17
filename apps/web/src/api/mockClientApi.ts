@@ -7,6 +7,9 @@ export type Product = {
     fields?: Record<string, string>;
     feeNote?: string;
     flag?: 'green' | 'amber' | 'red';
+    mandateStatus?: string;
+    mandateError?: string;
+    mandateId?: string;
 };
 export type MoneyRow = { id: string; label: string; amount: number };
 export type IncomeExpense = {

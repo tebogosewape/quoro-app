@@ -14,17 +14,13 @@ export const QFinanceBrand = () => (
                 strokeWidth="7"
                 strokeLinecap="round"
             />
-            <path
-                d="M20 29h18"
-                fill="none"
-                stroke="var(--color-brand-aqua)"
-                strokeWidth="4"
-                strokeLinecap="round"
-            />
         </svg>
 
         <span className="qfinance-brand__copy" aria-hidden="true">
-            <span className="qfinance-brand__name">FINANCE</span>
+            <span className="qfinance-brand__name">
+                <span className="qfinance-brand__accent">FIN</span>
+                <span>ANCE</span>
+            </span>
             <span className="qfinance-brand__tagline">Let's fix your credit</span>
         </span>
     </div>

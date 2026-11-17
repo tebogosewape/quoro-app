@@ -1,685 +1,605 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-    Button,
-    Form,
-    InputGroup,
-    Table,
-    Badge,
-    Dropdown,
-    Spinner,
-    Pagination,
-} from 'react-bootstrap';
-import {
-    listProducts,
     createProduct,
-    updateProduct,
     deleteProduct,
+    listProducts,
     setProductStatus,
+    updateProduct,
 } from '@/api/products';
-import type { Product, ProductStatus } from '@/interfaces/Product';
 import ProductForm from '@/components/products/ProductForm';
+import type { Product, ProductCategory, ProductStatus } from '@/interfaces/Product';
+import { useAuthStore } from '@/stores/auth.store';
+import './ProductsPage.css';
 
 type Sort = { key: keyof Product; dir: 'asc' | 'desc' };
+type ProductActions = {
+    rows: Product[];
+    busyId: string | null;
+    canManage: boolean;
+    onEdit: (product: Product) => void;
+    onDelete: (product: Product) => Promise<void>;
+    onStatus: (product: Product, status: ProductStatus) => Promise<void>;
+};
+
+const categoryOptions: Array<{ value: ProductCategory; label: string }> = [
+    { value: 'value_added', label: 'Value added' },
+    { value: 'debt_review', label: 'Debt review' },
+    { value: 'legal_support', label: 'Legal support' },
+];
+const statusLabels: Record<ProductStatus, string> = {
+    active: 'Active',
+    inactive: 'Inactive',
+    archived: 'Archived',
+};
+const categoryLabels = Object.fromEntries(
+    categoryOptions.map((option) => [option.value, option.label])
+) as Record<ProductCategory, string>;
+const getErrorMessage = (error: unknown, fallback: string) =>
+    error instanceof Error && error.message ? error.message : fallback;
 
 export default function ProductsPage() {
+    const role = useAuthStore((state) => state.session?.user.role);
+    const canManage = role === 'admin' || role === 'manager';
     const [rows, setRows] = useState<Product[]>([]);
     const [page, setPage] = useState(1);
     const [limit, setLimit] = useState(10);
     const [totalPages, setTotalPages] = useState(1);
     const [total, setTotal] = useState(0);
-
+    const [searchInput, setSearchInput] = useState('');
     const [search, setSearch] = useState('');
+    const [category, setCategory] = useState<ProductCategory | ''>('');
     const [status, setStatus] = useState<ProductStatus | ''>('');
-    const [loading, setLoading] = useState(false);
-
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const [notice, setNotice] = useState<string | null>(null);
+    const [busyId, setBusyId] = useState<string | null>(null);
     const [showForm, setShowForm] = useState(false);
     const [editRow, setEditRow] = useState<Product | null>(null);
-
     const [sort, setSort] = useState<Sort>({ key: 'createdAt', dir: 'desc' });
 
-    async function load() {
+    const load = useCallback(async () => {
         setLoading(true);
+        setError(null);
         try {
-            const resp = await listProducts({
+            const response = await listProducts({
                 page,
                 limit,
-                search: search.trim() || undefined,
+                search: search || undefined,
+                category: category || undefined,
                 status: status || undefined,
             });
-            setRows(resp.products);
-            setTotal(resp.total);
-            setTotalPages(resp.totalPages);
+            setRows(response.products);
+            setTotal(response.total);
+            setTotalPages(Math.max(1, response.totalPages));
+        } catch (loadError: unknown) {
+            setRows([]);
+            setTotal(0);
+            setTotalPages(1);
+            setError(getErrorMessage(loadError, 'Products could not be loaded.'));
         } finally {
             setLoading(false);
         }
-    }
+    }, [category, limit, page, search, status]);
 
     useEffect(() => {
-        void load(); /* eslint-disable-next-line */
-    }, [page, limit, status]);
+        const timer = window.setTimeout(() => {
+            setPage(1);
+            setSearch(searchInput.trim());
+        }, 300);
+        return () => window.clearTimeout(timer);
+    }, [searchInput]);
 
-    // Local sort for any column (cheap & snappy)
-    const visible = useMemo(() => {
-        const sorted = [...rows].sort((a, b) => {
-            const va = String(a[sort.key] ?? '').toLowerCase();
-            const vb = String(b[sort.key] ?? '').toLowerCase();
-            if (va < vb) return sort.dir === 'asc' ? -1 : 1;
-            if (va > vb) return sort.dir === 'asc' ? 1 : -1;
-            return 0;
-        });
-        // Optional: client-side search as you type (without roundtrip)
-        if (!search) return sorted;
-        const q = search.toLowerCase();
-        return sorted.filter(
-            (r) =>
-                r.code.toLowerCase().includes(q) ||
-                r.name.toLowerCase().includes(q) ||
-                (r.description || '').toLowerCase().includes(q)
+    useEffect(() => {
+        void load();
+    }, [load]);
+
+    const visible = useMemo(
+        () =>
+            [...rows].sort((a, b) => {
+                const first = String(a[sort.key] ?? '').toLocaleLowerCase();
+                const second = String(b[sort.key] ?? '').toLocaleLowerCase();
+                return first.localeCompare(second) * (sort.dir === 'asc' ? 1 : -1);
+            }),
+        [rows, sort]
+    );
+
+    const firstResult = total === 0 ? 0 : (page - 1) * limit + 1;
+    const lastResult = Math.min(page * limit, total);
+    const filtersApplied = Boolean(searchInput || category || status);
+
+    const toggleSort = (key: keyof Product) => {
+        setSort((current) =>
+            current.key === key
+                ? { key, dir: current.dir === 'asc' ? 'desc' : 'asc' }
+                : { key, dir: 'asc' }
         );
-    }, [rows, sort, search]);
-
-    function toggleSort(key: keyof Product) {
-        setSort((s) =>
-            s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' }
-        );
-    }
-
-    async function handleSave(values: Partial<Product>) {
-        if (editRow) {
-            await updateProduct(editRow.id, values);
-        } else {
-            await createProduct(values);
-        }
+    };
+    const openCreate = () => {
+        setEditRow(null);
+        setShowForm(true);
+    };
+    const openEdit = (product: Product) => {
+        setEditRow(product);
+        setShowForm(true);
+    };
+    const closeForm = () => {
         setShowForm(false);
         setEditRow(null);
+    };
+
+    const handleSave = async (values: Partial<Product>) => {
+        if (editRow) {
+            await updateProduct(editRow.id, values);
+            setNotice(`${values.name || editRow.name} was updated.`);
+        } else {
+            await createProduct(values);
+            setNotice(`${values.name || 'Product'} was created.`);
+        }
+        closeForm();
         await load();
-    }
+    };
 
-    async function handleDelete(row: Product) {
-        if (!confirm(`Delete product "${row.name}"?`)) return;
-        await deleteProduct(row.id);
-        await load();
-    }
+    const handleDelete = async (product: Product) => {
+        if (!window.confirm(`Delete product “${product.name}”? This action cannot be undone.`)) {
+            return;
+        }
+        setBusyId(product.id);
+        setError(null);
+        try {
+            await deleteProduct(product.id);
+            setNotice(`${product.name} was deleted.`);
+            if (rows.length === 1 && page > 1) setPage((current) => current - 1);
+            else await load();
+        } catch (deleteError: unknown) {
+            setError(getErrorMessage(deleteError, 'The product could not be deleted.'));
+        } finally {
+            setBusyId(null);
+        }
+    };
 
-    async function handleStatus(row: Product, s: ProductStatus) {
-        await setProductStatus(row.id, s);
-        await load();
-    }
+    const handleStatus = async (product: Product, nextStatus: ProductStatus) => {
+        if (product.status === nextStatus) return;
+        setBusyId(product.id);
+        setError(null);
+        try {
+            await setProductStatus(product.id, nextStatus);
+            setNotice(`${product.name} is now ${statusLabels[nextStatus].toLocaleLowerCase()}.`);
+            await load();
+        } catch (statusError: unknown) {
+            setError(getErrorMessage(statusError, 'The product status could not be updated.'));
+        } finally {
+            setBusyId(null);
+        }
+    };
 
-    // Calculate stats
-    const activeProducts = rows.filter((r) => r.status === 'active').length;
-    const categories = new Set(rows.map((r) => r.category)).size;
-
-    const canPrev = page > 1;
-    const canNext = page < totalPages;
+    const clearFilters = () => {
+        setSearchInput('');
+        setSearch('');
+        setCategory('');
+        setStatus('');
+        setPage(1);
+    };
 
     return (
-        <div className="container-fluid px-4 py-4">
-            {/* Modern Header Card with Gradient */}
-            <div
-                className="card border-0 shadow-sm mb-4"
-                style={{
-                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                    borderRadius: '16px',
-                }}
-            >
-                <div className="card-body p-4">
-                    <div className="row align-items-center">
-                        <div className="col-md-6">
-                            <div className="d-flex align-items-center">
-                                <div
-                                    className="bg-white bg-opacity-25 rounded-3 p-3 me-3"
-                                    style={{ backdropFilter: 'blur(10px)' }}
-                                >
-                                    <svg width="32" height="32" viewBox="0 0 24 24" fill="white">
-                                        <text
-                                            x="12"
-                                            y="18"
-                                            fontSize="20"
-                                            fontWeight="bold"
-                                            textAnchor="middle"
-                                            fill="white"
-                                        >
-                                            R
-                                        </text>
-                                    </svg>
-                                </div>
-                                <div>
-                                    <h2 className="text-white mb-1 fw-bold">Product Catalog</h2>
-                                    <p className="text-white text-opacity-75 mb-0">
-                                        Manage loan products and their configurations
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
-                        <div className="col-md-6">
-                            <div className="row g-3 text-white">
-                                <div className="col-4">
-                                    <div className="text-center">
-                                        <div className="fs-3 fw-bold">{total}</div>
-                                        <div className="small opacity-75">Total Products</div>
-                                    </div>
-                                </div>
-                                <div className="col-4">
-                                    <div className="text-center">
-                                        <div className="fs-3 fw-bold">{activeProducts}</div>
-                                        <div className="small opacity-75">Active</div>
-                                    </div>
-                                </div>
-                                <div className="col-4">
-                                    <div className="text-center">
-                                        <div className="fs-3 fw-bold">{categories}</div>
-                                        <div className="small opacity-75">Categories</div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+        <main className="products-page">
+            <header className="products-page__header">
+                <div>
+                    <p className="products-page__eyebrow">Product administration</p>
+                    <h1>Product catalogue</h1>
+                    <p>Maintain available services, requirements and operational status.</p>
                 </div>
-            </div>
-
-            {/* Controls Bar */}
-            <div className="card border-0 shadow-sm mb-4" style={{ borderRadius: '12px' }}>
-                <div className="card-body p-3">
-                    <div className="row align-items-center g-3">
-                        <div className="col-md-4">
-                            <InputGroup className="shadow-sm">
-                                <InputGroup.Text
-                                    className="bg-white border-end-0"
-                                    style={{ borderRadius: '8px 0 0 8px' }}
-                                >
-                                    <svg
-                                        width="18"
-                                        height="18"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        strokeWidth="2"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                    >
-                                        <circle cx="11" cy="11" r="8"></circle>
-                                        <path d="m21 21-4.35-4.35"></path>
-                                    </svg>
-                                </InputGroup.Text>
-                                <Form.Control
-                                    placeholder="Search by code, name, or description..."
-                                    className="border-start-0 border-end-0 ps-0"
-                                    value={search}
-                                    onChange={(e) => setSearch(e.target.value)}
-                                    onKeyDown={(e) => {
-                                        if (e.key === 'Enter') {
-                                            setPage(1);
-                                            void load();
-                                        }
-                                    }}
-                                />
-                                <Button
-                                    variant="outline-secondary"
-                                    style={{ borderRadius: '0 8px 8px 0' }}
-                                    onClick={() => {
-                                        setPage(1);
-                                        void load();
-                                    }}
-                                >
-                                    Search
-                                </Button>
-                            </InputGroup>
-                        </div>
-                        <div className="col-md-3">
-                            <Form.Select
-                                className="shadow-sm"
-                                style={{ borderRadius: '8px' }}
-                                value={status}
-                                onChange={(e) => {
-                                    setStatus(e.target.value as ProductStatus | '');
-                                    setPage(1);
-                                }}
-                            >
-                                <option value="">All Statuses</option>
-                                <option value="active">Active Only</option>
-                                <option value="inactive">Inactive Only</option>
-                                <option value="archived">Archived Only</option>
-                            </Form.Select>
-                        </div>
-                        <div className="col-md-2">
-                            <Form.Select
-                                className="shadow-sm"
-                                style={{ borderRadius: '8px' }}
-                                value={limit}
-                                onChange={(e) => {
-                                    setLimit(Number(e.target.value));
-                                    setPage(1);
-                                }}
-                            >
-                                <option value={10}>10 per page</option>
-                                <option value={20}>20 per page</option>
-                                <option value={30}>30 per page</option>
-                                <option value={50}>50 per page</option>
-                            </Form.Select>
-                        </div>
-                        <div className="col-md-3 text-end">
-                            <Button
-                                variant="primary"
-                                className="shadow-sm px-4"
-                                style={{
-                                    borderRadius: '8px',
-                                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                                    border: 'none',
-                                }}
-                                onClick={() => {
-                                    setEditRow(null);
-                                    setShowForm(true);
-                                }}
-                            >
-                                <svg
-                                    width="18"
-                                    height="18"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="2"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    className="me-2"
-                                    style={{ marginTop: '-3px' }}
-                                >
-                                    <circle cx="12" cy="12" r="10"></circle>
-                                    <line x1="12" y1="8" x2="12" y2="16"></line>
-                                    <line x1="8" y1="12" x2="16" y2="12"></line>
-                                </svg>
-                                Add Product
-                            </Button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            {/* Main Table Card */}
-            <div className="card border-0 shadow-sm" style={{ borderRadius: '12px' }}>
-                <div className="card-body p-0">
-                    {loading ? (
-                        <div className="text-center py-5">
-                            <Spinner
-                                animation="border"
-                                style={{ width: '3rem', height: '3rem', color: '#667eea' }}
-                            />
-                            <p className="text-muted mt-3 mb-0">Loading products...</p>
-                        </div>
-                    ) : (
-                        <>
-                            <div style={{ overflowX: 'auto' }}>
-                                <Table hover responsive className="align-middle mb-0">
-                                    <thead
-                                        style={{
-                                            background: '#f8f9fa',
-                                            borderBottom: '2px solid #dee2e6',
-                                        }}
-                                    >
-                                        <tr>
-                                            <Th
-                                                label="Product Code"
-                                                onClick={() => toggleSort('code')}
-                                                active={sort.key === 'code'}
-                                                dir={sort.dir}
-                                            />
-                                            <Th
-                                                label="Product Name"
-                                                onClick={() => toggleSort('name')}
-                                                active={sort.key === 'name'}
-                                                dir={sort.dir}
-                                            />
-                                            <Th
-                                                label="Category"
-                                                onClick={() => toggleSort('category')}
-                                                active={sort.key === 'category'}
-                                                dir={sort.dir}
-                                            />
-                                            <Th
-                                                label="Status"
-                                                onClick={() => toggleSort('status')}
-                                                active={sort.key === 'status'}
-                                                dir={sort.dir}
-                                            />
-                                            <th
-                                                style={{
-                                                    width: '100px',
-                                                    fontWeight: 600,
-                                                    fontSize: '0.875rem',
-                                                    color: '#495057',
-                                                    padding: '1rem 0.75rem',
-                                                    textTransform: 'uppercase',
-                                                    letterSpacing: '0.5px',
-                                                    textAlign: 'center',
-                                                }}
-                                            >
-                                                Actions
-                                            </th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {visible.length === 0 && (
-                                            <tr>
-                                                <td
-                                                    colSpan={5}
-                                                    className="text-center py-5"
-                                                    style={{ color: '#6c757d' }}
-                                                >
-                                                    <div className="d-flex flex-column align-items-center gap-3">
-                                                        <svg
-                                                            width="64"
-                                                            height="64"
-                                                            viewBox="0 0 24 24"
-                                                            fill="none"
-                                                            stroke="currentColor"
-                                                            strokeWidth="1"
-                                                            strokeLinecap="round"
-                                                            strokeLinejoin="round"
-                                                            opacity="0.3"
-                                                        >
-                                                            <circle cx="9" cy="21" r="1"></circle>
-                                                            <circle cx="20" cy="21" r="1"></circle>
-                                                            <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path>
-                                                        </svg>
-                                                        <div>
-                                                            <div className="fw-semibold mb-1">
-                                                                No products found
-                                                            </div>
-                                                            <div className="small text-muted">
-                                                                Try adjusting your search or filters
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        )}
-                                        {visible.map((row) => (
-                                            <tr
-                                                key={row.id}
-                                                style={{
-                                                    borderBottom: '1px solid #e9ecef',
-                                                    transition: 'all 0.2s ease',
-                                                }}
-                                                className="product-row"
-                                            >
-                                                <td style={{ padding: '1rem 0.75rem' }}>
-                                                    <code
-                                                        className="bg-light px-2 py-1 rounded fw-semibold"
-                                                        style={{ fontSize: '0.85rem' }}
-                                                    >
-                                                        {row.code}
-                                                    </code>
-                                                </td>
-                                                <td
-                                                    style={{
-                                                        padding: '1rem 0.75rem',
-                                                        fontWeight: 500,
-                                                    }}
-                                                >
-                                                    {row.name}
-                                                    {row.description && (
-                                                        <div className="small text-muted mt-1">
-                                                            {row.description}
-                                                        </div>
-                                                    )}
-                                                </td>
-                                                <td style={{ padding: '1rem 0.75rem' }}>
-                                                    <span className="text-capitalize">
-                                                        {row.category}
-                                                    </span>
-                                                </td>
-                                                <td style={{ padding: '1rem 0.75rem' }}>
-                                                    {row.status === 'active' && (
-                                                        <Badge bg="success" className="px-3 py-2">
-                                                            Active
-                                                        </Badge>
-                                                    )}
-                                                    {row.status === 'inactive' && (
-                                                        <Badge bg="secondary" className="px-3 py-2">
-                                                            Inactive
-                                                        </Badge>
-                                                    )}
-                                                    {row.status === 'archived' && (
-                                                        <Badge bg="dark" className="px-3 py-2">
-                                                            Archived
-                                                        </Badge>
-                                                    )}
-                                                </td>
-                                                <td
-                                                    style={{
-                                                        padding: '1rem 0.75rem',
-                                                        textAlign: 'center',
-                                                    }}
-                                                >
-                                                    <Dropdown align="end">
-                                                        <Dropdown.Toggle
-                                                            variant="light"
-                                                            size="sm"
-                                                            className="border-0"
-                                                            style={{
-                                                                borderRadius: '8px',
-                                                                padding: '0.375rem 0.75rem',
-                                                            }}
-                                                        >
-                                                            <svg
-                                                                width="16"
-                                                                height="16"
-                                                                viewBox="0 0 24 24"
-                                                                fill="none"
-                                                                stroke="currentColor"
-                                                                strokeWidth="2"
-                                                                strokeLinecap="round"
-                                                                strokeLinejoin="round"
-                                                            >
-                                                                <circle
-                                                                    cx="12"
-                                                                    cy="12"
-                                                                    r="1"
-                                                                ></circle>
-                                                                <circle
-                                                                    cx="12"
-                                                                    cy="5"
-                                                                    r="1"
-                                                                ></circle>
-                                                                <circle
-                                                                    cx="12"
-                                                                    cy="19"
-                                                                    r="1"
-                                                                ></circle>
-                                                            </svg>
-                                                        </Dropdown.Toggle>
-
-                                                        <Dropdown.Menu
-                                                            style={{
-                                                                borderRadius: '8px',
-                                                                minWidth: '160px',
-                                                            }}
-                                                        >
-                                                            <Dropdown.Item
-                                                                onClick={() => {
-                                                                    setEditRow(row);
-                                                                    setShowForm(true);
-                                                                }}
-                                                                className="d-flex align-items-center gap-2"
-                                                            >
-                                                                <svg
-                                                                    width="16"
-                                                                    height="16"
-                                                                    viewBox="0 0 24 24"
-                                                                    fill="none"
-                                                                    stroke="currentColor"
-                                                                    strokeWidth="2"
-                                                                    strokeLinecap="round"
-                                                                    strokeLinejoin="round"
-                                                                >
-                                                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                                                                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-                                                                </svg>
-                                                                Edit
-                                                            </Dropdown.Item>
-                                                            <Dropdown.Item
-                                                                onClick={() =>
-                                                                    void handleStatus(
-                                                                        row,
-                                                                        row.status === 'active'
-                                                                            ? 'inactive'
-                                                                            : 'active'
-                                                                    )
-                                                                }
-                                                                className="d-flex align-items-center gap-2"
-                                                            >
-                                                                <svg
-                                                                    width="16"
-                                                                    height="16"
-                                                                    viewBox="0 0 24 24"
-                                                                    fill="none"
-                                                                    stroke="currentColor"
-                                                                    strokeWidth="2"
-                                                                    strokeLinecap="round"
-                                                                    strokeLinejoin="round"
-                                                                >
-                                                                    <circle
-                                                                        cx="12"
-                                                                        cy="12"
-                                                                        r="10"
-                                                                    ></circle>
-                                                                    <line
-                                                                        x1="8"
-                                                                        y1="12"
-                                                                        x2="16"
-                                                                        y2="12"
-                                                                    ></line>
-                                                                </svg>
-                                                                {row.status === 'active'
-                                                                    ? 'Set Inactive'
-                                                                    : 'Set Active'}
-                                                            </Dropdown.Item>
-                                                            <Dropdown.Divider />
-                                                            <Dropdown.Item
-                                                                className="text-danger d-flex align-items-center gap-2"
-                                                                onClick={() =>
-                                                                    void handleDelete(row)
-                                                                }
-                                                            >
-                                                                <svg
-                                                                    width="16"
-                                                                    height="16"
-                                                                    viewBox="0 0 24 24"
-                                                                    fill="none"
-                                                                    stroke="currentColor"
-                                                                    strokeWidth="2"
-                                                                    strokeLinecap="round"
-                                                                    strokeLinejoin="round"
-                                                                >
-                                                                    <polyline points="3 6 5 6 21 6"></polyline>
-                                                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                                                                </svg>
-                                                                Delete
-                                                            </Dropdown.Item>
-                                                        </Dropdown.Menu>
-                                                    </Dropdown>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                    <style>{`
-                                        .product-row:hover {
-                                            background-color: #f8f9fa;
-                                            transform: translateY(-1px);
-                                            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-                                        }
-                                    `}</style>
-                                </Table>
-                            </div>
-
-                            {/* Pagination Footer */}
-                            <div
-                                className="d-flex justify-content-between align-items-center px-4 py-3"
-                                style={{
-                                    borderTop: '1px solid #e9ecef',
-                                    background: '#f8f9fa',
-                                    borderRadius: '0 0 12px 12px',
-                                }}
-                            >
-                                <div className="text-muted">
-                                    <span className="fw-semibold">
-                                        {total === 0 ? 0 : (page - 1) * limit + 1}–
-                                        {Math.min(page * limit, total)}
-                                    </span>{' '}
-                                    of <span className="fw-semibold">{total}</span> products
-                                </div>
-                                <Pagination className="mb-0" size="sm">
-                                    <Pagination.First
-                                        disabled={!canPrev}
-                                        onClick={() => setPage(1)}
-                                    />
-                                    <Pagination.Prev
-                                        disabled={!canPrev}
-                                        onClick={() => setPage((p) => Math.max(1, p - 1))}
-                                    />
-                                    <Pagination.Item active>
-                                        {page} / {totalPages}
-                                    </Pagination.Item>
-                                    <Pagination.Next
-                                        disabled={!canNext}
-                                        onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                                    />
-                                    <Pagination.Last
-                                        disabled={!canNext}
-                                        onClick={() => setPage(totalPages)}
-                                    />
-                                </Pagination>
-                            </div>
-                        </>
+                <div className="products-page__header-actions">
+                    <span className="products-page__count">
+                        {total} {total === 1 ? 'product' : 'products'}
+                    </span>
+                    {canManage && (
+                        <button
+                            type="button"
+                            className="products-page__primary"
+                            onClick={openCreate}
+                        >
+                            <span aria-hidden="true">+</span>
+                            Add product
+                        </button>
                     )}
                 </div>
-            </div>
+            </header>
+
+            {error && (
+                <div className="products-page__alert products-page__alert--error" role="alert">
+                    <div>
+                        <strong>Products could not be loaded or updated.</strong>
+                        <span>{error}</span>
+                    </div>
+                    <button type="button" onClick={() => void load()}>
+                        Retry
+                    </button>
+                </div>
+            )}
+            {notice && (
+                <div className="products-page__alert products-page__alert--success" role="status">
+                    <span>{notice}</span>
+                    <button
+                        type="button"
+                        aria-label="Dismiss message"
+                        onClick={() => setNotice(null)}
+                    >
+                        Dismiss
+                    </button>
+                </div>
+            )}
+
+            <section className="products-page__panel" aria-label="Product directory">
+                <div className="products-page__toolbar">
+                    <label className="products-page__search">
+                        <span className="visually-hidden">Search products</span>
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <circle cx="11" cy="11" r="7" />
+                            <path d="m20 20-4-4" />
+                        </svg>
+                        <input
+                            type="search"
+                            value={searchInput}
+                            placeholder="Search code, name or description"
+                            onChange={(event) => setSearchInput(event.target.value)}
+                        />
+                    </label>
+                    <label>
+                        <span className="visually-hidden">Filter by category</span>
+                        <select
+                            value={category}
+                            onChange={(event) => {
+                                setCategory(event.target.value as ProductCategory | '');
+                                setPage(1);
+                            }}
+                        >
+                            <option value="">All categories</option>
+                            {categoryOptions.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                    {option.label}
+                                </option>
+                            ))}
+                        </select>
+                    </label>
+                    <label>
+                        <span className="visually-hidden">Filter by status</span>
+                        <select
+                            value={status}
+                            onChange={(event) => {
+                                setStatus(event.target.value as ProductStatus | '');
+                                setPage(1);
+                            }}
+                        >
+                            <option value="">All statuses</option>
+                            <option value="active">Active</option>
+                            <option value="inactive">Inactive</option>
+                            <option value="archived">Archived</option>
+                        </select>
+                    </label>
+                    <label className="products-page__page-size">
+                        <span>Rows</span>
+                        <select
+                            value={limit}
+                            onChange={(event) => {
+                                setLimit(Number(event.target.value));
+                                setPage(1);
+                            }}
+                        >
+                            <option value={10}>10</option>
+                            <option value={20}>20</option>
+                            <option value={30}>30</option>
+                            <option value={50}>50</option>
+                        </select>
+                    </label>
+                    <button
+                        type="button"
+                        className="products-page__clear"
+                        disabled={!filtersApplied}
+                        onClick={clearFilters}
+                    >
+                        Clear
+                    </button>
+                </div>
+
+                {loading ? (
+                    <div className="products-page__state" role="status">
+                        <span className="products-page__spinner" aria-hidden="true" />
+                        <strong>Loading products</strong>
+                        <span>Retrieving the current catalogue.</span>
+                    </div>
+                ) : visible.length === 0 ? (
+                    <div className="products-page__state">
+                        <strong>No products found</strong>
+                        <span>Adjust the filters or add a product to this catalogue.</span>
+                        {filtersApplied && (
+                            <button type="button" onClick={clearFilters}>
+                                Clear filters
+                            </button>
+                        )}
+                    </div>
+                ) : (
+                    <>
+                        <ProductTable
+                            rows={visible}
+                            sort={sort}
+                            busyId={busyId}
+                            canManage={canManage}
+                            onSort={toggleSort}
+                            onEdit={openEdit}
+                            onDelete={handleDelete}
+                            onStatus={handleStatus}
+                        />
+                        <ProductCards
+                            rows={visible}
+                            busyId={busyId}
+                            canManage={canManage}
+                            onEdit={openEdit}
+                            onDelete={handleDelete}
+                            onStatus={handleStatus}
+                        />
+                    </>
+                )}
+
+                <footer className="products-page__pagination">
+                    <span>
+                        Showing{' '}
+                        <strong>
+                            {firstResult}-{lastResult}
+                        </strong>{' '}
+                        of <strong>{total}</strong>
+                    </span>
+                    <div className="products-page__pager" aria-label="Product pages">
+                        <button type="button" disabled={page === 1} onClick={() => setPage(1)}>
+                            First
+                        </button>
+                        <button
+                            type="button"
+                            disabled={page === 1}
+                            onClick={() => setPage((current) => Math.max(1, current - 1))}
+                        >
+                            Previous
+                        </button>
+                        <span>
+                            Page {page} of {totalPages}
+                        </span>
+                        <button
+                            type="button"
+                            disabled={page >= totalPages}
+                            onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+                        >
+                            Next
+                        </button>
+                        <button
+                            type="button"
+                            disabled={page >= totalPages}
+                            onClick={() => setPage(totalPages)}
+                        >
+                            Last
+                        </button>
+                    </div>
+                </footer>
+            </section>
 
             <ProductForm
                 show={showForm}
-                onClose={() => {
-                    setShowForm(false);
-                    setEditRow(null);
-                }}
+                onClose={closeForm}
                 onSubmit={handleSave}
                 initial={editRow || undefined}
             />
+        </main>
+    );
+}
+
+function ProductStatusSelect({
+    product,
+    disabled,
+    onStatus,
+}: {
+    product: Product;
+    disabled: boolean;
+    onStatus: ProductActions['onStatus'];
+}) {
+    return (
+        <select
+            className="product-directory__status-select"
+            aria-label={`Update ${product.name} status`}
+            value={product.status}
+            disabled={disabled}
+            onChange={(event) => void onStatus(product, event.target.value as ProductStatus)}
+        >
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+            <option value="archived">Archived</option>
+        </select>
+    );
+}
+
+function ProductTable({
+    rows,
+    sort,
+    busyId,
+    canManage,
+    onSort,
+    onEdit,
+    onDelete,
+    onStatus,
+}: ProductActions & { sort: Sort; onSort: (key: keyof Product) => void }) {
+    return (
+        <div className="product-directory__table-wrap">
+            <table className="product-directory__table">
+                <thead>
+                    <tr>
+                        <SortableHeader label="Code" field="code" sort={sort} onSort={onSort} />
+                        <SortableHeader label="Product" field="name" sort={sort} onSort={onSort} />
+                        <SortableHeader
+                            label="Category"
+                            field="category"
+                            sort={sort}
+                            onSort={onSort}
+                        />
+                        <th>Requirements</th>
+                        <SortableHeader label="Status" field="status" sort={sort} onSort={onSort} />
+                        <th className="product-directory__actions-heading">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {rows.map((product) => (
+                        <tr key={product.id}>
+                            <td>
+                                <code>{product.code}</code>
+                            </td>
+                            <td>
+                                <div className="product-directory__identity">
+                                    <strong>{product.name}</strong>
+                                    <span>{product.description || 'No description provided'}</span>
+                                </div>
+                            </td>
+                            <td>
+                                <span className="product-directory__category">
+                                    {categoryLabels[product.category]}
+                                </span>
+                            </td>
+                            <td>
+                                <Requirements product={product} />
+                            </td>
+                            <td>
+                                <span
+                                    className={`product-directory__status product-directory__status--${product.status}`}
+                                >
+                                    {statusLabels[product.status]}
+                                </span>
+                            </td>
+                            <td>
+                                {canManage ? (
+                                    <ProductActions
+                                        product={product}
+                                        busy={busyId === product.id}
+                                        onEdit={onEdit}
+                                        onDelete={onDelete}
+                                        onStatus={onStatus}
+                                    />
+                                ) : (
+                                    <span className="product-directory__read-only">View only</span>
+                                )}
+                            </td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
         </div>
     );
 }
 
-function Th({
+function SortableHeader({
     label,
-    onClick,
-    active,
-    dir,
+    field,
+    sort,
+    onSort,
 }: {
     label: string;
-    onClick: () => void;
-    active: boolean;
-    dir: 'asc' | 'desc';
+    field: keyof Product;
+    sort: Sort;
+    onSort: (key: keyof Product) => void;
+}) {
+    const active = sort.key === field;
+    return (
+        <th aria-sort={active ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}>
+            <button type="button" onClick={() => onSort(field)}>
+                {label}
+                <span aria-hidden="true">{active ? (sort.dir === 'asc' ? '↑' : '↓') : '↕'}</span>
+            </button>
+        </th>
+    );
+}
+
+function Requirements({ product }: { product: Product }) {
+    const requiresMandate = Boolean(product.requires_mandate);
+    const requiresCreditPull = Boolean(product.requires_credit_pull);
+    if (!requiresMandate && !requiresCreditPull)
+        return <span className="product-directory__none">None</span>;
+    return (
+        <div className="product-directory__requirements">
+            {requiresMandate && <span>Mandate</span>}
+            {requiresCreditPull && <span>Credit report</span>}
+        </div>
+    );
+}
+
+function ProductActions({
+    product,
+    busy,
+    onEdit,
+    onDelete,
+    onStatus,
+}: {
+    product: Product;
+    busy: boolean;
+    onEdit: ProductActions['onEdit'];
+    onDelete: ProductActions['onDelete'];
+    onStatus: ProductActions['onStatus'];
 }) {
     return (
-        <th
-            role="button"
-            onClick={onClick}
-            style={{
-                whiteSpace: 'nowrap',
-                fontWeight: 600,
-                fontSize: '0.875rem',
-                color: '#495057',
-                padding: '1rem 0.75rem',
-                textTransform: 'uppercase',
-                letterSpacing: '0.5px',
-                cursor: 'pointer',
-                userSelect: 'none',
-            }}
-            className={active ? 'text-primary' : ''}
-        >
-            <div className="d-flex align-items-center gap-2">
-                {label}
-                {active && <span style={{ fontSize: '0.75rem' }}>{dir === 'asc' ? '↑' : '↓'}</span>}
-            </div>
-        </th>
+        <div className="product-directory__actions">
+            <button type="button" onClick={() => onEdit(product)}>
+                Edit
+            </button>
+            <ProductStatusSelect product={product} disabled={busy} onStatus={onStatus} />
+            <button
+                type="button"
+                className="product-directory__delete"
+                disabled={busy}
+                onClick={() => void onDelete(product)}
+            >
+                Delete
+            </button>
+        </div>
+    );
+}
+
+function ProductCards({ rows, busyId, canManage, onEdit, onDelete, onStatus }: ProductActions) {
+    return (
+        <div className="product-directory__cards">
+            {rows.map((product) => (
+                <article key={product.id} className="product-directory__card">
+                    <div className="product-directory__card-heading">
+                        <div>
+                            <code>{product.code}</code>
+                            <h2>{product.name}</h2>
+                        </div>
+                        <span
+                            className={`product-directory__status product-directory__status--${product.status}`}
+                        >
+                            {statusLabels[product.status]}
+                        </span>
+                    </div>
+                    <p>{product.description || 'No description provided'}</p>
+                    <dl>
+                        <div>
+                            <dt>Category</dt>
+                            <dd>{categoryLabels[product.category]}</dd>
+                        </div>
+                        <div>
+                            <dt>Requirements</dt>
+                            <dd>
+                                <Requirements product={product} />
+                            </dd>
+                        </div>
+                    </dl>
+                    {canManage ? (
+                        <ProductActions
+                            product={product}
+                            busy={busyId === product.id}
+                            onEdit={onEdit}
+                            onDelete={onDelete}
+                            onStatus={onStatus}
+                        />
+                    ) : (
+                        <span className="product-directory__read-only">
+                            View-only catalogue access
+                        </span>
+                    )}
+                </article>
+            ))}
+        </div>
     );
 }

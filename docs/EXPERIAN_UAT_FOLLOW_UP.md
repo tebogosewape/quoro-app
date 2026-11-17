@@ -4,6 +4,21 @@
 **Follow-up date:** 17 November 2026  
 **Status:** Blocked by Experian UAT account authentication
 
+## Temporary product-linking exception
+
+As approved on 17 November 2026, Client Details currently allows a product to be linked when no credit
+report has been reviewed because the Experian UAT account is unavailable. The final review step displays a
+warning explaining that the report remains outstanding. All other product, payment, banking and mandate
+validation remains active.
+
+This exception must be removed after Experian confirms working UAT access. At that point:
+
+1. Restore the hard `creditReportViewedAt` prerequisite in the Add Product journey.
+2. Test that an unreviewed report blocks linking and a reviewed report allows it.
+3. Identify clients with linked products and no `creditReportViewedAt` value and complete the required
+   controlled follow-up.
+4. Record the successful Experian UAT verification and removal of this exception in the theme TODO.
+
 ## Current error
 
 Experian receives the `DoNormalEnquiry` request but rejects it with:

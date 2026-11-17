@@ -13,6 +13,7 @@ import {
     Matches,
     IsObject,
     IsNotEmpty,
+    IsBoolean,
     ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -34,6 +35,34 @@ export class SelectedProductDto {
     @IsArray()
     @IsString({ each: true })
     cirAccounts?: string[];
+
+    @IsOptional()
+    @IsString()
+    mandateStatus?: string;
+
+    @IsOptional()
+    @IsString()
+    mandateId?: string;
+
+    @IsOptional()
+    @IsString()
+    mandateReference?: string;
+
+    @IsOptional()
+    @IsString()
+    mandateRequestTranId?: string;
+
+    @IsOptional()
+    @IsString()
+    mandateError?: string;
+
+    @IsOptional()
+    @IsString()
+    mandateAttemptedAt?: string;
+
+    @IsOptional()
+    @IsString()
+    mandateCollectionDay?: string;
 }
 
 export class CreateClientDto {
@@ -195,6 +224,10 @@ export class CreateClientDto {
         firstPaymentMonth?: string;
         selectedPaymentOptions?: Record<string, string>;
     };
+
+    @IsOptional()
+    @IsBoolean()
+    debiCheckConsentGiven?: boolean;
 
     // Additional Information
     @IsOptional()

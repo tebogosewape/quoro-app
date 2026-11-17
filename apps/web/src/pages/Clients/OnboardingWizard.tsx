@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import { Form, Button, Row, Col } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
@@ -13,7 +13,14 @@ import {
 } from '@fortawesome/free-solid-svg-icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { listProducts } from '@/api/products';
-import { createClient, type CreateClientDto } from '@/api/clients.api';
+import {
+    checkClientIdNumber,
+    createClient,
+    updateClient,
+    type CreateClientDto,
+} from '@/api/clients.api';
+import { attemptNuPayMandate } from '@/api/debicheck.api';
+import type { PricingOptions } from '@/interfaces/Product';
 import { useAuthStore } from '@/stores/auth.store';
 import type { AuthSession } from '@/interfaces/AuthUser';
 import '@/styles/onboarding.css';
@@ -49,6 +56,8 @@ type Product = {
     desc: string;
     selected?: boolean;
     paymentOptions?: PaymentOption[];
+    requiresMandate?: boolean;
+    pricingOptions?: PricingOptions;
 };
 
 const requiresCreditAccountHistory = (product: Product) =>
@@ -105,6 +114,8 @@ type LeadPrefill = {
     cell?: string;
     idNumber?: string;
 };
+
+type IdCheckStatus = 'idle' | 'checking' | 'unique' | 'duplicate' | 'error';
 
 // This will be replaced by API data
 const PRODUCTS_PLACEHOLDER: Product[] = [];
@@ -166,9 +177,14 @@ export default function OnboardingWizard() {
     const [busy, setBusy] = useState(false);
     const [loadingProducts, setLoadingProducts] = useState(true);
     const [productError, setProductError] = useState<string | null>(null);
+    const [productLoadAttempt, setProductLoadAttempt] = useState(0);
     const [submissionError, setSubmissionError] = useState<string | null>(null);
     const [showValidation, setShowValidation] = useState(false);
     const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
+    const [idCheckStatus, setIdCheckStatus] = useState<IdCheckStatus>('idle');
+    const [idCheckMessage, setIdCheckMessage] = useState<string | null>(null);
+    const [verifiedIdNumber, setVerifiedIdNumber] = useState<string | null>(null);
+    const idCheckSequence = useRef(0);
 
     // Extract lead data from navigation state if present
     const leadData = location.state?.leadData;
@@ -279,6 +295,8 @@ export default function OnboardingWizard() {
                                         onceOff: 0,
                                     },
                                 ],
+                        requiresMandate: p.requires_mandate,
+                        pricingOptions: p.pricing_options,
                         selected: false,
                     };
                 });
@@ -298,8 +316,8 @@ export default function OnboardingWizard() {
             }
         };
 
-        fetchProducts();
-    }, []);
+        void fetchProducts();
+    }, [productLoadAttempt]);
 
     const index = useMemo(() => STEPS.findIndex((s) => s.key === current), [current]);
 
@@ -362,7 +380,11 @@ export default function OnboardingWizard() {
         }
         if (step === 'personal') {
             const errors = validatePersonalStep();
-            return Object.keys(errors).length === 0;
+            return (
+                Object.keys(errors).length === 0 &&
+                idCheckStatus === 'unique' &&
+                verifiedIdNumber === state.personal.idNumber
+            );
         }
         if (step === 'products') {
             return state.products.some((p) => p.selected);
@@ -396,14 +418,66 @@ export default function OnboardingWizard() {
         return true;
     }
 
-    function goNext() {
+    async function verifyPersonalDetails(): Promise<boolean> {
+        const errors = validatePersonalStep();
+        if (Object.keys(errors).length > 0) {
+            setShowValidation(true);
+            setValidationErrors(errors);
+            return false;
+        }
+
+        const idNumber = state.personal.idNumber as string;
+        if (idCheckStatus === 'unique' && verifiedIdNumber === idNumber) return true;
+
+        const requestSequence = ++idCheckSequence.current;
+        setIdCheckStatus('checking');
+        setIdCheckMessage('Checking whether this ID number is already registered...');
+        setValidationErrors((previous) => {
+            const next = { ...previous };
+            delete next.idNumber;
+            return next;
+        });
+
+        try {
+            const result = await checkClientIdNumber(idNumber);
+            if (requestSequence !== idCheckSequence.current) return false;
+
+            if (result.exists) {
+                const message =
+                    'A client with this ID number already exists. Open the existing client instead of creating a duplicate.';
+                setIdCheckStatus('duplicate');
+                setIdCheckMessage(message);
+                setValidationErrors((previous) => ({ ...previous, idNumber: message }));
+                setShowValidation(true);
+                setVerifiedIdNumber(null);
+                return false;
+            }
+
+            setIdCheckStatus('unique');
+            setIdCheckMessage('ID number is available.');
+            setVerifiedIdNumber(idNumber);
+            return true;
+        } catch {
+            if (requestSequence !== idCheckSequence.current) return false;
+            const message =
+                'We could not verify this ID number. Check the connection and try again.';
+            setIdCheckStatus('error');
+            setIdCheckMessage(message);
+            setValidationErrors((previous) => ({ ...previous, idNumber: message }));
+            setShowValidation(true);
+            setVerifiedIdNumber(null);
+            return false;
+        }
+    }
+
+    async function goNext() {
+        if (current === 'personal' && !(await verifyPersonalDetails())) return;
+
         // Show validation errors when user tries to proceed
-        if (!canNext(current)) {
+        if (current !== 'personal' && !canNext(current)) {
             setShowValidation(true);
             // Set specific validation errors based on current step
-            if (current === 'personal') {
-                setValidationErrors(validatePersonalStep());
-            } else if (current === 'banking') {
+            if (current === 'banking') {
                 setValidationErrors(validateBankingStep());
             }
             return;
@@ -416,7 +490,26 @@ export default function OnboardingWizard() {
         // Log step completion
         logStepCompletion(current);
 
-        if (index < STEPS.length - 1) setCurrent(STEPS[index + 1].key);
+        if (index < STEPS.length - 1) {
+            const nextStep = STEPS[index + 1].key;
+            if (nextStep === 'products' && productError) {
+                setProductLoadAttempt((attempt) => attempt + 1);
+            }
+            setCurrent(nextStep);
+        }
+    }
+
+    async function selectStep(step: StepKey) {
+        const targetIndex = STEPS.findIndex((item) => item.key === step);
+        if (targetIndex >= 2 && !(await verifyPersonalDetails())) {
+            setCurrent('personal');
+            return;
+        }
+
+        if (step === 'products' && productError) {
+            setProductLoadAttempt((attempt) => attempt + 1);
+        }
+        setCurrent(step);
     }
     function goBack() {
         // Reset validation when going back
@@ -508,12 +601,23 @@ export default function OnboardingWizard() {
                         cirAccounts: requiresCreditAccountHistory(p)
                             ? state.productInfo?.cirAccounts
                             : undefined,
+                        mandateStatus: p.requiresMandate ? 'pending' : undefined,
+                        mandateCollectionDay: p.requiresMandate
+                            ? state.debitOrderAgreement?.paymentDate
+                            : undefined,
                     })),
                 // Add payment information
                 paymentInfo: {
                     firstPaymentMonth: state.payment?.firstPaymentMonth,
                     selectedPaymentOptions: state.payment?.selectedPaymentOptions,
                 },
+                debiCheckConsentGiven:
+                    state.products.some((product) => product.selected && product.requiresMandate) &&
+                    Boolean(
+                        state.debitOrderAgreement?.agreedToCreditCheck &&
+                            state.debitOrderAgreement?.agreedToAttorneyAppointment &&
+                            state.debitOrderAgreement?.agreedToAcceptance
+                    ),
                 // Add banking information
                 bankName: state.banking?.bankName,
                 accountType: state.banking?.accountType,
@@ -529,7 +633,48 @@ export default function OnboardingWizard() {
             };
 
             // Call the API to create the client
-            const createdClient = await createClient(clientData);
+            let createdClient = await createClient(clientData);
+
+            const mandateProducts = state.products.filter(
+                (product) => product.selected && product.requiresMandate
+            );
+            let mandateSelections = [
+                ...(createdClient.selectedProducts || clientData.selectedProducts || []),
+            ];
+
+            for (const product of mandateProducts) {
+                const selection = mandateSelections.find((item) => item.productId === product.id);
+                if (!selection || selection.mandateId) continue;
+
+                const mandateResult = await attemptNuPayMandate({
+                    client: createdClient,
+                    product: {
+                        id: product.id,
+                        code: product.code,
+                        name: product.name,
+                        requires_mandate: true,
+                        pricing_options: product.pricingOptions,
+                    },
+                    selection,
+                    collectionDay: state.debitOrderAgreement?.paymentDate || '25',
+                });
+
+                mandateSelections = mandateSelections.map((item) =>
+                    item.productId === product.id ? { ...item, ...mandateResult } : item
+                );
+
+                try {
+                    createdClient = await updateClient(createdClient.id, {
+                        selectedProducts: mandateSelections,
+                        debiCheckConsentGiven: true,
+                    });
+                } catch (mandateStatusError) {
+                    console.error(
+                        '[OnboardingWizard] Client created but mandate status could not be updated:',
+                        mandateStatusError
+                    );
+                }
+            }
 
             // Log onboarding completion
             try {
@@ -598,88 +743,74 @@ export default function OnboardingWizard() {
 
     return (
         <div className="onboarding-wizard container-fluid py-3">
-            {/* Compact wizard header */}
-            <div className="onboarding-header card mb-4">
-                <div className="card-body p-3 text-white">
-                    <div className="d-flex align-items-center mb-3">
-                        <button
-                            type="button"
-                            className="btn btn-light btn-sm me-3"
-                            onClick={() => navigate('/clients')}
-                        >
-                            <svg
-                                width="16"
-                                height="16"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                style={{ marginRight: '4px' }}
-                            >
-                                <path d="M19 12H5M12 19l-7-7 7-7" />
-                            </svg>
-                            Back
-                        </button>
+            <header className="onboarding-header">
+                <div className="onboarding-header__main">
+                    <button
+                        type="button"
+                        className="onboarding-header__back"
+                        onClick={() => navigate('/clients')}
+                    >
                         <svg
-                            width="32"
-                            height="32"
+                            width="15"
+                            height="15"
                             viewBox="0 0 24 24"
                             fill="none"
                             stroke="currentColor"
                             strokeWidth="2"
                             strokeLinecap="round"
                             strokeLinejoin="round"
-                            className="me-3"
+                            aria-hidden="true"
                         >
-                            <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                            <circle cx="8.5" cy="7" r="4" />
-                            <polyline points="17 11 19 13 23 9" />
+                            <path d="M19 12H5M12 19l-7-7 7-7" />
                         </svg>
-                        <div className="flex-grow-1">
-                            <h1 className="mb-0">New Client Onboarding</h1>
-                            <div className="opacity-90 onboarding-header__description">
-                                Complete all steps to register a new client
-                            </div>
+                        Back to clients
+                    </button>
+
+                    <div className="onboarding-header__identity">
+                        <span className="onboarding-header__icon" aria-hidden="true">
+                            <svg
+                                width="20"
+                                height="20"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                            >
+                                <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                                <circle cx="8.5" cy="7" r="4" />
+                                <polyline points="17 11 19 13 23 9" />
+                            </svg>
+                        </span>
+                        <div>
+                            <p className="onboarding-header__eyebrow">Client management</p>
+                            <h1>New client onboarding</h1>
+                            <p className="onboarding-header__description">
+                                Complete the required information to register a client.
+                            </p>
                         </div>
                     </div>
 
-                    {/* Progress Stats */}
-                    <div className="row g-3 mt-2">
-                        <div className="col-md-4 col-6">
-                            <div className="onboarding-progress-stat text-center p-2">
-                                <div className="opacity-90" style={{ fontSize: '0.85rem' }}>
-                                    Current Step
-                                </div>
-                                <div style={{ fontSize: '1.1rem', fontWeight: 600 }}>
-                                    {index + 1} of {STEPS.length}
-                                </div>
-                            </div>
-                        </div>
-                        <div className="col-md-4 col-6">
-                            <div className="onboarding-progress-stat text-center p-2">
-                                <div className="opacity-90" style={{ fontSize: '0.85rem' }}>
-                                    Progress
-                                </div>
-                                <div style={{ fontSize: '1.1rem', fontWeight: 600 }}>
-                                    {Math.round(((index + 1) / STEPS.length) * 100)}%
-                                </div>
-                            </div>
-                        </div>
-                        <div className="col-md-4 col-6">
-                            <div className="onboarding-progress-stat text-center p-2">
-                                <div className="opacity-90" style={{ fontSize: '0.85rem' }}>
-                                    Status
-                                </div>
-                                <div style={{ fontSize: '1.1rem', fontWeight: 600 }}>
-                                    {STEPS[index]?.label || 'N/A'}
-                                </div>
-                            </div>
-                        </div>
+                    <div className="onboarding-header__summary" aria-label="Onboarding progress">
+                        <span>
+                            <strong>Step {index + 1}</strong>
+                            <small>of {STEPS.length}</small>
+                        </span>
+                        <span>
+                            <strong>{Math.round(((index + 1) / STEPS.length) * 100)}%</strong>
+                            <small>complete</small>
+                        </span>
+                        <span className="onboarding-header__current">
+                            <strong>{STEPS[index]?.label || 'Not available'}</strong>
+                            <small>current section</small>
+                        </span>
                     </div>
                 </div>
-            </div>
+                <div className="onboarding-header__progress" aria-hidden="true">
+                    <span style={{ width: `${Math.round(((index + 1) / STEPS.length) * 100)}%` }} />
+                </div>
+            </header>
 
             {/* Authentication Warning */}
             {!session && (
@@ -730,7 +861,7 @@ export default function OnboardingWizard() {
                                             key={s.key}
                                             type="button"
                                             className={`cf-tab ${active ? 'active' : ''} ${done ? 'done' : ''}`}
-                                            onClick={() => setCurrent(s.key)}
+                                            onClick={() => void selectStep(s.key)}
                                             aria-current={active ? 'step' : undefined}
                                         >
                                             <span className="cf-tab-icon" aria-hidden="true">
@@ -779,6 +910,12 @@ export default function OnboardingWizard() {
                             <StepPersonal
                                 value={state.personal}
                                 onChange={(p) => {
+                                    if (Object.prototype.hasOwnProperty.call(p, 'idNumber')) {
+                                        idCheckSequence.current += 1;
+                                        setIdCheckStatus('idle');
+                                        setIdCheckMessage(null);
+                                        setVerifiedIdNumber(null);
+                                    }
                                     setState((prev) => ({
                                         ...prev,
                                         personal: { ...prev.personal, ...p },
@@ -797,6 +934,8 @@ export default function OnboardingWizard() {
                                 onNext={goNext}
                                 showValidation={showValidation}
                                 validationErrors={validationErrors}
+                                idCheckStatus={idCheckStatus}
+                                idCheckMessage={idCheckMessage}
                             />
                         )}
                         {current === 'products' && (
@@ -816,6 +955,7 @@ export default function OnboardingWizard() {
                                 busy={busy}
                                 loading={loadingProducts}
                                 error={productError}
+                                onRetry={() => setProductLoadAttempt((attempt) => attempt + 1)}
                                 showValidation={showValidation}
                             />
                         )}
@@ -1139,6 +1279,8 @@ function StepPersonal({
     onNext,
     showValidation,
     validationErrors,
+    idCheckStatus,
+    idCheckMessage,
 }: {
     value: Personal;
     onChange: (p: Partial<Personal>) => void;
@@ -1147,6 +1289,8 @@ function StepPersonal({
     onNext: () => void;
     showValidation: boolean;
     validationErrors: Record<string, string>;
+    idCheckStatus: IdCheckStatus;
+    idCheckMessage: string | null;
 }) {
     return (
         <>
@@ -1198,14 +1342,33 @@ function StepPersonal({
                     </Form.Label>
                     <Form.Control
                         value={value.idNumber ?? ''}
-                        onChange={(e) => onChange({ idNumber: e.target.value })}
-                        isInvalid={showValidation && !!validationErrors.idNumber}
+                        onChange={(e) =>
+                            onChange({ idNumber: e.target.value.replace(/\D/g, '').slice(0, 13) })
+                        }
+                        isInvalid={
+                            (showValidation && !!validationErrors.idNumber) ||
+                            idCheckStatus === 'duplicate' ||
+                            idCheckStatus === 'error'
+                        }
                         placeholder="13 digit ID number"
                         maxLength={13}
+                        inputMode="numeric"
                     />
-                    {showValidation && validationErrors.idNumber && (
+                    {idCheckStatus === 'checking' && (
+                        <div className="wizard-field-status" role="status">
+                            {idCheckMessage}
+                        </div>
+                    )}
+                    {idCheckStatus === 'unique' && (
+                        <div className="wizard-field-status wizard-field-status--success">
+                            {idCheckMessage}
+                        </div>
+                    )}
+                    {((showValidation && validationErrors.idNumber) ||
+                        idCheckStatus === 'duplicate' ||
+                        idCheckStatus === 'error') && (
                         <Form.Control.Feedback type="invalid">
-                            {validationErrors.idNumber}
+                            {validationErrors.idNumber || idCheckMessage}
                         </Form.Control.Feedback>
                     )}
                 </Col>
@@ -1338,6 +1501,7 @@ function StepPersonal({
                 <Button
                     onClick={onNext}
                     type="button"
+                    disabled={idCheckStatus === 'checking'}
                     style={{
                         background: 'var(--color-brand-teal)',
                         border: 'none',
@@ -1346,7 +1510,7 @@ function StepPersonal({
                         fontWeight: 500,
                     }}
                 >
-                    Next
+                    {idCheckStatus === 'checking' ? 'Checking ID...' : 'Next'}
                 </Button>
             </div>
         </>
@@ -1362,6 +1526,7 @@ function StepProducts({
     busy,
     loading,
     error,
+    onRetry,
     showValidation,
 }: {
     products: Product[];
@@ -1372,6 +1537,7 @@ function StepProducts({
     busy?: boolean;
     loading?: boolean;
     error?: string | null;
+    onRetry: () => void;
     showValidation: boolean;
 }) {
     // Handle radio button selection - only one product at a time
@@ -1419,13 +1585,16 @@ function StepProducts({
             )}
 
             {error && (
-                <div className="alert alert-danger">
-                    <strong>Error loading products:</strong> {error}
-                    <div className="mt-2">
-                        <small>
-                            Please refresh the page or contact support if the problem persists.
-                        </small>
+                <div className="alert alert-danger wizard-product-error" role="alert">
+                    <div>
+                        <strong>Error loading products:</strong> {error}
+                        <div className="mt-1">
+                            <small>The service may have been temporarily unavailable.</small>
+                        </div>
                     </div>
+                    <Button type="button" variant="outline-danger" onClick={onRetry}>
+                        Try again
+                    </Button>
                 </div>
             )}
 

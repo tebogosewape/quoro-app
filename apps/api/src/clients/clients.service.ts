@@ -244,6 +244,16 @@ export class ClientsService {
         return savedClient;
     }
 
+    async idNumberExists(idNumber: string): Promise<boolean> {
+        const client = await this.clientRepository.findOne({
+            select: { id: true },
+            where: { idNumber },
+            withDeleted: true,
+        });
+
+        return Boolean(client);
+    }
+
     /**
      * Send welcome communications to newly onboarded client
      * Sends email, SMS, and WhatsApp message, then logs in audit trail

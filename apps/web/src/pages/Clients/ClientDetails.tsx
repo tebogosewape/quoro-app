@@ -21,6 +21,7 @@ import { listTasks, createTask, updateTask } from '@/api/tasks.api';
 import { listInboxEmails } from '@/api/communications.api';
 import { listProducts } from '@/api/products';
 import { whatsappApi, type WhatsAppMessage } from '@/api/whatsapp.api';
+import { attemptNuPayMandate } from '@/api/debicheck.api';
 import type { Product as BackendProduct } from '@/interfaces/Product';
 import type {
     ClientDetailPayload,
@@ -95,6 +96,15 @@ type CommunicationLog = {
     clientEmail?: string;
     clientPhone?: string;
 };
+
+type ProductJourneyStep = 'product' | 'details' | 'payment' | 'review';
+
+const PRODUCT_JOURNEY_STEPS: Array<{ key: ProductJourneyStep; label: string }> = [
+    { key: 'product', label: 'Product' },
+    { key: 'details', label: 'Details' },
+    { key: 'payment', label: 'Payment' },
+    { key: 'review', label: 'Review' },
+];
 
 // -----------------------------------------------
 // Helpers
@@ -266,6 +276,9 @@ async function mapClientToDetailPayload(client: Client): Promise<ClientDetailPay
                             name: product?.name || 'Product',
                             status: 'active',
                             fields: {},
+                            mandateStatus: sp.mandateStatus,
+                            mandateError: sp.mandateError,
+                            mandateId: sp.mandateId,
                         };
                     });
                 } catch (err) {
@@ -354,8 +367,8 @@ export default function ClientDetails() {
     /**
      * Refetch client data (for refreshing after updates)
      */
-    const refetchClient = () => {
-        fetchClient();
+    const refetchClient = async () => {
+        await fetchClient();
     };
 
     /**
@@ -430,7 +443,7 @@ export default function ClientDetails() {
     };
 
     return (
-        <div className="container-fluid py-3 client-details-page">
+        <div className="container-fluid py-2 client-details-page">
             {/* Error Banner */}
             {error && (
                 <div className="alert alert-danger mb-3 d-flex justify-content-between align-items-center">
@@ -489,9 +502,9 @@ export default function ClientDetails() {
             {/* Identity Header */}
             <HeaderBlock data={data} onEdit={() => navigate(`/clients/${data.id}/edit`)} />
 
-            <div className="row g-3">
+            <div className="row g-2 client-details-layout">
                 {/* LEFT */}
-                <div className="col-12 col-lg-8">
+                <div className="col-12 col-xl-8">
                     <div className="client-workspace-card">
                         <Tab.Container defaultActiveKey="products">
                             <Nav variant="tabs" className="client-primary-tabs">
@@ -585,10 +598,10 @@ export default function ClientDetails() {
                 </div>
 
                 {/* RIGHT */}
-                <div className="col-12 col-lg-4">
+                <aside className="col-12 col-xl-4 client-right-rail" aria-label="Client activity">
                     <TodoPanel clientId={cid} />
                     <NotesPanel clientId={cid} />
-                </div>
+                </aside>
             </div>
         </div>
     );
@@ -790,48 +803,36 @@ function HeaderBlock({ data, onEdit }: { data: ClientDetailPayload; onEdit: () =
 
                     {/* Stats Row */}
                     <div className="client-profile-stats">
-                        <div className="col-md-3 col-6">
-                            <div className="client-profile-stat">
-                                <div className="client-profile-stat-label">File Reference</div>
-                                <div className="client-profile-stat-value">
-                                    {data.fileReference || 'N/A'}
-                                </div>
+                        <div className="client-profile-stat">
+                            <div className="client-profile-stat-label">File Reference</div>
+                            <div className="client-profile-stat-value">
+                                {data.fileReference || 'N/A'}
                             </div>
                         </div>
-                        <div className="col-md-3 col-6">
-                            <div className="client-profile-stat">
-                                <div className="client-profile-stat-label">ID Number</div>
-                                <div className="client-profile-stat-value">
-                                    {maskSensitiveDataForAgents(data.nationalId, isAgent) || 'N/A'}
-                                </div>
+                        <div className="client-profile-stat">
+                            <div className="client-profile-stat-label">ID Number</div>
+                            <div className="client-profile-stat-value">
+                                {maskSensitiveDataForAgents(data.nationalId, isAgent) || 'N/A'}
                             </div>
                         </div>
-                        <div className="col-md-3 col-6">
-                            <div className="client-profile-stat">
-                                <div className="client-profile-stat-label">Total Income</div>
-                                <div className="client-profile-stat-value client-profile-stat-money">
-                                    R{' '}
-                                    {totalDebt.toLocaleString('en-ZA', {
-                                        minimumFractionDigits: 2,
-                                        maximumFractionDigits: 2,
-                                    })}
-                                </div>
+                        <div className="client-profile-stat">
+                            <div className="client-profile-stat-label">Total Income</div>
+                            <div className="client-profile-stat-value client-profile-stat-money">
+                                R{' '}
+                                {totalDebt.toLocaleString('en-ZA', {
+                                    minimumFractionDigits: 2,
+                                    maximumFractionDigits: 2,
+                                })}
                             </div>
                         </div>
-                        <div className="col-md-3 col-6">
-                            <div className="client-profile-stat">
-                                <div className="client-profile-stat-label">Products</div>
-                                <div className="client-profile-stat-value">
-                                    {data.products.length}
-                                </div>
-                            </div>
+                        <div className="client-profile-stat">
+                            <div className="client-profile-stat-label">Products</div>
+                            <div className="client-profile-stat-value">{data.products.length}</div>
                         </div>
-                        <div className="col-md-3 col-6">
-                            <div className="client-profile-stat">
-                                <div className="client-profile-stat-label">Last Contact</div>
-                                <div className="client-profile-stat-value">
-                                    {data.lastPhone || 'Never'}
-                                </div>
+                        <div className="client-profile-stat">
+                            <div className="client-profile-stat-label">Last Contact</div>
+                            <div className="client-profile-stat-value">
+                                {data.lastPhone || 'Never'}
                             </div>
                         </div>
                     </div>
@@ -841,7 +842,7 @@ function HeaderBlock({ data, onEdit }: { data: ClientDetailPayload; onEdit: () =
             {/* Contact Info Card */}
             <div className="client-contact-strip mb-3">
                 <div className="client-contact-strip-body">
-                    <div className="d-flex flex-wrap gap-3 align-items-center">
+                    <div className="client-contact-items">
                         <div className="client-contact-item d-inline-flex align-items-center gap-2">
                             <svg
                                 width="18"
@@ -876,10 +877,7 @@ function HeaderBlock({ data, onEdit }: { data: ClientDetailPayload; onEdit: () =
                             </svg>
                             {data.email}
                         </a>
-                        <button
-                            className="btn btn-sm btn-outline-success"
-                            style={{ borderRadius: '8px' }}
-                        >
+                        <button className="btn btn-sm btn-outline-success client-contact-action">
                             <svg
                                 width="16"
                                 height="16"
@@ -896,7 +894,7 @@ function HeaderBlock({ data, onEdit }: { data: ClientDetailPayload; onEdit: () =
                             WhatsApp
                         </button>
                         {data.lastUpdate && (
-                            <span className="text-muted ms-auto" style={{ fontSize: '0.9rem' }}>
+                            <span className="client-contact-updated">
                                 <svg
                                     width="16"
                                     height="16"
@@ -932,13 +930,20 @@ function ProductsPanel({
 }: {
     products: Product[];
     clientId: string;
-    onProductAdded: () => void;
+    onProductAdded: () => void | Promise<void>;
     creditReportViewedAt?: string | null;
 }) {
     const [availableProducts, setAvailableProducts] = useState<BackendProduct[]>([]);
     const [selectedProductId, setSelectedProductId] = useState('');
     const [selectedPaymentOptionId, setSelectedPaymentOptionId] = useState('');
     const [creditAccounts, setCreditAccounts] = useState(['', '', '']);
+    const [showProductJourney, setShowProductJourney] = useState(false);
+    const [journeyStep, setJourneyStep] = useState<ProductJourneyStep>('product');
+    const [firstPaymentMonth, setFirstPaymentMonth] = useState('');
+    const [collectionDay, setCollectionDay] = useState('');
+    const [mandateConfirmed, setMandateConfirmed] = useState(false);
+    const [clientSnapshot, setClientSnapshot] = useState<Client | null>(null);
+    const [journeyLoading, setJourneyLoading] = useState(false);
     const [loading, setLoading] = useState(true);
     const [adding, setAdding] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
@@ -963,6 +968,39 @@ function ProductsPanel({
         fetchProducts();
     }, []);
 
+    const resetProductJourney = () => {
+        setSelectedProductId('');
+        setSelectedPaymentOptionId('');
+        setCreditAccounts(['', '', '']);
+        setFirstPaymentMonth('');
+        setCollectionDay('');
+        setMandateConfirmed(false);
+        setJourneyStep('product');
+        setClientSnapshot(null);
+        setErrorMessage('');
+    };
+
+    const openProductJourney = async () => {
+        resetProductJourney();
+        setShowProductJourney(true);
+        setJourneyLoading(true);
+        try {
+            setClientSnapshot(await getClientById(clientId));
+        } catch (err) {
+            setErrorMessage(
+                err instanceof Error ? err.message : 'Unable to load the latest client details.'
+            );
+        } finally {
+            setJourneyLoading(false);
+        }
+    };
+
+    const closeProductJourney = () => {
+        if (adding) return;
+        setShowProductJourney(false);
+        resetProductJourney();
+    };
+
     const handleAddProduct = async () => {
         if (!selectedProductId) return;
 
@@ -980,12 +1018,6 @@ function ProductsPanel({
             return;
         }
 
-        // Validate credit report has been reviewed before adding products
-        if (!creditReportViewedAt) {
-            setErrorMessage('Please download and review the credit report before adding products.');
-            return;
-        }
-
         setAdding(true);
         setSuccessMessage('');
         setErrorMessage('');
@@ -993,6 +1025,19 @@ function ProductsPanel({
         try {
             // Get the current client to access existing selectedProducts
             const client = await getClientById(clientId);
+
+            if (
+                needsMandate &&
+                !(client.bankName && client.accountHolder && client.accountNumber && client.branchCode)
+            ) {
+                throw new Error(
+                    'Complete the client banking details before linking a mandate-based product.'
+                );
+            }
+
+            if (needsMandate && (!firstPaymentMonth || !collectionDay || !mandateConfirmed)) {
+                throw new Error('Confirm the payment and mandate preparation details before linking.');
+            }
 
             // Create new product entry
             const newProduct = {
@@ -1002,26 +1047,76 @@ function ProductsPanel({
                     productToAdd?.code.toUpperCase() === 'CAR'
                         ? creditAccounts.map((account) => account.trim())
                         : undefined,
+                mandateStatus: needsMandate ? 'pending' : undefined,
+                mandateCollectionDay: needsMandate ? collectionDay : undefined,
             };
 
             // Add to existing products or create new array
             const updatedProducts = [...(client.selectedProducts || []), newProduct];
 
-            // Update the client with the new products list
+            const existingPaymentInfo = client.paymentInfo || {};
             await updateClient(clientId, {
                 selectedProducts: updatedProducts,
+                paymentInfo: {
+                    ...existingPaymentInfo,
+                    firstPaymentMonth: firstPaymentMonth || existingPaymentInfo.firstPaymentMonth,
+                    selectedPaymentOptions: {
+                        ...(existingPaymentInfo.selectedPaymentOptions || {}),
+                        [selectedProductId]: selectedPaymentOptionId,
+                    },
+                },
+                ...(needsMandate ? { debiCheckConsentGiven: true } : {}),
             });
 
             const addedProduct = availableProducts.find((p) => p.id === selectedProductId);
-            setSelectedProductId('');
-            setSelectedPaymentOptionId('');
-            setCreditAccounts(['', '', '']);
-            setSuccessMessage(`Product "${addedProduct?.name}" added successfully!`);
+            const verifiedClient = await getClientById(clientId);
+            const verifiedSelection = (verifiedClient.selectedProducts || []).find(
+                (selection) =>
+                    selection.productId === selectedProductId &&
+                    selection.paymentOptionId === selectedPaymentOptionId
+            );
+
+            if (!verifiedSelection) {
+                throw new Error(
+                    'The product update was submitted but could not be verified. Refresh before trying again.'
+                );
+            }
+
+            let completionMessage = `Product "${addedProduct?.name}" linked and verified successfully.`;
+            if (needsMandate && productToAdd && !verifiedSelection.mandateId) {
+                const mandateResult = await attemptNuPayMandate({
+                    client: verifiedClient,
+                    product: productToAdd,
+                    selection: verifiedSelection,
+                    collectionDay,
+                });
+
+                try {
+                    await updateClient(clientId, {
+                        selectedProducts: (verifiedClient.selectedProducts || []).map((selection) =>
+                            selection.productId === selectedProductId
+                                ? { ...selection, ...mandateResult }
+                                : selection
+                        ),
+                        debiCheckConsentGiven: true,
+                    });
+                } catch (statusError) {
+                    console.error('Failed to persist mandate hand-off status:', statusError);
+                }
+
+                completionMessage = mandateResult.mandateId
+                    ? `Product "${addedProduct?.name}" linked. NuPay mandate is awaiting customer authorisation.`
+                    : `Product "${addedProduct?.name}" linked. NuPay mandate is pending and can be retried later.`;
+            }
+
+            setShowProductJourney(false);
+            resetProductJourney();
+            setSuccessMessage(completionMessage);
 
             // Auto-dismiss success message after 5 seconds
             setTimeout(() => setSuccessMessage(''), 5000);
 
-            onProductAdded(); // Refresh the client data
+            await onProductAdded();
         } catch (err) {
             console.error('Failed to add product:', err);
             setErrorMessage(
@@ -1083,6 +1178,61 @@ function ProductsPanel({
             : [{ id: `${product.id}_default`, label: 'Standard pricing' }];
     }, [selectedProduct]);
 
+    const journeyStepIndex = PRODUCT_JOURNEY_STEPS.findIndex((step) => step.key === journeyStep);
+    const needsMandate = Boolean(
+        selectedProduct?.requires_mandate || selectedProduct?.pricing_options?.recurring
+    );
+    const hasCompleteBanking = Boolean(
+        clientSnapshot?.bankName &&
+            clientSnapshot.accountHolder &&
+            clientSnapshot.accountNumber &&
+            clientSnapshot.branchCode
+    );
+
+    const moveJourneyForward = () => {
+        setErrorMessage('');
+        if (journeyStep === 'product') {
+            if (!selectedProductId) {
+                setErrorMessage('Select a product before continuing.');
+                return;
+            }
+            setJourneyStep('details');
+            return;
+        }
+        if (journeyStep === 'details') {
+            if (
+                selectedProduct?.code.toUpperCase() === 'CAR' &&
+                creditAccounts.some((account) => !account.trim())
+            ) {
+                setErrorMessage('Provide all three current account names before continuing.');
+                return;
+            }
+            setJourneyStep('payment');
+            return;
+        }
+        if (journeyStep === 'payment') {
+            if (!selectedPaymentOptionId) {
+                setErrorMessage('Select a payment option before continuing.');
+                return;
+            }
+            if (needsMandate && !firstPaymentMonth) {
+                setErrorMessage('Select the first payment month before continuing.');
+                return;
+            }
+            if (needsMandate && !collectionDay) {
+                setErrorMessage('Select the monthly collection day before continuing.');
+                return;
+            }
+            setJourneyStep('review');
+        }
+    };
+
+    const moveJourneyBack = () => {
+        setErrorMessage('');
+        const previousStep = PRODUCT_JOURNEY_STEPS[journeyStepIndex - 1];
+        if (previousStep) setJourneyStep(previousStep.key);
+    };
+
     const riskBadge = (f?: Product['flag']) => {
         if (f === 'green')
             return (
@@ -1121,6 +1271,15 @@ function ProductsPanel({
                     <h6>Products</h6>
                     <span>{products.length} linked to this client</span>
                 </div>
+                <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={openProductJourney}
+                    disabled={loading || addableProducts.length === 0}
+                >
+                    <FontAwesomeIcon icon={faPlus} />
+                    {addableProducts.length === 0 ? 'All products linked' : 'Add product'}
+                </Button>
             </div>
 
             {/* Success Message */}
@@ -1155,82 +1314,13 @@ function ProductsPanel({
                 </div>
             )}
 
-            {/* Add Product Section */}
-            <div className="client-product-add mb-3">
-                <div className="client-product-add-grid">
-                    <Form.Select
-                        value={selectedProductId}
-                        onChange={(e) => {
-                            setSelectedProductId(e.target.value);
-                            setSelectedPaymentOptionId('');
-                            setCreditAccounts(['', '', '']);
-                        }}
-                        disabled={loading || adding}
-                        aria-label="Product to add"
-                    >
-                        <option value="" disabled>
-                            {loading ? 'Loading products...' : 'Select product to add...'}
-                        </option>
-                        {addableProducts.map((p) => (
-                            <option key={p.id} value={p.id}>
-                                {p.name} ({p.code}) - {p.category.replace(/_/g, ' ')}
-                            </option>
-                        ))}
-                    </Form.Select>
-                    <Form.Select
-                        value={selectedPaymentOptionId}
-                        onChange={(e) => setSelectedPaymentOptionId(e.target.value)}
-                        disabled={!selectedProductId || adding}
-                        aria-label="Payment option"
-                    >
-                        <option value="" disabled>
-                            Select payment option...
-                        </option>
-                        {paymentOptions.map((option) => (
-                            <option key={option.id} value={option.id}>
-                                {option.label}
-                            </option>
-                        ))}
-                    </Form.Select>
-                    <Button
-                        variant="primary"
-                        onClick={handleAddProduct}
-                        disabled={
-                            !selectedProductId || !selectedPaymentOptionId || loading || adding
-                        }
-                    >
-                        <FontAwesomeIcon icon={faPlus} /> {adding ? 'Adding...' : 'Add product'}
-                    </Button>
-                </div>
-                {selectedProduct?.code.toUpperCase() === 'CAR' && (
-                    <div className="client-product-accounts mt-2">
-                        <span>Current accounts</span>
-                        {creditAccounts.map((account, index) => (
-                            <input
-                                key={index}
-                                className="form-control"
-                                value={account}
-                                onChange={(event) =>
-                                    setCreditAccounts((current) =>
-                                        current.map((value, accountIndex) =>
-                                            accountIndex === index ? event.target.value : value
-                                        )
-                                    )
-                                }
-                                placeholder={`Account ${index + 1}`}
-                                aria-label={`Current account ${index + 1}`}
-                            />
-                        ))}
-                    </div>
-                )}
-            </div>
-
             {/* Search Products */}
             <div className="client-product-search mb-3">
                 <FontAwesomeIcon icon={faMagnifyingGlass} className="text-muted" />
                 <input
                     className="form-control"
                     placeholder="Search client's products..."
+                    aria-label="Search client products"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                 />
@@ -1242,7 +1332,7 @@ function ProductsPanel({
             </div>
 
             {/* Products List */}
-            <div className="vstack gap-3">
+            <div className="vstack gap-2 client-product-list">
                 {filteredProducts.length === 0 ? (
                     <div className="client-empty-state">
                         {searchQuery ? 'No products match your search.' : 'No products added yet.'}
@@ -1260,9 +1350,9 @@ function ProductsPanel({
                                     borderLeft: '3px solid var(--color-brand-teal)',
                                 }}
                             >
-                                <div className="d-flex justify-content-between align-items-start mb-3">
+                                <div className="d-flex justify-content-between align-items-start">
                                     <div className="flex-grow-1">
-                                        <div className="d-flex align-items-center gap-2 mb-2">
+                                        <div className="client-product-title-row">
                                             <h6 className="mb-0 fw-bold">{p.name}</h6>
                                             <span className="client-code-badge">
                                                 {fullProduct?.code || 'N/A'}
@@ -1273,22 +1363,29 @@ function ProductsPanel({
                                             >
                                                 {p.status}
                                             </span>
+                                            {p.mandateStatus && (
+                                                <span
+                                                    className={`client-mandate-badge client-mandate-${p.mandateStatus}`}
+                                                >
+                                                    Mandate{' '}
+                                                    {p.mandateStatus === 'pending_auth'
+                                                        ? 'awaiting approval'
+                                                        : p.mandateStatus}
+                                                </span>
+                                            )}
                                             {p.flag && (
                                                 <div className="ms-2">{riskBadge(p.flag)}</div>
                                             )}
                                         </div>
 
                                         {fullProduct?.description && (
-                                            <p
-                                                className="text-muted mb-3"
-                                                style={{ fontSize: '0.9rem' }}
-                                            >
+                                            <p className="client-product-description">
                                                 {fullProduct.description}
                                             </p>
                                         )}
 
                                         {/* Product Details Grid */}
-                                        <div className="row g-3">
+                                        <div className="row g-2 client-product-facts">
                                             {fullProduct && (
                                                 <>
                                                     <div className="col-md-3 col-6">
@@ -1362,7 +1459,7 @@ function ProductsPanel({
 
                                         {/* Pricing Information */}
                                         {fullProduct?.pricing_options && (
-                                            <div className="mt-3">
+                                            <div className="client-product-pricing">
                                                 <div
                                                     className="card border-0"
                                                     style={{
@@ -1370,7 +1467,7 @@ function ProductsPanel({
                                                         borderRadius: '8px',
                                                     }}
                                                 >
-                                                    <div className="card-body p-3">
+                                                    <div className="card-body">
                                                         <div className="text-muted small mb-2 fw-semibold">
                                                             Pricing
                                                         </div>
@@ -1492,7 +1589,7 @@ function ProductsPanel({
 
                                         {/* Custom Fields */}
                                         {p.fields && Object.keys(p.fields).length > 0 && (
-                                            <div className="mt-3">
+                                            <div className="client-product-configuration">
                                                 <div className="text-muted small mb-2">
                                                     Product Configuration
                                                 </div>
@@ -1523,6 +1620,21 @@ function ProductsPanel({
                                             >
                                                 <FontAwesomeIcon icon={faClock} className="me-2" />
                                                 {p.feeNote}
+                                            </div>
+                                        )}
+                                        {p.mandateStatus === 'pending' && (
+                                            <div className="client-inline-warning mt-2">
+                                                <FontAwesomeIcon icon={faTriangleExclamation} />
+                                                <div>
+                                                    <strong>Mandate pending</strong>
+                                                    <span>
+                                                        The product is linked. NuPay hand-off can be
+                                                        retried later
+                                                        {p.mandateError
+                                                            ? `: ${p.mandateError}`
+                                                            : '.'}
+                                                    </span>
+                                                </div>
                                             </div>
                                         )}
                                     </div>
@@ -1629,6 +1741,371 @@ function ProductsPanel({
                     }
                     return null;
                 })()}
+
+            <Modal
+                show={showProductJourney}
+                onHide={closeProductJourney}
+                size="xl"
+                centered
+                backdrop="static"
+                className="client-product-journey"
+            >
+                <Modal.Header>
+                    <div>
+                        <span className="client-modal-eyebrow">Client product journey</span>
+                        <Modal.Title>Link a product</Modal.Title>
+                        <p>Select the product and confirm only the information required for it.</p>
+                    </div>
+                    <button
+                        type="button"
+                        className="client-modal-close"
+                        aria-label="Close add product journey"
+                        onClick={closeProductJourney}
+                        disabled={adding}
+                    >
+                        <FontAwesomeIcon icon={faTimes} />
+                    </button>
+                </Modal.Header>
+
+                <div className="client-journey-progress" aria-label="Add product progress">
+                    {PRODUCT_JOURNEY_STEPS.map((step, index) => (
+                        <div
+                            key={step.key}
+                            className={`client-journey-step ${
+                                index === journeyStepIndex ? 'is-current' : ''
+                            } ${index < journeyStepIndex ? 'is-complete' : ''}`}
+                            aria-current={index === journeyStepIndex ? 'step' : undefined}
+                        >
+                            <span>{index < journeyStepIndex ? '✓' : index + 1}</span>
+                            {step.label}
+                        </div>
+                    ))}
+                </div>
+
+                <Modal.Body>
+                    {journeyLoading ? (
+                        <div className="client-journey-loading">
+                            <Spinner animation="border" size="sm" />
+                            Loading the latest client details.
+                        </div>
+                    ) : (
+                        <>
+                            {errorMessage && (
+                                <div className="client-inline-error mb-3" role="alert">
+                                    {errorMessage}
+                                </div>
+                            )}
+
+                            {journeyStep === 'product' && (
+                                <section className="client-journey-panel">
+                                    <div className="client-journey-heading">
+                                        <h6>Select a product</h6>
+                                        <p>Only active products not already linked are shown.</p>
+                                    </div>
+                                    <div className="client-product-options" role="radiogroup">
+                                        {addableProducts.map((product) => {
+                                            const selected = product.id === selectedProductId;
+                                            return (
+                                                <button
+                                                    key={product.id}
+                                                    type="button"
+                                                    role="radio"
+                                                    aria-checked={selected}
+                                                    className={`client-product-option ${
+                                                        selected ? 'is-selected' : ''
+                                                    }`}
+                                                    onClick={() => {
+                                                        setSelectedProductId(product.id);
+                                                        setSelectedPaymentOptionId('');
+                                                        setCreditAccounts(['', '', '']);
+                                                        setFirstPaymentMonth('');
+                                                        setCollectionDay('');
+                                                        setMandateConfirmed(false);
+                                                        setErrorMessage('');
+                                                    }}
+                                                >
+                                                    <span className="client-product-option-code">
+                                                        {product.code}
+                                                    </span>
+                                                    <strong>{product.name}</strong>
+                                                    <small>
+                                                        {product.category.replace(/_/g, ' ')}
+                                                    </small>
+                                                    <span className="client-product-option-flags">
+                                                        {product.requires_credit_pull && (
+                                                            <em>Credit report</em>
+                                                        )}
+                                                        {product.requires_mandate && <em>Mandate</em>}
+                                                    </span>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </section>
+                            )}
+
+                            {journeyStep === 'details' && selectedProduct && (
+                                <section className="client-journey-panel">
+                                    <div className="client-journey-heading">
+                                        <h6>Product details</h6>
+                                        <p>{selectedProduct.name}</p>
+                                    </div>
+                                    <div className="client-journey-summary-row">
+                                        <div>
+                                            <span>Product code</span>
+                                            <strong>{selectedProduct.code}</strong>
+                                        </div>
+                                        <div>
+                                            <span>Category</span>
+                                            <strong>
+                                                {selectedProduct.category.replace(/_/g, ' ')}
+                                            </strong>
+                                        </div>
+                                        <div>
+                                            <span>Credit report</span>
+                                            <strong>
+                                                {selectedProduct.requires_credit_pull
+                                                    ? 'Required'
+                                                    : 'Not required'}
+                                            </strong>
+                                        </div>
+                                    </div>
+
+                                    {selectedProduct.code.toUpperCase() === 'CAR' ? (
+                                        <div className="client-journey-fields">
+                                            <div className="client-journey-field-heading">
+                                                <strong>Current credit accounts</strong>
+                                                <span>Enter all three account or creditor names.</span>
+                                            </div>
+                                            {creditAccounts.map((account, index) => (
+                                                <Form.Group key={index}>
+                                                    <Form.Label>Account {index + 1}</Form.Label>
+                                                    <Form.Control
+                                                        value={account}
+                                                        onChange={(event) =>
+                                                            setCreditAccounts((current) =>
+                                                                current.map((value, accountIndex) =>
+                                                                    accountIndex === index
+                                                                        ? event.target.value
+                                                                        : value
+                                                                )
+                                                            )
+                                                        }
+                                                        aria-label={`Current account ${index + 1}`}
+                                                        placeholder="Account or creditor name"
+                                                    />
+                                                </Form.Group>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div className="client-journey-notice">
+                                            <FontAwesomeIcon icon={faCheckCircle} />
+                                            <div>
+                                                <strong>No additional product information needed</strong>
+                                                <span>
+                                                    Existing client details will be reused for this product.
+                                                </span>
+                                            </div>
+                                        </div>
+                                    )}
+                                </section>
+                            )}
+
+                            {journeyStep === 'payment' && selectedProduct && (
+                                <section className="client-journey-panel">
+                                    <div className="client-journey-heading">
+                                        <h6>Payment details</h6>
+                                        <p>Select the agreed option for {selectedProduct.name}.</p>
+                                    </div>
+                                    <div className="client-payment-options" role="radiogroup">
+                                        {paymentOptions.map((option) => (
+                                            <button
+                                                key={option.id}
+                                                type="button"
+                                                role="radio"
+                                                aria-checked={
+                                                    selectedPaymentOptionId === option.id
+                                                }
+                                                className={`client-payment-option ${
+                                                    selectedPaymentOptionId === option.id
+                                                        ? 'is-selected'
+                                                        : ''
+                                                }`}
+                                                onClick={() => {
+                                                    setSelectedPaymentOptionId(option.id);
+                                                    setErrorMessage('');
+                                                }}
+                                            >
+                                                <span />
+                                                {option.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    {needsMandate && (
+                                        <div className="client-mandate-schedule">
+                                            <Form.Group>
+                                                <Form.Label>First payment month</Form.Label>
+                                                <Form.Select
+                                                    value={firstPaymentMonth}
+                                                    onChange={(event) =>
+                                                        setFirstPaymentMonth(event.target.value)
+                                                    }
+                                                    aria-label="First payment month"
+                                                >
+                                                    <option value="">Select payment month</option>
+                                                    <option value="first">First month</option>
+                                                    <option value="second">Second month</option>
+                                                    <option value="third">Third month</option>
+                                                </Form.Select>
+                                            </Form.Group>
+                                            <Form.Group>
+                                                <Form.Label>Monthly collection day</Form.Label>
+                                                <Form.Select
+                                                    value={collectionDay}
+                                                    onChange={(event) =>
+                                                        setCollectionDay(event.target.value)
+                                                    }
+                                                    aria-label="Monthly collection day"
+                                                >
+                                                    <option value="">Select collection day</option>
+                                                    {Array.from({ length: 28 }, (_, index) => (
+                                                        <option
+                                                            key={index + 1}
+                                                            value={String(index + 1)}
+                                                        >
+                                                            Day {index + 1}
+                                                        </option>
+                                                    ))}
+                                                    <option value="99">Last day of month</option>
+                                                </Form.Select>
+                                            </Form.Group>
+                                        </div>
+                                    )}
+                                </section>
+                            )}
+
+                            {journeyStep === 'review' && selectedProduct && (
+                                <section className="client-journey-panel">
+                                    <div className="client-journey-heading">
+                                        <h6>Review and link</h6>
+                                        <p>Confirm the final selection before updating this client.</p>
+                                    </div>
+                                    {!creditReportViewedAt && (
+                                        <div className="client-inline-warning mb-3" role="status">
+                                            <FontAwesomeIcon icon={faTriangleExclamation} />
+                                            <div>
+                                                <strong>Temporary credit-report exception</strong>
+                                                <span>
+                                                    Experian UAT is currently unavailable. This
+                                                    product can be linked now, but the credit report
+                                                    must be completed when service access is restored.
+                                                </span>
+                                            </div>
+                                        </div>
+                                    )}
+                                    <div className="client-review-grid">
+                                        <div>
+                                            <span>Product</span>
+                                            <strong>{selectedProduct.name}</strong>
+                                            <small>{selectedProduct.code}</small>
+                                        </div>
+                                        <div>
+                                            <span>Payment option</span>
+                                            <strong>
+                                                {paymentOptions.find(
+                                                    (option) =>
+                                                        option.id === selectedPaymentOptionId
+                                                )?.label || 'Not selected'}
+                                            </strong>
+                                            {needsMandate && (
+                                                <small>
+                                                    First payment: {firstPaymentMonth} month · Collect
+                                                    on day {collectionDay === '99' ? 'last' : collectionDay}
+                                                </small>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {needsMandate && (
+                                        <div className="client-mandate-review">
+                                            <div className="client-journey-field-heading">
+                                                <strong>Debit-order preparation</strong>
+                                                <span>
+                                                    Existing verified client banking details are reused.
+                                                </span>
+                                            </div>
+                                            {hasCompleteBanking ? (
+                                                <div className="client-bank-summary">
+                                                    <span>{clientSnapshot?.bankName}</span>
+                                                    <span>{clientSnapshot?.accountType || 'Account'}</span>
+                                                    <span>
+                                                        •••• {clientSnapshot?.accountNumber?.slice(-4)}
+                                                    </span>
+                                                    <span>Branch {clientSnapshot?.branchCode}</span>
+                                                </div>
+                                            ) : (
+                                                <div className="client-inline-error">
+                                                    Banking details are incomplete. Update the Client tab
+                                                    before linking this mandate-based product.
+                                                </div>
+                                            )}
+                                            <Form.Check
+                                                id="confirm-product-mandate"
+                                                checked={mandateConfirmed}
+                                                onChange={(event) =>
+                                                    setMandateConfirmed(event.target.checked)
+                                                }
+                                                label="I confirm the payment terms and banking details are correct for mandate preparation."
+                                            />
+                                        </div>
+                                    )}
+                                </section>
+                            )}
+                        </>
+                    )}
+                </Modal.Body>
+
+                <Modal.Footer>
+                    <span className="client-modal-status">
+                        Step {journeyStepIndex + 1} of {PRODUCT_JOURNEY_STEPS.length}
+                    </span>
+                    <div>
+                        {journeyStepIndex > 0 && (
+                            <Button
+                                variant="outline-secondary"
+                                size="sm"
+                                onClick={moveJourneyBack}
+                                disabled={adding}
+                            >
+                                Back
+                            </Button>
+                        )}
+                        {journeyStep !== 'review' ? (
+                            <Button
+                                variant="primary"
+                                size="sm"
+                                onClick={moveJourneyForward}
+                                disabled={journeyLoading}
+                            >
+                                Continue
+                            </Button>
+                        ) : (
+                            <Button
+                                variant="primary"
+                                size="sm"
+                                onClick={handleAddProduct}
+                                disabled={
+                                    adding ||
+                                    (needsMandate &&
+                                        (!hasCompleteBanking || !mandateConfirmed))
+                                }
+                            >
+                                {adding ? 'Linking and verifying...' : 'Confirm and link product'}
+                            </Button>
+                        )}
+                    </div>
+                </Modal.Footer>
+            </Modal>
         </>
     );
 }
@@ -3054,17 +3531,20 @@ function TodoPanel({ clientId }: { clientId: string }) {
     };
 
     return (
-        <div className="client-surface mb-3">
-            <div className="d-flex justify-content-between align-items-center mb-2">
-                <h6 className="m-0">To-do List</h6>
+        <div className="client-surface client-task-panel">
+            <div className="client-task-header">
+                <div>
+                    <h6>To-do List</h6>
+                    <span>Client follow-ups and reminders</span>
+                </div>
                 <span className="client-panel-count">{todos.length}</span>
             </div>
-            <div className="client-task-create mb-2">
+            <div className="client-task-create">
                 <input
                     className="form-control"
                     value={newTaskTitle}
                     onChange={(event) => setNewTaskTitle(event.target.value)}
-                    placeholder="Add a follow-up task"
+                    placeholder="Add follow-up"
                     aria-label="Task title"
                 />
                 <input
@@ -3076,10 +3556,12 @@ function TodoPanel({ clientId }: { clientId: string }) {
                 />
                 <Button
                     variant="primary"
+                    size="sm"
                     onClick={addTask}
                     disabled={!newTaskTitle.trim() || !newTaskDue || creatingTask}
                 >
-                    <FontAwesomeIcon icon={faPlus} /> {creatingTask ? 'Adding...' : 'Add'}
+                    <FontAwesomeIcon icon={faPlus} />
+                    <span>{creatingTask ? 'Adding...' : 'Add task'}</span>
                 </Button>
             </div>
             {taskError && <div className="client-inline-error mb-2">{taskError}</div>}
@@ -3101,7 +3583,13 @@ function TodoPanel({ clientId }: { clientId: string }) {
                     </li>
                 ))}
                 {todos.length === 0 && (
-                    <li className="client-empty-state">No tasks are currently assigned.</li>
+                    <li className="client-task-empty">
+                        <FontAwesomeIcon icon={faCheckCircle} aria-hidden="true" />
+                        <div>
+                            <strong>No open tasks</strong>
+                            <span>Add a follow-up when this client needs attention.</span>
+                        </div>
+                    </li>
                 )}
             </ul>
         </div>
@@ -3192,7 +3680,7 @@ function NotesPanel({ clientId }: { clientId: string }) {
     };
 
     return (
-        <div className="client-surface">
+        <div className="client-surface client-notes-panel">
             <Tab.Container defaultActiveKey="notes">
                 <Nav variant="pills" className="mb-2">
                     <Nav.Item>

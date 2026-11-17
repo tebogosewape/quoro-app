@@ -483,38 +483,33 @@ export default function Sidebar({ isOpen, onCloseSidebar }: SidebarProps) {
                     </svg>
                     My Profile
                 </Nav.Link>
+            </Nav>
 
-                {/* Logout - Always at bottom */}
-                <Nav.Link
-                    href="#"
-                    className="sidebar-link-logout mt-auto"
-                    onClick={(event) => {
-                        event.preventDefault();
+            <div className="sidebar-footer">
+                <button
+                    type="button"
+                    className="sidebar-logout-button"
+                    onClick={() => {
                         useAuthStore.getState().clearSession();
                         navigate('/login', { replace: true });
                     }}
                 >
                     <svg
-                        width="18"
-                        height="18"
                         viewBox="0 0 24 24"
                         fill="none"
                         stroke="currentColor"
                         strokeWidth="2"
                         strokeLinecap="round"
                         strokeLinejoin="round"
-                        style={{ marginRight: '12px' }}
+                        aria-hidden="true"
                     >
                         <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
                         <polyline points="16 17 21 12 16 7" />
                         <line x1="21" y1="12" x2="9" y2="12" />
                     </svg>
-                    <span>Logout</span>
-                </Nav.Link>
-            </Nav>
-
-            <div className="sidebar-footer">
-                <div className="sidebar-version">version 0.1</div>
+                    <span>Sign out</span>
+                </button>
+                <span className="sidebar-version">QFinance v0.1</span>
             </div>
         </aside>
     );

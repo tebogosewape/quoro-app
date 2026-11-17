@@ -9,6 +9,11 @@ import type { AxiosRequestConfig } from 'axios';
 
 const maritalStatusEnum = z.enum(['single', 'married', 'divorced', 'widowed']);
 const clientTypeEnum = z.enum(['individual', 'joint', 'business']);
+const databaseBooleanSchema = z.preprocess((value) => {
+    if (value === 1 || value === '1') return true;
+    if (value === 0 || value === '0') return false;
+    return value;
+}, z.boolean());
 export const clientStatusEnum = z.enum([
     'lead',
     'consultation_scheduled',
@@ -123,9 +128,17 @@ export const createClientDtoSchema = z.object({
                 productId: z.string(),
                 paymentOptionId: z.string(),
                 cirAccounts: z.array(z.string()).optional(),
+                mandateStatus: z.string().optional(),
+                mandateId: z.string().optional(),
+                mandateReference: z.string().optional(),
+                mandateRequestTranId: z.string().optional(),
+                mandateError: z.string().optional(),
+                mandateAttemptedAt: z.string().optional(),
+                mandateCollectionDay: z.string().optional(),
             })
         )
         .optional(),
+    debiCheckConsentGiven: z.boolean().optional(),
     // Payment Information
     paymentInfo: z
         .object({
@@ -213,11 +226,20 @@ export const clientSchema = z
                     productId: z.string(),
                     paymentOptionId: z.string(),
                     cirAccounts: z.array(z.string()).optional(),
+                    mandateStatus: z.string().optional(),
+                    mandateId: z.string().optional(),
+                    mandateReference: z.string().optional(),
+                    mandateRequestTranId: z.string().optional(),
+                    mandateError: z.string().optional(),
+                    mandateAttemptedAt: z.string().optional(),
+                    mandateCollectionDay: z.string().optional(),
                 })
             )
             .nullable()
             .optional()
             .default([]),
+        debiCheckConsentGiven: databaseBooleanSchema.optional().default(false),
+        debiCheckMandateId: z.string().nullable().optional(),
         paymentInfo: z
             .object({
                 firstPaymentMonth: z.string().optional(),
@@ -388,13 +410,28 @@ const getAuthHeaders = () => {
 export const createClient = async (clientData: CreateClientDto): Promise<Client> => {
     // Validate input
     const validatedData = createClientDtoSchema.parse(clientData);
-
-    const response = await apiClient.post('/clients/onboard', validatedData, {
+    const requestConfig: AxiosRequestConfig & { skipAuthRedirect: boolean } = {
         headers: getAuthHeaders(),
-        skipAuthRedirect: true, // Don't auto-redirect on 401, let the component handle it
-    } as any);
+        skipAuthRedirect: true,
+    };
+
+    const response = await apiClient.post('/clients/onboard', validatedData, requestConfig);
 
     return clientSchema.parse(unwrapApiResponse(response.data));
+};
+
+export const checkClientIdNumber = async (idNumber: string): Promise<{ exists: boolean }> => {
+    const validatedIdNumber = z
+        .string()
+        .regex(/^\d{13}$/, { message: 'ID number must be exactly 13 digits' })
+        .parse(idNumber);
+    const response = await apiClient.post(
+        '/clients/check-id-number',
+        { idNumber: validatedIdNumber },
+        { headers: getAuthHeaders() }
+    );
+
+    return z.object({ exists: z.boolean() }).parse(unwrapApiResponse(response.data));
 };
 
 /**

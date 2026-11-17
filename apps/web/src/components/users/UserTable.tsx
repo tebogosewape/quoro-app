@@ -1,15 +1,218 @@
 import type { UserDto } from '@/api/users';
 
-type Props = { users: UserDto[]; sortBy: keyof UserDto | null; sortDir: 'asc' | 'desc'; onSort: (key: keyof UserDto) => void; onEdit: (user: UserDto) => void; onDelete: (user: UserDto) => void; busyRow?: string | null };
-const columns: Array<{ key: keyof UserDto; label: string }> = [{ key: 'firstName', label: 'User' }, { key: 'employeeNumber', label: 'Employee no.' }, { key: 'role', label: 'Role' }, { key: 'status', label: 'Status' }, { key: 'department', label: 'Department' }, { key: 'lastLoginAt', label: 'Last login' }];
-const formatLabel = (value: string) => value.split(/[_-]/).map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
-const formatLogin = (value?: string | Date | null) => value ? new Intl.DateTimeFormat('en-ZA', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : 'Never';
+type Props = {
+    users: UserDto[];
+    sortBy: keyof UserDto | null;
+    sortDir: 'asc' | 'desc';
+    onSort: (key: keyof UserDto) => void;
+    onEdit: (user: UserDto) => void;
+    onDelete: (user: UserDto) => void;
+    busyRow?: string | null;
+};
+const columns: Array<{ key: keyof UserDto; label: string }> = [
+    { key: 'firstName', label: 'User' },
+    { key: 'employeeNumber', label: 'Employee no.' },
+    { key: 'role', label: 'Role' },
+    { key: 'status', label: 'Status' },
+    { key: 'department', label: 'Department' },
+    { key: 'lastLoginAt', label: 'Last login' },
+];
+const formatLabel = (value: string) =>
+    value
+        .split(/[_-]/)
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ');
+const formatLogin = (value?: string | Date | null) =>
+    value
+        ? new Intl.DateTimeFormat('en-ZA', { dateStyle: 'medium', timeStyle: 'short' }).format(
+            new Date(value)
+        )
+        : 'Never';
 
-function UserActions({ user, busy, onEdit, onDelete }: { user: UserDto; busy: boolean; onEdit: (user: UserDto) => void; onDelete: (user: UserDto) => void }) {
-    return <div className="user-directory__actions"><button type="button" onClick={() => onEdit(user)} disabled={busy}>Edit</button><button type="button" className="user-directory__delete" onClick={() => onDelete(user)} disabled={busy}>Delete</button></div>;
+function UserActions({
+    user,
+    busy,
+    onEdit,
+    onDelete,
+}: {
+    user: UserDto;
+    busy: boolean;
+    onEdit: (user: UserDto) => void;
+    onDelete: (user: UserDto) => void;
+}) {
+    return (
+        <div className="user-directory__actions">
+            <button type="button" onClick={() => onEdit(user)} disabled={busy}>
+                Edit
+            </button>
+            <button
+                type="button"
+                className="user-directory__delete"
+                onClick={() => onDelete(user)}
+                disabled={busy}
+            >
+                Delete
+            </button>
+        </div>
+    );
 }
 
-export default function UserTable({ users, sortBy, sortDir, onSort, onEdit, onDelete, busyRow }: Props) {
-    if (users.length === 0) return <div className="user-directory__empty"><strong>No users found</strong><span>Adjust the search or filters and try again.</span></div>;
-    return <><div className="user-directory__table-wrap"><table className="user-directory__table"><thead><tr>{columns.map((column) => { const active = sortBy === column.key; return <th key={String(column.key)}><button type="button" onClick={() => onSort(column.key)} aria-sort={active ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}>{column.label}<span aria-hidden="true">{active ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}</span></button></th>; })}<th className="user-directory__action-heading">Actions</th></tr></thead><tbody>{users.map((user) => { const busy = busyRow === user.id; return <tr key={user.id} aria-busy={busy}><td><div className="user-directory__identity"><span className="user-directory__avatar" aria-hidden="true">{user.firstName?.[0]}{user.lastName?.[0]}</span><span><strong>{user.firstName} {user.lastName}</strong><small>{user.email}</small></span></div></td><td><code>{user.employeeNumber}</code></td><td><span className="user-directory__badge user-directory__badge--role">{formatLabel(user.role)}</span></td><td><span className={`user-directory__badge user-directory__badge--${user.status}`}>{formatLabel(user.status)}</span></td><td>{user.department || '—'}</td><td className="user-directory__login">{formatLogin(user.lastLoginAt)}</td><td><UserActions user={user} busy={busy} onEdit={onEdit} onDelete={onDelete} /></td></tr>; })}</tbody></table></div><div className="user-directory__cards">{users.map((user) => { const busy = busyRow === user.id; return <article key={user.id} className="user-directory__card" aria-busy={busy}><div className="user-directory__identity"><span className="user-directory__avatar" aria-hidden="true">{user.firstName?.[0]}{user.lastName?.[0]}</span><span><strong>{user.firstName} {user.lastName}</strong><small>{user.email}</small></span></div><div className="user-directory__card-meta"><span><small>Employee</small><code>{user.employeeNumber}</code></span><span><small>Department</small>{user.department || '—'}</span><span><small>Last login</small>{formatLogin(user.lastLoginAt)}</span></div><div className="user-directory__card-footer"><div><span className="user-directory__badge user-directory__badge--role">{formatLabel(user.role)}</span><span className={`user-directory__badge user-directory__badge--${user.status}`}>{formatLabel(user.status)}</span></div><UserActions user={user} busy={busy} onEdit={onEdit} onDelete={onDelete} /></div></article>; })}</div></>;
+export default function UserTable({
+    users,
+    sortBy,
+    sortDir,
+    onSort,
+    onEdit,
+    onDelete,
+    busyRow,
+}: Props) {
+    if (users.length === 0)
+        return (
+            <div className="user-directory__empty">
+                <strong>No users found</strong>
+                <span>Adjust the search or filters and try again.</span>
+            </div>
+        );
+    return (
+        <>
+            <div className="user-directory__table-wrap">
+                <table className="user-directory__table">
+                    <thead>
+                        <tr>
+                            {columns.map((column) => {
+                                const active = sortBy === column.key;
+                                return (
+                                    <th key={String(column.key)}>
+                                        <button
+                                            type="button"
+                                            onClick={() => onSort(column.key)}
+                                            aria-sort={
+                                                active
+                                                    ? sortDir === 'asc'
+                                                        ? 'ascending'
+                                                        : 'descending'
+                                                    : 'none'
+                                            }
+                                        >
+                                            {column.label}
+                                            <span aria-hidden="true">
+                                                {active ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}
+                                            </span>
+                                        </button>
+                                    </th>
+                                );
+                            })}
+                            <th className="user-directory__action-heading">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {users.map((user) => {
+                            const busy = busyRow === user.id;
+                            return (
+                                <tr key={user.id} aria-busy={busy}>
+                                    <td>
+                                        <div className="user-directory__identity">
+                                            <span
+                                                className="user-directory__avatar"
+                                                aria-hidden="true"
+                                            >
+                                                {user.firstName?.[0]}
+                                                {user.lastName?.[0]}
+                                            </span>
+                                            <span>
+                                                <strong>
+                                                    {user.firstName} {user.lastName}
+                                                </strong>
+                                                <small>{user.email}</small>
+                                            </span>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <code>{user.employeeNumber}</code>
+                                    </td>
+                                    <td>
+                                        <span className="user-directory__badge user-directory__badge--role">
+                                            {formatLabel(user.role)}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <span
+                                            className={`user-directory__badge user-directory__badge--${user.status}`}
+                                        >
+                                            {formatLabel(user.status)}
+                                        </span>
+                                    </td>
+                                    <td>{user.department || '—'}</td>
+                                    <td className="user-directory__login">
+                                        {formatLogin(user.lastLoginAt)}
+                                    </td>
+                                    <td>
+                                        <UserActions
+                                            user={user}
+                                            busy={busy}
+                                            onEdit={onEdit}
+                                            onDelete={onDelete}
+                                        />
+                                    </td>
+                                </tr>
+                            );
+                        })}
+                    </tbody>
+                </table>
+            </div>
+            <div className="user-directory__cards">
+                {users.map((user) => {
+                    const busy = busyRow === user.id;
+                    return (
+                        <article key={user.id} className="user-directory__card" aria-busy={busy}>
+                            <div className="user-directory__identity">
+                                <span className="user-directory__avatar" aria-hidden="true">
+                                    {user.firstName?.[0]}
+                                    {user.lastName?.[0]}
+                                </span>
+                                <span>
+                                    <strong>
+                                        {user.firstName} {user.lastName}
+                                    </strong>
+                                    <small>{user.email}</small>
+                                </span>
+                            </div>
+                            <div className="user-directory__card-meta">
+                                <span>
+                                    <small>Employee</small>
+                                    <code>{user.employeeNumber}</code>
+                                </span>
+                                <span>
+                                    <small>Department</small>
+                                    {user.department || '—'}
+                                </span>
+                                <span>
+                                    <small>Last login</small>
+                                    {formatLogin(user.lastLoginAt)}
+                                </span>
+                            </div>
+                            <div className="user-directory__card-footer">
+                                <div>
+                                    <span className="user-directory__badge user-directory__badge--role">
+                                        {formatLabel(user.role)}
+                                    </span>
+                                    <span
+                                        className={`user-directory__badge user-directory__badge--${user.status}`}
+                                    >
+                                        {formatLabel(user.status)}
+                                    </span>
+                                </div>
+                                <UserActions
+                                    user={user}
+                                    busy={busy}
+                                    onEdit={onEdit}
+                                    onDelete={onDelete}
+                                />
+                            </div>
+                        </article>
+                    );
+                })}
+            </div>
+        </>
+    );
 }
